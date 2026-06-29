@@ -120,6 +120,9 @@
   .linetap{position:absolute; border:1px dashed rgba(24,95,165,.6); background:rgba(24,95,165,.06); border-radius:3px; padding:0; margin:0;}
   .linetap:active{background:rgba(24,95,165,.22);}
   .mini-clear{border:none; background:none; color:var(--biru); font-size:11px; font-weight:600; padding:0;}
+  .pedit{width:100%; border:.5px solid var(--biru); border-radius:6px; padding:5px 7px; font-size:13px; font-family:inherit; color:var(--tx); outline:none; background:#fff;}
+  .pedit-num{width:118px; text-align:right; font-weight:600;}
+  .pnm,.pamt{cursor:pointer;}
   .draftbox{background:#F4F4F2; border-radius:10px; padding:10px 13px; margin-bottom:14px;}
   .draftbox .dl{font-size:11px; color:var(--tx2); margin-bottom:6px;}
   .slot{display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:4px 0; gap:12px;}
@@ -229,6 +232,8 @@ var syncRange='bulan';
 var kustomAwal=todayISO(), kustomAkhir=todayISO();
 var view='home';
 var repLimit=10;
+var homeLimit=10;
+var syncLimit=10;
 var chart=null;
 
 /* ====== UTIL ====== */
@@ -352,14 +357,15 @@ function renderHome(){
   var px=TX.filter(function(t){return dalamPeriode(t.tanggal);});
   var pM=px.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
   var pK=px.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
-  var terakhir=px.slice(0,12);
+  var terakhir=px.slice(0,homeLimit||px.length);
   S().innerHTML=
     '<div class="topbar"><div class="greet"><div><div class="hi">Selamat datang,</div><div class="nm">Erik Simarmata</div></div><div class="ava">ES</div></div></div>'+
     '<div class="saldo"><div class="lbl">Total saldo</div><div class="amt">'+rp(masuk-keluar)+'</div>'+
     '<div class="row"><div><div class="mini">&#9660; Pemasukan</div><div class="val">'+rp(pM)+'</div></div>'+
     '<div><div class="mini">&#9650; Pengeluaran</div><div class="val">'+rp(pK)+'</div></div></div></div>'+
     periodeSeg()+
-    '<div class="sec-head"><div class="t">Transaksi '+periode+'</div></div>'+
+    '<div class="sec-head"><div class="t">Transaksi '+periode+'</div><div style="font-size:11px;color:var(--tx3)">'+px.length+' transaksi</div></div>'+
+    limitChips(homeLimit,'setHomeLimit')+
     '<div class="list">'+(terakhir.length?terakhir.map(txRow).join(''):'<div class="empty">Belum ada transaksi untuk periode ini.<br>Ketuk tombol + untuk menambah.</div>')+'</div>';
   wirePeriode();
 }
@@ -436,7 +442,7 @@ function onFoto(input){
   };
   reader.readAsDataURL(file);
 }
-function blankStruk(){ return {fotoData:null,img:null,cw:900,ch:0,kata:[],kataRole:{},draftIdx:[],ketAnchor:null,ocrDone:false,draft:{keterangan:'',nominal:''},toko:'',catatan:'',tanggal:todayISO(),pending:[],activeRole:null,busy:false}; }
+function blankStruk(){ return {fotoData:null,img:null,cw:900,ch:0,kata:[],kataRole:{},draftIdx:[],ketAnchor:null,ocrDone:false,draft:{keterangan:'',nominal:''},toko:'',catatan:'',tanggal:todayISO(),pending:[],editPend:null,activeRole:null,busy:false}; }
 var strukState=blankStruk();
 var ocrWorker=null;
 async function getWorker(){
@@ -531,10 +537,17 @@ function renderStruk(){
     '<label class="fl">Nama toko (opsional, berlaku untuk semua)</label><input class="field" value="'+esc(st.toko)+'" oninput="strukState.toko=this.value" placeholder="ketuk di foto atau ketik">'+
     '<div class="duo"><div><label class="fl">Catatan (opsional)</label><input class="field" value="'+esc(st.catatan)+'" oninput="strukState.catatan=this.value" placeholder="opsional"></div>'+
       '<div><label class="fl">Tanggal</label><input class="field" type="date" value="'+st.tanggal+'" onchange="strukState.tanggal=this.value"></div></div>'+
-    '<div class="dl" style="margin:4px 2px 6px">Daftar transaksi ('+st.pending.length+')</div>'+
-    (st.pending.length? st.pending.map(function(p,i){ return '<div class="pend"><div class="pmid"><div class="pnm">'+esc(p.keterangan)+(p.diskon?' <span style="color:#BA7517;font-weight:600">(disk '+rp(p.diskon)+')</span>':'')+'</div>'+
+    '<div class="dl" style="margin:4px 2px 6px">Daftar transaksi ('+st.pending.length+')'+(st.pending.length?' &middot; ketuk dua kali nama/nominal untuk ubah':'')+'</div>'+
+    (st.pending.length? st.pending.map(function(p,i){
+      var eK=st.editPend&&st.editPend.i===i&&st.editPend.f==='keterangan';
+      var eN=st.editPend&&st.editPend.i===i&&st.editPend.f==='nominal';
+      var ketHtml=eK?'<input id="pedit" class="pedit" value="'+esc(p.keterangan)+'" onkeydown="if(event.key===\'Enter\')this.blur()" onblur="savePendKet('+i+',this.value)">'
+        :'<div class="pnm" ondblclick="editPend('+i+',\'keterangan\')">'+esc(p.keterangan)+(p.diskon?' <span style="color:#BA7517;font-weight:600">(disk '+rp(p.diskon)+')</span>':'')+'</div>';
+      var nomHtml=eN?'<input id="pedit" class="pedit pedit-num" inputmode="numeric" value="'+(+p.nominal).toLocaleString('id-ID')+'" onkeydown="if(event.key===\'Enter\')this.blur()" onblur="savePendNom('+i+',this.value)">'
+        :'<div class="pamt" ondblclick="editPend('+i+',\'nominal\')">'+rp(p.nominal)+'</div>';
+      return '<div class="pend"><div class="pmid">'+ketHtml+
       '<select class="psel" onchange="setKatPending('+i+',this.value)">'+KAT_PENGELUARAN.map(function(k){return '<option '+(p.kategori===k?'selected':'')+'>'+k+'</option>';}).join('')+'</select></div>'+
-      '<div class="pamt">'+rp(p.nominal)+'</div><button class="delbtn" onclick="hapusPending('+i+')">&times;</button></div>'; }).join('')
+      nomHtml+'<button class="delbtn" onclick="hapusPending('+i+')">&times;</button></div>'; }).join('')
       :'<div class="empty" style="padding:14px">Belum ada. Ketuk kata nama barang, lalu pilih Nominal dan ketuk harganya.</div>')+
     (st.pending.length?('<div class="draftbox" style="background:#E6F1FB;margin-top:4px">'+
       '<div class="slot"><span>Jumlah transaksi</span><b>'+st.pending.length+'</b></div>'+
@@ -544,6 +557,7 @@ function renderStruk(){
     '<button class="save" '+(st.pending.length?'':'disabled')+' onclick="simpanSemua()">Simpan '+st.pending.length+' transaksi</button>'+
     '</div>';
   drawScan();
+  if(strukState.editPend){ var pe=document.getElementById('pedit'); if(pe){ pe.focus(); try{ pe.select(); }catch(e){} } }
 }
 function drawScan(){ var canvas=document.getElementById('scanCanvas'); if(!canvas||!strukState.img) return; var ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.drawImage(strukState.img,0,0,canvas.width,canvas.height); }
 function labelPeran(r){ return r==='keterangan'?'Keterangan':r==='nominal'?'Nominal':r==='toko'?'Nama toko':r==='catatan'?'Catatan':r==='diskon'?'Diskon':''; }
@@ -593,6 +607,9 @@ function terapkanPeran(role, txt, idx){
 }
 function bersihkanDraft(){ var st=strukState; st.draftIdx.forEach(function(i){ delete st.kataRole[i]; }); st.draftIdx=[]; st.ketAnchor=null; st.draft={keterangan:'',nominal:''}; st.activeRole='keterangan'; renderStruk(); }
 function setKatPending(i,v){ strukState.pending[i].kategori=v; }
+function editPend(i,f){ strukState.editPend={i:i,f:f}; renderStruk(); }
+function savePendKet(i,val){ var v=String(val).trim(); if(v) strukState.pending[i].keterangan=v.slice(0,80); strukState.editPend=null; renderStruk(); }
+function savePendNom(i,val){ var d=String(val).replace(/\D/g,''); strukState.pending[i].nominal=d?+d:0; strukState.editPend=null; renderStruk(); }
 function hapusPending(i){ strukState.pending.splice(i,1); renderStruk(); }
 async function simpanSemua(){
   var st=strukState;
@@ -626,7 +643,7 @@ function renderReport(){
       kats.map(function(kv,i){return '<div class="catrow"><span class="dot" style="background:'+WARNA_KAT[i%WARNA_KAT.length]+'"></span><span class="cn">'+kv[0]+'</span><span class="cv">'+rp(kv[1])+'</span><span class="cp">'+Math.round(kv[1]/tot*100)+'%</span></div>';}).join('')+'</div>'
       :'<div class="empty">Belum ada pengeluaran pada periode ini.</div>')+
     '<div class="sec-head" style="padding-top:10px"><div class="t">Daftar transaksi</div><div style="font-size:11px;color:var(--tx3)">'+px.length+' transaksi</div></div>'+
-    '<div class="chips">'+[10,25,50,100].map(function(n){return '<button class="chip '+(repLimit===n?'on':'')+'" onclick="setRepLimit('+n+')">'+n+'</button>';}).join('')+'<button class="chip '+(repLimit===0?'on':'')+'" onclick="setRepLimit(0)">Semua</button></div>'+
+    limitChips(repLimit,'setRepLimit')+
     '<div class="list" style="padding-top:6px;padding-bottom:10px">'+(px.length?px.slice(0,repLimit||px.length).map(txRow).join(''):'<div class="empty">Belum ada transaksi pada periode ini.</div>')+'</div>';
   wirePeriode();
   if(kats.length) gambarDonut(kats);
@@ -657,10 +674,16 @@ function renderSinkron(){
       '<p class="hint">Tarik seluruh transaksi dari Google Sheet ke perangkat ini. Berguna saat ganti HP atau pasang ulang. Data digabung berdasarkan id, jadi tidak tergandakan.</p>'+
       '<button class="btn-line" id="btnTarik" '+(tersambung?'':'disabled')+' onclick="tarikDariSheet()">Tarik semua dari Sheet</button></div>'+
     '<div class="sec-head" style="padding-top:6px"><div class="t">Transaksi pada rentang ('+dalam.length+')</div></div>'+
-    '<div class="list" style="padding-bottom:10px">'+(dalam.length?dalam.slice(0,60).map(txRow).join(''):'<div class="empty">Tidak ada transaksi pada rentang ini.</div>')+'</div>';
+    limitChips(syncLimit,'setSyncLimit')+
+    '<div class="list" style="padding-top:6px;padding-bottom:10px">'+(dalam.length?dalam.slice(0,syncLimit||dalam.length).map(txRow).join(''):'<div class="empty">Tidak ada transaksi pada rentang ini.</div>')+'</div>';
 }
 function setRange(r){ syncRange=r; render(); }
 function setRepLimit(n){ repLimit=n; render(); }
+function setHomeLimit(n){ homeLimit=n; render(); }
+function setSyncLimit(n){ syncLimit=n; render(); }
+function limitChips(cur, fn){
+  return '<div class="chips">'+[10,25,50,100].map(function(n){return '<button class="chip '+(cur===n?'on':'')+'" onclick="'+fn+'('+n+')">'+n+'</button>';}).join('')+'<button class="chip '+(cur===0?'on':'')+'" onclick="'+fn+'(0)">Semua</button></div>';
+}
 
 /* ====== SETELAN ====== */
 function renderSettings(){
