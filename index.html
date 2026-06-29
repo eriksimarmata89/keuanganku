@@ -437,7 +437,7 @@ function renderStruk(){
   S().innerHTML=
     '<div class="fhead"><button class="bk" onclick="goView(\'add\')">&#8592;</button><div class="ti">Pindai struk</div></div>'+
     '<div class="form">'+
-    '<div class="scanhint">Geser jari untuk melingkari teks di foto, lalu pilih perannya. Satu keterangan dan satu nominal otomatis menjadi satu transaksi.</div>'+
+    '<div class="scanhint">Sapukan jari di atas teks seperti stabilo. Bagian yang tersorot dibaca, lalu pilih perannya. Satu keterangan dan satu nominal otomatis menjadi satu transaksi.</div>'+
     '<div class="canvaswrap"><canvas id="scanCanvas" width="'+st.cw+'" height="'+st.ch+'"></canvas><div id="ocrBusy" class="ocrbusy" style="display:'+(st.busy?'flex':'none')+'">Membaca...</div></div>'+
     (st.recog?('<div class="chooser"><div class="ct">Teks: <b>'+esc(st.recog.text||'(kosong)')+'</b></div><div class="cbtns">'+
       '<button class="cb k" onclick="assignRole(\'keterangan\')">Keterangan</button>'+
@@ -463,19 +463,32 @@ function renderStruk(){
 function setupCanvas(){
   var canvas=document.getElementById('scanCanvas'); if(!canvas||!strukState.img) return;
   var st=strukState, ctx=canvas.getContext('2d');
-  function colorFor(role){ return role==='nominal'?'#C0392B':role==='toko'?'#7F77DD':role==='catatan'?'#888780':'#1D9E75'; }
-  function redraw(sel){
+  var STROKE=Math.max(26, Math.round(canvas.height*0.035));
+  function rgbRole(role){ return role==='nominal'?'192,57,43':role==='toko'?'127,119,221':role==='catatan'?'136,135,128':'29,158,117'; }
+  function redraw(path){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.drawImage(st.img,0,0,canvas.width,canvas.height);
-    st.boxes.forEach(function(b){ ctx.strokeStyle=colorFor(b.role); ctx.lineWidth=3; ctx.strokeRect(b.x,b.y,b.w,b.h); });
-    if(sel){ ctx.strokeStyle='#185FA5'; ctx.lineWidth=2; ctx.setLineDash([8,5]); ctx.strokeRect(sel.x,sel.y,sel.w,sel.h); ctx.setLineDash([]); }
+    st.boxes.forEach(function(b){ var c=rgbRole(b.role); ctx.fillStyle='rgba('+c+',0.28)'; ctx.fillRect(b.x,b.y,b.w,b.h); ctx.strokeStyle='rgba('+c+',0.9)'; ctx.lineWidth=2; ctx.strokeRect(b.x,b.y,b.w,b.h); });
+    if(path&&path.length){
+      ctx.strokeStyle='rgba(192,57,43,0.38)'; ctx.lineWidth=STROKE; ctx.lineCap='round'; ctx.lineJoin='round';
+      ctx.beginPath(); ctx.moveTo(path[0].x,path[0].y);
+      for(var i=1;i<path.length;i++) ctx.lineTo(path[i].x,path[i].y);
+      ctx.stroke();
+    }
   }
   redraw();
-  var drawing=false, sx=0, sy=0, cur=null;
+  var drawing=false, pts=[];
   function toXY(e){ var r=canvas.getBoundingClientRect(), t=e.touches&&e.touches[0]; var cx=t?t.clientX:e.clientX, cy=t?t.clientY:e.clientY; return {x:(cx-r.left)*(canvas.width/r.width), y:(cy-r.top)*(canvas.height/r.height)}; }
-  function down(e){ if(st.busy||st.recog) return; e.preventDefault(); var p=toXY(e); drawing=true; sx=p.x; sy=p.y; cur={x:sx,y:sy,w:0,h:0}; }
-  function move(e){ if(!drawing) return; e.preventDefault(); var p=toXY(e); cur={x:Math.min(sx,p.x),y:Math.min(sy,p.y),w:Math.abs(p.x-sx),h:Math.abs(p.y-sy)}; redraw(cur); }
-  async function up(){ if(!drawing) return; drawing=false; var box=cur; cur=null; if(!box||box.w<12||box.h<8){ redraw(); return; }
+  function down(e){ if(st.busy||st.recog) return; e.preventDefault(); pts=[toXY(e)]; drawing=true; redraw(pts); }
+  function move(e){ if(!drawing) return; e.preventDefault(); pts.push(toXY(e)); redraw(pts); }
+  async function up(){ if(!drawing) return; drawing=false; if(!pts.length){ redraw(); return; }
+    var minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+    pts.forEach(function(p){ if(p.x<minX)minX=p.x; if(p.y<minY)minY=p.y; if(p.x>maxX)maxX=p.x; if(p.y>maxY)maxY=p.y; });
+    var pad=STROKE/2;
+    var box={ x:Math.max(0,minX-pad), y:Math.max(0,minY-pad) };
+    box.w=Math.min(canvas.width,maxX+pad)-box.x; box.h=Math.min(canvas.height,maxY+pad)-box.y;
+    pts=[];
+    if(box.w<10||box.h<8){ redraw(); return; }
     st.busy=true; var b=document.getElementById('ocrBusy'); if(b){ b.style.display='flex'; b.textContent='Membaca...'; }
     try{ var txt=await cropOCR(box); st.recog={text:txt,box:box}; }
     catch(err){ toast('Gagal membaca: '+((err&&err.message)||'')); }
