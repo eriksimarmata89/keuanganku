@@ -228,6 +228,7 @@ var periode='bulanan';
 var syncRange='bulan';
 var kustomAwal=todayISO(), kustomAkhir=todayISO();
 var view='home';
+var repLimit=10;
 var chart=null;
 
 /* ====== UTIL ====== */
@@ -535,6 +536,11 @@ function renderStruk(){
       '<select class="psel" onchange="setKatPending('+i+',this.value)">'+KAT_PENGELUARAN.map(function(k){return '<option '+(p.kategori===k?'selected':'')+'>'+k+'</option>';}).join('')+'</select></div>'+
       '<div class="pamt">'+rp(p.nominal)+'</div><button class="delbtn" onclick="hapusPending('+i+')">&times;</button></div>'; }).join('')
       :'<div class="empty" style="padding:14px">Belum ada. Ketuk kata nama barang, lalu pilih Nominal dan ketuk harganya.</div>')+
+    (st.pending.length?('<div class="draftbox" style="background:#E6F1FB;margin-top:4px">'+
+      '<div class="slot"><span>Jumlah transaksi</span><b>'+st.pending.length+'</b></div>'+
+      (st.pending.reduce(function(s,p){return s+(+(p.diskon||0));},0)?('<div class="slot"><span>Total potongan</span><b style="color:#BA7517">- '+rp(st.pending.reduce(function(s,p){return s+(+(p.diskon||0));},0))+'</b></div>'):'')+
+      '<div class="slot" style="font-size:15px;border-top:.5px solid var(--line);padding-top:8px;margin-top:2px"><span style="font-weight:600">Total daftar</span><b>'+rp(st.pending.reduce(function(s,p){return s+(+p.nominal);},0))+'</b></div>'+
+      '<div style="font-size:11px;color:var(--tx2);margin-top:4px">Cocokkan dengan total yang dibayar di struk.</div></div>'):'')+
     '<button class="save" '+(st.pending.length?'':'disabled')+' onclick="simpanSemua()">Simpan '+st.pending.length+' transaksi</button>'+
     '</div>';
   drawScan();
@@ -618,7 +624,10 @@ function renderReport(){
     '<div class="sec-head" style="padding-top:14px"><div class="t">Pengeluaran per kategori</div></div>'+
     (kats.length?'<div class="chartwrap"><canvas id="donut"></canvas></div><div class="catlist">'+
       kats.map(function(kv,i){return '<div class="catrow"><span class="dot" style="background:'+WARNA_KAT[i%WARNA_KAT.length]+'"></span><span class="cn">'+kv[0]+'</span><span class="cv">'+rp(kv[1])+'</span><span class="cp">'+Math.round(kv[1]/tot*100)+'%</span></div>';}).join('')+'</div>'
-      :'<div class="empty">Belum ada pengeluaran pada periode ini.</div>');
+      :'<div class="empty">Belum ada pengeluaran pada periode ini.</div>')+
+    '<div class="sec-head" style="padding-top:10px"><div class="t">Daftar transaksi</div><div style="font-size:11px;color:var(--tx3)">'+px.length+' transaksi</div></div>'+
+    '<div class="chips">'+[10,25,50,100].map(function(n){return '<button class="chip '+(repLimit===n?'on':'')+'" onclick="setRepLimit('+n+')">'+n+'</button>';}).join('')+'<button class="chip '+(repLimit===0?'on':'')+'" onclick="setRepLimit(0)">Semua</button></div>'+
+    '<div class="list" style="padding-top:6px;padding-bottom:10px">'+(px.length?px.slice(0,repLimit||px.length).map(txRow).join(''):'<div class="empty">Belum ada transaksi pada periode ini.</div>')+'</div>';
   wirePeriode();
   if(kats.length) gambarDonut(kats);
 }
@@ -651,6 +660,7 @@ function renderSinkron(){
     '<div class="list" style="padding-bottom:10px">'+(dalam.length?dalam.slice(0,60).map(txRow).join(''):'<div class="empty">Tidak ada transaksi pada rentang ini.</div>')+'</div>';
 }
 function setRange(r){ syncRange=r; render(); }
+function setRepLimit(n){ repLimit=n; render(); }
 
 /* ====== SETELAN ====== */
 function renderSettings(){
