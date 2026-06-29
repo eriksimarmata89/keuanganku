@@ -112,6 +112,7 @@
   .penbtn.on{color:#fff;}
   .penbtn.on.k{background:var(--hijau); border-color:var(--hijau);} .penbtn.on.n{background:var(--merah); border-color:var(--merah);}
   .penbtn.on.t{background:#7F77DD; border-color:#7F77DD;} .penbtn.on.c{background:#888780; border-color:#888780;}
+  .penbtn.on.d{background:#BA7517; border-color:#BA7517;}
   .penbtn.on .pdot{background:#fff !important;}
   .peninfo{font-size:12px; line-height:1.45; margin:0 2px 12px; padding:8px 11px; border-radius:8px;}
   .peninfo.idle{background:var(--kuning-bg); color:var(--kuning-tx);}
@@ -454,7 +455,7 @@ function angkaDariTeks(s){
   if(/[.,]\d{2}$/.test(best) && digits.length>2) digits=digits.slice(0,-2);
   return digits;
 }
-function rgbStr(role){ return role==='nominal'?'192,57,43':role==='toko'?'127,119,221':role==='catatan'?'136,135,128':'29,158,117'; }
+function rgbStr(role){ return role==='nominal'?'192,57,43':role==='toko'?'127,119,221':role==='catatan'?'136,135,128':role==='diskon'?'186,117,23':'29,158,117'; }
 function ambilKata(data, scale){
   var out=[];
   var inflX=strukState.cw*0.004, inflY=0;
@@ -501,6 +502,7 @@ function infoPeran(r){
   if(r==='nominal') return 'Ketuk satu kata angka harganya.';
   if(r==='toko') return 'Ketuk kata nama toko (boleh beberapa).';
   if(r==='catatan') return 'Ketuk kata untuk catatan (boleh beberapa).';
+  if(r==='diskon') return 'Ketuk angka potongan, termasuk yang dalam kurung. Potongan mengurangi nominal transaksi terakhir di daftar.';
   return '';
 }
 function renderStruk(){
@@ -519,7 +521,7 @@ function renderStruk(){
     '<div class="fhead"><button class="bk" onclick="goView(\'add\')">&#8592;</button><div class="ti">Pindai struk</div></div>'+
     '<div class="form">'+
     '<div class="scanhint">Setiap kata jadi satu kotak. Ketuk kata yang Anda mau. Nama panjang: ketuk kata pertama lalu kata terakhir untuk ambil sekaligus.</div>'+
-    '<div class="penbar">'+penBtn('keterangan','k','Keterangan')+penBtn('nominal','n','Nominal')+penBtn('toko','t','Nama toko')+penBtn('catatan','c','Catatan')+'</div>'+
+    '<div class="penbar">'+penBtn('keterangan','k','Keterangan')+penBtn('nominal','n','Nominal')+penBtn('toko','t','Nama toko')+penBtn('catatan','c','Catatan')+penBtn('diskon','d','Diskon')+'</div>'+
     (st.activeRole?'<div class="peninfo aktif">Jenis aktif: <b>'+labelPeran(st.activeRole)+'</b>. '+infoPeran(st.activeRole)+'</div>':'<div class="peninfo idle">Pilih salah satu jenis di atas, lalu ketuk katanya di foto.</div>')+
     '<div class="canvaswrap"><canvas id="scanCanvas" width="'+st.cw+'" height="'+st.ch+'"></canvas>'+ov+'<div id="ocrBusy" class="ocrbusy" style="display:'+(st.busy?'flex':'none')+'">Membaca struk...</div></div>'+
     '<div class="draftbox"><div class="dl" style="display:flex;justify-content:space-between;align-items:center">Transaksi berikutnya'+(adaDraft?'<button class="mini-clear" onclick="bersihkanDraft()">Bersihkan</button>':'')+'</div>'+
@@ -529,7 +531,7 @@ function renderStruk(){
     '<div class="duo"><div><label class="fl">Catatan (opsional)</label><input class="field" value="'+esc(st.catatan)+'" oninput="strukState.catatan=this.value" placeholder="opsional"></div>'+
       '<div><label class="fl">Tanggal</label><input class="field" type="date" value="'+st.tanggal+'" onchange="strukState.tanggal=this.value"></div></div>'+
     '<div class="dl" style="margin:4px 2px 6px">Daftar transaksi ('+st.pending.length+')</div>'+
-    (st.pending.length? st.pending.map(function(p,i){ return '<div class="pend"><div class="pmid"><div class="pnm">'+esc(p.keterangan)+'</div>'+
+    (st.pending.length? st.pending.map(function(p,i){ return '<div class="pend"><div class="pmid"><div class="pnm">'+esc(p.keterangan)+(p.diskon?' <span style="color:#BA7517;font-weight:600">(disk '+rp(p.diskon)+')</span>':'')+'</div>'+
       '<select class="psel" onchange="setKatPending('+i+',this.value)">'+KAT_PENGELUARAN.map(function(k){return '<option '+(p.kategori===k?'selected':'')+'>'+k+'</option>';}).join('')+'</select></div>'+
       '<div class="pamt">'+rp(p.nominal)+'</div><button class="delbtn" onclick="hapusPending('+i+')">&times;</button></div>'; }).join('')
       :'<div class="empty" style="padding:14px">Belum ada. Ketuk kata nama barang, lalu pilih Nominal dan ketuk harganya.</div>')+
@@ -538,7 +540,7 @@ function renderStruk(){
   drawScan();
 }
 function drawScan(){ var canvas=document.getElementById('scanCanvas'); if(!canvas||!strukState.img) return; var ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.drawImage(strukState.img,0,0,canvas.width,canvas.height); }
-function labelPeran(r){ return r==='keterangan'?'Keterangan':r==='nominal'?'Nominal':r==='toko'?'Nama toko':r==='catatan'?'Catatan':''; }
+function labelPeran(r){ return r==='keterangan'?'Keterangan':r==='nominal'?'Nominal':r==='toko'?'Nama toko':r==='catatan'?'Catatan':r==='diskon'?'Diskon':''; }
 function penBtn(role,cls,label){ var on=strukState.activeRole===role?'on '+cls:''; return '<button class="penbtn '+on+'" onclick="setRole(\''+role+'\')"><span class="pdot" style="background:rgb('+rgbStr(role)+')"></span>'+label+'</button>'; }
 function setRole(r){ strukState.activeRole = (strukState.activeRole===r? null : r); strukState.ketAnchor=null; renderStruk(); }
 function tapKata(i){ var st=strukState; if(st.busy) return; var w=st.kata[i]; if(!w) return; if(!st.activeRole){ toast('Pilih jenis dulu (Keterangan / Nominal / dll)'); return; } terapkanPeran(st.activeRole, w.text, i); }
@@ -565,6 +567,16 @@ function terapkanPeran(role, txt, idx){
   } else if(role==='catatan'){
     st.catatan=((st.catatan?st.catatan+' ':'')+txt).slice(0,100);
     if(idx!=null) st.kataRole[idx]='catatan';
+  } else if(role==='diskon'){
+    var dd=angkaDariTeks(txt);
+    if(!dd){ toast('Itu bukan angka diskon'); return; }
+    if(!st.pending.length){ toast('Buat dulu transaksinya, lalu tandai diskonnya'); return; }
+    var p=st.pending[st.pending.length-1];
+    var disk=+dd;
+    p.diskon=(p.diskon||0)+disk;
+    p.nominal=Math.max(0, p.nominal-disk);
+    if(idx!=null) st.kataRole[idx]='diskon';
+    toast('Diskon '+rp(disk)+' untuk: '+p.keterangan);
   }
   if(st.draft.keterangan && st.draft.nominal){
     st.pending.push({keterangan:st.draft.keterangan.trim(), nominal:+st.draft.nominal, kategori:'Belanja'});
@@ -582,7 +594,8 @@ async function simpanSemua(){
   var cat=[st.toko?('Toko: '+st.toko):'', st.catatan].filter(Boolean).join(' | ');
   for(var i=0;i<st.pending.length;i++){
     var p=st.pending[i];
-    var item={ id:uid(), tanggal:st.tanggal, tipe:'pengeluaran', kategori:p.kategori, nominal:+p.nominal, keterangan:p.keterangan, catatan:cat, createdAt:new Date().toISOString(), terkirim:false };
+    var catItem=[cat, p.diskon?('Diskon '+rp(p.diskon)):''].filter(Boolean).join(' | ');
+    var item={ id:uid(), tanggal:st.tanggal, tipe:'pengeluaran', kategori:p.kategori, nominal:+p.nominal, keterangan:p.keterangan, catatan:catItem, createdAt:new Date().toISOString(), terkirim:false };
     TX.unshift(item); await idbPut(item);
   }
   sortTX(); updatePip();
