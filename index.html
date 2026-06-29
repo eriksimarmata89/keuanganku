@@ -118,6 +118,7 @@
   .peninfo.aktif{background:#E6F1FB; color:var(--biru-tua);}
   .linetap{position:absolute; border:1px dashed rgba(24,95,165,.6); background:rgba(24,95,165,.06); border-radius:3px; padding:0; margin:0;}
   .linetap:active{background:rgba(24,95,165,.22);}
+  .mini-clear{border:none; background:none; color:var(--biru); font-size:11px; font-weight:600; padding:0;}
   .draftbox{background:#F4F4F2; border-radius:10px; padding:10px 13px; margin-bottom:14px;}
   .draftbox .dl{font-size:11px; color:var(--tx2); margin-bottom:6px;}
   .slot{display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:4px 0; gap:12px;}
@@ -413,10 +414,9 @@ function onSimpan(){
   simpanTx({tanggal:a.tanggal,tipe:a.tipe,kategori:a.kategori,nominal:+a.nominal,keterangan:a.keterangan.trim(),catatan:a.catatan.trim(),createdAt:new Date().toISOString()});
   addState=blankAdd();
 }
-
-/* ====== PEMINDAI STRUK: KETUK BARIS TEKS, BANYAK TRANSAKSI ======
-   Seluruh struk dibaca OCR sekali di awal. Tiap baris yang terdeteksi
-   menjadi kotak yang tinggal diketuk, tanpa menggambar. */
+/* ====== PEMINDAI STRUK: KETUK PER KATA, BANYAK TRANSAKSI ======
+   Seluruh struk dibaca OCR sekali. Tiap kata (pisah spasi) jadi satu
+   kotak yang tinggal diketuk. Nama barang banyak kata: ketuk tiap katanya. */
 function onFoto(input){
   var file=input.files[0]; if(!file) return;
   var reader=new FileReader();
@@ -434,7 +434,7 @@ function onFoto(input){
   };
   reader.readAsDataURL(file);
 }
-function blankStruk(){ return {fotoData:null,img:null,cw:900,ch:0,lines:[],lineRole:{},ocrDone:false,draft:{keterangan:'',nominal:''},toko:'',catatan:'',tanggal:todayISO(),pending:[],activeRole:null,busy:false}; }
+function blankStruk(){ return {fotoData:null,img:null,cw:900,ch:0,kata:[],kataRole:{},draftIdx:[],ocrDone:false,draft:{keterangan:'',nominal:''},toko:'',catatan:'',tanggal:todayISO(),pending:[],activeRole:null,busy:false}; }
 var strukState=blankStruk();
 var ocrWorker=null;
 async function getWorker(){
@@ -455,11 +455,24 @@ function angkaDariTeks(s){
   return digits;
 }
 function rgbStr(role){ return role==='nominal'?'192,57,43':role==='toko'?'127,119,221':role==='catatan'?'136,135,128':'29,158,117'; }
-function ambilBaris(data, scale){
+function ambilKata(data, scale){
   var out=[];
-  function push(ln){ if(!ln||!ln.bbox) return; var t=(ln.text||'').replace(/\s+/g,' ').trim(); if(!t) return; var b=ln.bbox; out.push({text:t, x:b.x0*scale, y:b.y0*scale, w:(b.x1-b.x0)*scale, h:(b.y1-b.y0)*scale}); }
-  if(data&&data.blocks&&data.blocks.length){ data.blocks.forEach(function(bl){ (bl.paragraphs||[]).forEach(function(pp){ (pp.lines||[]).forEach(push); }); }); }
-  else if(data&&data.lines&&data.lines.length){ data.lines.forEach(push); }
+  var inflX=strukState.cw*0.004, inflY=0;
+  function pushWord(w){
+    if(!w||!w.bbox) return;
+    var t=(w.text||'').replace(/\s+/g,'').trim(); if(!t) return;
+    var b=w.bbox;
+    var x=b.x0*scale-inflX, y=b.y0*scale-inflY, ww=(b.x1-b.x0)*scale+inflX*2, hh=(b.y1-b.y0)*scale+inflY*2;
+    if(ww<3||hh<3) return;
+    out.push({text:t,x:Math.max(0,x),y:Math.max(0,y),w:ww,h:hh});
+  }
+  if(data&&data.blocks&&data.blocks.length){
+    data.blocks.forEach(function(bl){ (bl.paragraphs||[]).forEach(function(pp){ (pp.lines||[]).forEach(function(ln){ (ln.words||[]).forEach(pushWord); }); }); });
+  } else if(data&&data.words&&data.words.length){
+    data.words.forEach(pushWord);
+  } else if(data&&data.lines&&data.lines.length){
+    data.lines.forEach(function(ln){ if(!ln.bbox) return; var toks=(ln.text||'').trim().split(/\s+/).filter(Boolean); if(!toks.length) return; var b=ln.bbox; var chars=ln.text.replace(/\s+/g,'').length||1; var x=b.x0; toks.forEach(function(tok){ var wpx=(b.x1-b.x0)*(tok.length/chars); out.push({text:tok,x:x*scale,y:b.y0*scale,w:wpx*scale,h:(b.y1-b.y0)*scale}); x+=wpx+(b.x1-b.x0)*0.015; }); });
+  }
   return out;
 }
 async function ocrSeluruh(){
@@ -469,35 +482,43 @@ async function ocrSeluruh(){
   c.getContext('2d').drawImage(st.img,0,0,c.width,c.height);
   var w=await getWorker();
   var res=await w.recognize(c, {}, { blocks:true });
-  st.lines=ambilBaris(res.data, st.cw/OCRW);
+  st.kata=ambilKata(res.data, st.cw/OCRW);
 }
 async function startScanOCR(){
   var st=strukState; st.busy=true; st.ocrDone=false; renderStruk();
-  try{ await ocrSeluruh(); if(!st.lines.length){ toast('Tidak ada teks terbaca. Coba foto lebih terang dan fokus.'); } else { st.activeRole='keterangan'; } st.ocrDone=true; }
+  try{ await ocrSeluruh(); if(!st.kata.length){ toast('Tidak ada teks terbaca. Coba foto lebih terang dan fokus.'); } else { st.activeRole='keterangan'; } st.ocrDone=true; }
   catch(e){ toast('Gagal membaca struk: '+((e&&e.message)||'')); st.ocrDone=true; }
   st.busy=false; renderStruk();
+}
+function infoPeran(r){
+  if(r==='keterangan') return 'Ketuk tiap kata nama barang (boleh beberapa). Setelah selesai, pilih Nominal lalu ketuk harganya.';
+  if(r==='nominal') return 'Ketuk satu kata angka harganya.';
+  if(r==='toko') return 'Ketuk kata nama toko (boleh beberapa).';
+  if(r==='catatan') return 'Ketuk kata untuk catatan (boleh beberapa).';
+  return '';
 }
 function renderStruk(){
   var st=strukState;
   var ov='';
   if(st.ocrDone){
-    ov=st.lines.map(function(ln,i){
-      var role=st.lineRole[i];
-      var pos='left:'+(ln.x/st.cw*100).toFixed(2)+'%;top:'+(ln.y/st.ch*100).toFixed(2)+'%;width:'+(ln.w/st.cw*100).toFixed(2)+'%;height:'+(ln.h/st.ch*100).toFixed(2)+'%';
-      var col=role?(';background:rgba('+rgbStr(role)+',0.32);border-color:rgb('+rgbStr(role)+');border-style:solid'):'';
-      return '<button class="linetap" style="'+pos+col+'" onclick="tapLine('+i+')"></button>';
+    ov=st.kata.map(function(w,i){
+      var role=st.kataRole[i];
+      var pos='left:'+(w.x/st.cw*100).toFixed(2)+'%;top:'+(w.y/st.ch*100).toFixed(2)+'%;width:'+(w.w/st.cw*100).toFixed(2)+'%;height:'+(w.h/st.ch*100).toFixed(2)+'%';
+      var col=role?(';background:rgba('+rgbStr(role)+',0.34);border-color:rgb('+rgbStr(role)+');border-style:solid'):'';
+      return '<button class="linetap" style="'+pos+col+'" onclick="tapKata('+i+')"></button>';
     }).join('');
   }
+  var adaDraft=st.draft.keterangan||st.draft.nominal;
   S().innerHTML=
     '<div class="fhead"><button class="bk" onclick="goView(\'add\')">&#8592;</button><div class="ti">Pindai struk</div></div>'+
     '<div class="form">'+
-    '<div class="scanhint">Pilih jenis dulu, lalu ketuk baris teks yang sesuai di foto. Tidak perlu menggambar.</div>'+
+    '<div class="scanhint">Setiap kata jadi satu kotak. Ketuk kata yang Anda mau. Untuk nama dua kata, ketuk kedua kotaknya.</div>'+
     '<div class="penbar">'+penBtn('keterangan','k','Keterangan')+penBtn('nominal','n','Nominal')+penBtn('toko','t','Nama toko')+penBtn('catatan','c','Catatan')+'</div>'+
-    (st.activeRole?'<div class="peninfo aktif">Jenis aktif: <b>'+labelPeran(st.activeRole)+'</b>. Ketuk baris teksnya di foto. Ketuk lagi tombol jenis untuk berhenti.</div>':'<div class="peninfo idle">Pilih salah satu jenis di atas, lalu ketuk baris teks di foto.</div>')+
+    (st.activeRole?'<div class="peninfo aktif">Jenis aktif: <b>'+labelPeran(st.activeRole)+'</b>. '+infoPeran(st.activeRole)+'</div>':'<div class="peninfo idle">Pilih salah satu jenis di atas, lalu ketuk katanya di foto.</div>')+
     '<div class="canvaswrap"><canvas id="scanCanvas" width="'+st.cw+'" height="'+st.ch+'"></canvas>'+ov+'<div id="ocrBusy" class="ocrbusy" style="display:'+(st.busy?'flex':'none')+'">Membaca struk...</div></div>'+
-    '<div class="draftbox"><div class="dl">Transaksi berikutnya</div>'+
-      '<div class="slot"><span>Keterangan</span><b>'+(st.draft.keterangan?esc(st.draft.keterangan):'<i>ketuk baris teks</i>')+'</b></div>'+
-      '<div class="slot"><span>Nominal</span><b>'+(st.draft.nominal?rp(+st.draft.nominal):'<i>ketuk baris teks</i>')+'</b></div></div>'+
+    '<div class="draftbox"><div class="dl" style="display:flex;justify-content:space-between;align-items:center">Transaksi berikutnya'+(adaDraft?'<button class="mini-clear" onclick="bersihkanDraft()">Bersihkan</button>':'')+'</div>'+
+      '<div class="slot"><span>Keterangan</span><b>'+(st.draft.keterangan?esc(st.draft.keterangan):'<i>ketuk kata</i>')+'</b></div>'+
+      '<div class="slot"><span>Nominal</span><b>'+(st.draft.nominal?rp(+st.draft.nominal):'<i>ketuk kata angka</i>')+'</b></div></div>'+
     '<label class="fl">Nama toko (opsional, berlaku untuk semua)</label><input class="field" value="'+esc(st.toko)+'" oninput="strukState.toko=this.value" placeholder="ketuk di foto atau ketik">'+
     '<div class="duo"><div><label class="fl">Catatan (opsional)</label><input class="field" value="'+esc(st.catatan)+'" oninput="strukState.catatan=this.value" placeholder="opsional"></div>'+
       '<div><label class="fl">Tanggal</label><input class="field" type="date" value="'+st.tanggal+'" onchange="strukState.tanggal=this.value"></div></div>'+
@@ -505,7 +526,7 @@ function renderStruk(){
     (st.pending.length? st.pending.map(function(p,i){ return '<div class="pend"><div class="pmid"><div class="pnm">'+esc(p.keterangan)+'</div>'+
       '<select class="psel" onchange="setKatPending('+i+',this.value)">'+KAT_PENGELUARAN.map(function(k){return '<option '+(p.kategori===k?'selected':'')+'>'+k+'</option>';}).join('')+'</select></div>'+
       '<div class="pamt">'+rp(p.nominal)+'</div><button class="delbtn" onclick="hapusPending('+i+')">&times;</button></div>'; }).join('')
-      :'<div class="empty" style="padding:14px">Belum ada. Pilih Keterangan lalu ketuk nama barang, pilih Nominal lalu ketuk harganya.</div>')+
+      :'<div class="empty" style="padding:14px">Belum ada. Ketuk kata nama barang, lalu pilih Nominal dan ketuk harganya.</div>')+
     '<button class="save" '+(st.pending.length?'':'disabled')+' onclick="simpanSemua()">Simpan '+st.pending.length+' transaksi</button>'+
     '</div>';
   drawScan();
@@ -514,22 +535,32 @@ function drawScan(){ var canvas=document.getElementById('scanCanvas'); if(!canva
 function labelPeran(r){ return r==='keterangan'?'Keterangan':r==='nominal'?'Nominal':r==='toko'?'Nama toko':r==='catatan'?'Catatan':''; }
 function penBtn(role,cls,label){ var on=strukState.activeRole===role?'on '+cls:''; return '<button class="penbtn '+on+'" onclick="setRole(\''+role+'\')"><span class="pdot" style="background:rgb('+rgbStr(role)+')"></span>'+label+'</button>'; }
 function setRole(r){ strukState.activeRole = (strukState.activeRole===r? null : r); renderStruk(); }
-function tapLine(i){ var st=strukState; if(st.busy) return; var ln=st.lines[i]; if(!ln) return; if(!st.activeRole){ toast('Pilih jenis dulu (Keterangan / Nominal / dll)'); return; } terapkanPeran(st.activeRole, ln.text, i); }
+function tapKata(i){ var st=strukState; if(st.busy) return; var w=st.kata[i]; if(!w) return; if(!st.activeRole){ toast('Pilih jenis dulu (Keterangan / Nominal / dll)'); return; } terapkanPeran(st.activeRole, w.text, i); }
 function terapkanPeran(role, txt, idx){
   var st=strukState;
-  if(role==='keterangan'){ var k=txt.replace(/\s*(rp\.?\s*)?[\d][\d.,]*\s*$/i,'').trim(); st.draft.keterangan=(k||txt).slice(0,60); if(!st.draft.nominal) st.activeRole='nominal'; }
-  else if(role==='nominal'){ var d=angkaDariTeks(txt); if(!d){ toast('Tidak ada angka di baris itu'); } st.draft.nominal=d; if(!st.draft.keterangan) st.activeRole='keterangan'; }
-  else if(role==='toko'){ st.toko=txt.slice(0,60); st.activeRole=null; }
-  else if(role==='catatan'){ st.catatan=txt.slice(0,80); st.activeRole=null; }
-  if(idx!=null) st.lineRole[idx]=role;
+  if(role==='keterangan'){
+    st.draft.keterangan=((st.draft.keterangan?st.draft.keterangan+' ':'')+txt).slice(0,80);
+    if(idx!=null){ st.kataRole[idx]='keterangan'; st.draftIdx.push(idx); }
+  } else if(role==='nominal'){
+    var d=angkaDariTeks(txt);
+    if(!d){ toast('Itu bukan angka, ketuk kata harganya'); return; }
+    st.draft.nominal=d;
+    if(idx!=null){ st.kataRole[idx]='nominal'; st.draftIdx.push(idx); }
+  } else if(role==='toko'){
+    st.toko=((st.toko?st.toko+' ':'')+txt).slice(0,60);
+    if(idx!=null) st.kataRole[idx]='toko';
+  } else if(role==='catatan'){
+    st.catatan=((st.catatan?st.catatan+' ':'')+txt).slice(0,100);
+    if(idx!=null) st.kataRole[idx]='catatan';
+  }
   if(st.draft.keterangan && st.draft.nominal){
-    st.pending.push({keterangan:st.draft.keterangan, nominal:+st.draft.nominal, kategori:'Belanja'});
-    st.draft={keterangan:'',nominal:''};
-    st.activeRole='keterangan';
+    st.pending.push({keterangan:st.draft.keterangan.trim(), nominal:+st.draft.nominal, kategori:'Belanja'});
+    st.draft={keterangan:'',nominal:''}; st.draftIdx=[]; st.activeRole='keterangan';
     toast('Transaksi ditambahkan');
   }
   renderStruk();
 }
+function bersihkanDraft(){ var st=strukState; st.draftIdx.forEach(function(i){ delete st.kataRole[i]; }); st.draftIdx=[]; st.draft={keterangan:'',nominal:''}; st.activeRole='keterangan'; renderStruk(); }
 function setKatPending(i,v){ strukState.pending[i].kategori=v; }
 function hapusPending(i){ strukState.pending.splice(i,1); renderStruk(); }
 async function simpanSemua(){
