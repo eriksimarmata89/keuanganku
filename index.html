@@ -249,14 +249,29 @@ function labelTanggal(tgl){
   return t.toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'});
 }
 
-/* ====== API ke Apps Script (hanya saat kirim / tarik) ====== */
-async function api(action,extra){
+/* ====== KOMUNIKASI KE APPS SCRIPT (kebal CORS) ======
+   Baca via JSONP (tag script), tulis via fetch mode no-cors.
+   Apps Script tidak mengirim header CORS, jadi dua teknik ini dipakai
+   agar berfungsi dari GitHub Pages tanpa galat CORS. */
+function jsonp(params){
+  return new Promise(function(res,rej){
+    var url=getGasUrl();
+    if(!url){ rej(new Error('URL Apps Script belum diisi di Setelan')); return; }
+    var cb='kk_cb_'+Date.now().toString(36)+Math.floor(Math.random()*1e4);
+    var sep=url.indexOf('?')>=0?'&':'?';
+    var s=document.createElement('script');
+    var timer=setTimeout(function(){ cleanup(); rej(new Error('Tidak ada balasan. Periksa URL dan deployment (akses harus Anyone).')); },20000);
+    function cleanup(){ clearTimeout(timer); try{ delete window[cb]; }catch(e){ window[cb]=undefined; } if(s.parentNode) s.parentNode.removeChild(s); }
+    window[cb]=function(data){ cleanup(); res(data); };
+    s.onerror=function(){ cleanup(); rej(new Error('Gagal memuat dari server')); };
+    s.src=url+sep+params+'&callback='+cb;
+    document.body.appendChild(s);
+  });
+}
+function kirimNoCors(action,extra){
   var url=getGasUrl();
-  if(!url) throw new Error('URL Apps Script belum diisi di Setelan');
-  var res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({action:action},extra||{}))});
-  var data=await res.json();
-  if(!data.ok) throw new Error(data.error||'Gagal memproses');
-  return data;
+  if(!url) return Promise.reject(new Error('URL Apps Script belum diisi di Setelan'));
+  return fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({action:action},extra||{}))});
 }
 
 /* ====== OPERASI DATA (LOKAL) ====== */
@@ -280,11 +295,12 @@ async function kirimRentang(){
   if(btn){ btn.disabled=true; btn.textContent='Mengirim '+dalam.length+' transaksi...'; }
   try{
     var items=dalam.map(function(t){ return {id:t.id,tanggal:t.tanggal,tipe:t.tipe,kategori:t.kategori,nominal:t.nominal,keterangan:t.keterangan,catatan:t.catatan,createdAt:t.createdAt}; });
-    var d=await api('sync',{items:items});
-    var penanda=[];
-    dalam.forEach(function(t){ t.terkirim=true; penanda.push(t); });
-    await idbBulkPut(penanda);
-    toast((d.count||dalam.length)+' transaksi terkirim ke Sheet');
+    await kirimNoCors('sync',{items:items});
+    var sukses=dalam;
+    try{ var d=await jsonp('action=list'); var ada={}; (d.data||[]).forEach(function(r){ ada[String(r.id)]=true; }); var cek=dalam.filter(function(t){return ada[String(t.id)];}); if(cek.length) sukses=cek; }catch(e){}
+    sukses.forEach(function(t){ t.terkirim=true; });
+    await idbBulkPut(sukses);
+    toast(sukses.length+' transaksi terkirim ke Sheet');
   }catch(e){ toast('Gagal kirim: '+e.message); }
   updatePip(); render();
 }
@@ -295,7 +311,7 @@ async function tarikDariSheet(){
   var btn=document.getElementById('btnTarik');
   if(btn){ btn.disabled=true; btn.textContent='Menarik data...'; }
   try{
-    var d=await api('list');
+    var d=await jsonp('action=list');
     var dari=(d.data||[]).map(function(r){ r.terkirim=true; return r; });
     await idbBulkPut(dari);
     TX=await idbGetAll(); sortTX();
@@ -591,7 +607,7 @@ function renderSettings(){
     '<div class="ok-msg" id="setMsg"></div></div>';
 }
 function simpanUrl(){ var u=document.getElementById('inUrl').value.trim(); if(!u){toast('URL kosong');return;} setGasUrl(u); toast('Tersambung'); render(); }
-async function ujiKoneksi(){ var m=document.getElementById('setMsg'); m.style.color='var(--tx2)'; m.textContent='Menguji...'; try{ var d=await api('list'); m.style.color='var(--hijau-tx)'; m.textContent='Berhasil. '+(d.data?d.data.length:0)+' baris di Sheet.'; }catch(e){ m.style.color='var(--merah-tx)'; m.textContent='Gagal: '+e.message; } }
+async function ujiKoneksi(){ var m=document.getElementById('setMsg'); m.style.color='var(--tx2)'; m.textContent='Menguji...'; try{ var d=await jsonp('action=list'); m.style.color='var(--hijau-tx)'; m.textContent='Berhasil. '+(d.data?d.data.length:0)+' baris di Sheet.'; }catch(e){ m.style.color='var(--merah-tx)'; m.textContent='Gagal: '+e.message; } }
 
 /* ====== WIRING ====== */
 function wirePeriode(){ document.querySelectorAll('.seg [data-p]').forEach(function(b){ b.onclick=function(){ periode=b.dataset.p; render(); }; }); }
