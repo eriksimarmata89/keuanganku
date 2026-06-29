@@ -434,7 +434,7 @@ function onFoto(input){
   };
   reader.readAsDataURL(file);
 }
-function blankStruk(){ return {fotoData:null,img:null,cw:900,ch:0,kata:[],kataRole:{},draftIdx:[],ocrDone:false,draft:{keterangan:'',nominal:''},toko:'',catatan:'',tanggal:todayISO(),pending:[],activeRole:null,busy:false}; }
+function blankStruk(){ return {fotoData:null,img:null,cw:900,ch:0,kata:[],kataRole:{},draftIdx:[],ketAnchor:null,ocrDone:false,draft:{keterangan:'',nominal:''},toko:'',catatan:'',tanggal:todayISO(),pending:[],activeRole:null,busy:false}; }
 var strukState=blankStruk();
 var ocrWorker=null;
 async function getWorker(){
@@ -473,6 +473,12 @@ function ambilKata(data, scale){
   } else if(data&&data.lines&&data.lines.length){
     data.lines.forEach(function(ln){ if(!ln.bbox) return; var toks=(ln.text||'').trim().split(/\s+/).filter(Boolean); if(!toks.length) return; var b=ln.bbox; var chars=ln.text.replace(/\s+/g,'').length||1; var x=b.x0; toks.forEach(function(tok){ var wpx=(b.x1-b.x0)*(tok.length/chars); out.push({text:tok,x:x*scale,y:b.y0*scale,w:wpx*scale,h:(b.y1-b.y0)*scale}); x+=wpx+(b.x1-b.x0)*0.015; }); });
   }
+  // Beri penanda baris berdasarkan lompatan posisi vertikal, untuk seleksi rentang
+  var lineNo=0;
+  for(var i=0;i<out.length;i++){
+    if(i>0){ var prev=out[i-1]; if(out[i].y > prev.y + prev.h*0.6) lineNo++; }
+    out[i].line=lineNo;
+  }
   return out;
 }
 async function ocrSeluruh(){
@@ -491,7 +497,7 @@ async function startScanOCR(){
   st.busy=false; renderStruk();
 }
 function infoPeran(r){
-  if(r==='keterangan') return 'Ketuk tiap kata nama barang (boleh beberapa). Setelah selesai, pilih Nominal lalu ketuk harganya.';
+  if(r==='keterangan') return 'Ketuk tiap kata nama barang. Untuk nama panjang, ketuk kata pertama lalu kata terakhir, semua di antaranya ikut terambil. Lalu pilih Nominal untuk harganya.';
   if(r==='nominal') return 'Ketuk satu kata angka harganya.';
   if(r==='toko') return 'Ketuk kata nama toko (boleh beberapa).';
   if(r==='catatan') return 'Ketuk kata untuk catatan (boleh beberapa).';
@@ -512,7 +518,7 @@ function renderStruk(){
   S().innerHTML=
     '<div class="fhead"><button class="bk" onclick="goView(\'add\')">&#8592;</button><div class="ti">Pindai struk</div></div>'+
     '<div class="form">'+
-    '<div class="scanhint">Setiap kata jadi satu kotak. Ketuk kata yang Anda mau. Untuk nama dua kata, ketuk kedua kotaknya.</div>'+
+    '<div class="scanhint">Setiap kata jadi satu kotak. Ketuk kata yang Anda mau. Nama panjang: ketuk kata pertama lalu kata terakhir untuk ambil sekaligus.</div>'+
     '<div class="penbar">'+penBtn('keterangan','k','Keterangan')+penBtn('nominal','n','Nominal')+penBtn('toko','t','Nama toko')+penBtn('catatan','c','Catatan')+'</div>'+
     (st.activeRole?'<div class="peninfo aktif">Jenis aktif: <b>'+labelPeran(st.activeRole)+'</b>. '+infoPeran(st.activeRole)+'</div>':'<div class="peninfo idle">Pilih salah satu jenis di atas, lalu ketuk katanya di foto.</div>')+
     '<div class="canvaswrap"><canvas id="scanCanvas" width="'+st.cw+'" height="'+st.ch+'"></canvas>'+ov+'<div id="ocrBusy" class="ocrbusy" style="display:'+(st.busy?'flex':'none')+'">Membaca struk...</div></div>'+
@@ -534,13 +540,20 @@ function renderStruk(){
 function drawScan(){ var canvas=document.getElementById('scanCanvas'); if(!canvas||!strukState.img) return; var ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.drawImage(strukState.img,0,0,canvas.width,canvas.height); }
 function labelPeran(r){ return r==='keterangan'?'Keterangan':r==='nominal'?'Nominal':r==='toko'?'Nama toko':r==='catatan'?'Catatan':''; }
 function penBtn(role,cls,label){ var on=strukState.activeRole===role?'on '+cls:''; return '<button class="penbtn '+on+'" onclick="setRole(\''+role+'\')"><span class="pdot" style="background:rgb('+rgbStr(role)+')"></span>'+label+'</button>'; }
-function setRole(r){ strukState.activeRole = (strukState.activeRole===r? null : r); renderStruk(); }
+function setRole(r){ strukState.activeRole = (strukState.activeRole===r? null : r); strukState.ketAnchor=null; renderStruk(); }
 function tapKata(i){ var st=strukState; if(st.busy) return; var w=st.kata[i]; if(!w) return; if(!st.activeRole){ toast('Pilih jenis dulu (Keterangan / Nominal / dll)'); return; } terapkanPeran(st.activeRole, w.text, i); }
 function terapkanPeran(role, txt, idx){
   var st=strukState;
   if(role==='keterangan'){
-    st.draft.keterangan=((st.draft.keterangan?st.draft.keterangan+' ':'')+txt).slice(0,80);
-    if(idx!=null){ st.kataRole[idx]='keterangan'; st.draftIdx.push(idx); }
+    var a=st.ketAnchor, kata=st.kata;
+    function tambahKata(j){ st.draft.keterangan=(st.draft.keterangan?st.draft.keterangan+' ':'')+kata[j].text; st.kataRole[j]='keterangan'; if(st.draftIdx.indexOf(j)<0) st.draftIdx.push(j); }
+    if(a!=null && idx>a && kata[a] && kata[idx] && kata[a].line===kata[idx].line){
+      for(var j=a+1;j<=idx;j++) tambahKata(j);
+    } else {
+      tambahKata(idx);
+    }
+    st.draft.keterangan=st.draft.keterangan.slice(0,80);
+    st.ketAnchor=idx;
   } else if(role==='nominal'){
     var d=angkaDariTeks(txt);
     if(!d){ toast('Itu bukan angka, ketuk kata harganya'); return; }
@@ -555,12 +568,12 @@ function terapkanPeran(role, txt, idx){
   }
   if(st.draft.keterangan && st.draft.nominal){
     st.pending.push({keterangan:st.draft.keterangan.trim(), nominal:+st.draft.nominal, kategori:'Belanja'});
-    st.draft={keterangan:'',nominal:''}; st.draftIdx=[]; st.activeRole='keterangan';
+    st.draft={keterangan:'',nominal:''}; st.draftIdx=[]; st.ketAnchor=null; st.activeRole='keterangan';
     toast('Transaksi ditambahkan');
   }
   renderStruk();
 }
-function bersihkanDraft(){ var st=strukState; st.draftIdx.forEach(function(i){ delete st.kataRole[i]; }); st.draftIdx=[]; st.draft={keterangan:'',nominal:''}; st.activeRole='keterangan'; renderStruk(); }
+function bersihkanDraft(){ var st=strukState; st.draftIdx.forEach(function(i){ delete st.kataRole[i]; }); st.draftIdx=[]; st.ketAnchor=null; st.draft={keterangan:'',nominal:''}; st.activeRole='keterangan'; renderStruk(); }
 function setKatPending(i,v){ strukState.pending[i].kategori=v; }
 function hapusPending(i){ strukState.pending.splice(i,1); renderStruk(); }
 async function simpanSemua(){
