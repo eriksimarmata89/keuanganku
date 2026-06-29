@@ -97,16 +97,24 @@
   .scaninfo.ok{background:var(--hijau-bg); color:var(--hijau-tx);}
   .scaninfo.load{background:#E6F1FB; color:var(--biru-tua);}
   .scaninfo.err{background:var(--merah-bg); color:var(--merah-tx);}
-  .rincian{background:#F4F4F2; border-radius:10px; padding:10px 13px; margin-bottom:16px;}
-  .ocrwrap{background:#F4F4F2; border-radius:10px; padding:6px 13px 8px; margin-bottom:16px;}
-  .ocrwrap .rl{font-size:11px; color:var(--tx2); padding:6px 0 4px;}
-  .ocrline{display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:.5px solid #E2E2DC;}
-  .ocrline:last-child{border-bottom:none;}
-  .ocrline .ot{flex:1; font-size:13px; color:var(--tx); word-break:break-word;}
-  .ocrline .obtn{flex-shrink:0; border:.5px solid var(--biru); color:var(--biru); background:#fff; border-radius:6px; font-size:12px; font-weight:600; padding:5px 11px;}
-  .ocrline .obtn.tk{border-color:var(--tx3); color:var(--tx2);}
-  .rincian .rl{font-size:11px; color:var(--tx2); margin-bottom:7px;}
-  .rincian .rr{display:flex; justify-content:space-between; font-size:12px; padding:2px 0;}
+  .scanhint{font-size:12px; color:var(--tx2); line-height:1.5; margin:0 2px 12px;}
+  .canvaswrap{position:relative; border-radius:12px; overflow:hidden; border:.5px solid var(--line); margin-bottom:14px; background:#000;}
+  #scanCanvas{display:block; width:100%; height:auto; touch-action:none;}
+  .ocrbusy{position:absolute; inset:0; background:rgba(255,255,255,.72); display:flex; align-items:center; justify-content:center; font-size:13px; color:var(--biru-tua); font-weight:600;}
+  .chooser{background:#E6F1FB; border-radius:10px; padding:12px 13px; margin-bottom:14px;}
+  .chooser .ct{font-size:13px; color:var(--biru-tua); margin-bottom:10px; word-break:break-word;}
+  .cbtns{display:flex; flex-wrap:wrap; gap:8px;}
+  .cb{border:.5px solid var(--biru); background:#fff; color:var(--biru); border-radius:8px; padding:8px 12px; font-size:13px; font-weight:600;}
+  .cb.k{border-color:var(--hijau); color:var(--hijau-tx);} .cb.n{border-color:var(--merah); color:var(--merah-tx);} .cb.x{border-color:var(--tx3); color:var(--tx2);}
+  .draftbox{background:#F4F4F2; border-radius:10px; padding:10px 13px; margin-bottom:14px;}
+  .draftbox .dl{font-size:11px; color:var(--tx2); margin-bottom:6px;}
+  .slot{display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:4px 0; gap:12px;}
+  .slot span{color:var(--tx2); flex-shrink:0;} .slot b{font-weight:600; text-align:right; word-break:break-word;} .slot i{color:var(--tx3); font-weight:400;}
+  .dl{font-size:11px; color:var(--tx2);}
+  .pend{display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:.5px solid var(--line);}
+  .pend .pmid{flex:1; min-width:0;} .pend .pnm{font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .psel{margin-top:3px; font-size:11px; border:.5px solid var(--line); border-radius:6px; padding:3px 6px; background:#fff; color:var(--tx2);}
+  .pend .pamt{font-size:13px; font-weight:600; color:var(--merah-tx); white-space:nowrap;}
   .spin{display:inline-block; width:13px; height:13px; border:2px solid #B5D4F4; border-top-color:var(--biru); border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px; margin-right:5px;}
   @keyframes sp{to{transform:rotate(360deg)}}
 
@@ -241,7 +249,7 @@ function labelTanggal(tgl){
   return t.toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'});
 }
 
-/* ====== API ke Apps Script (hanya saat kirim / tarik / scan) ====== */
+/* ====== API ke Apps Script (hanya saat kirim / tarik) ====== */
 async function api(action,extra){
   var url=getGasUrl();
   if(!url) throw new Error('URL Apps Script belum diisi di Setelan');
@@ -300,8 +308,8 @@ async function tarikDariSheet(){
 function S(){ return document.getElementById('scroll'); }
 function setNav(){ document.querySelectorAll('.nav [data-nav]').forEach(function(b){ b.classList.toggle('on',b.dataset.nav===view); }); }
 function updatePip(){ var p=document.getElementById('navPip'), n=jumlahBelum(); if(n>0){ p.style.display='flex'; p.textContent=n>99?'99+':n; } else p.style.display='none'; }
-function goView(v){ view=v; setNav(); render(); S().scrollTop=0; }
-function render(){ if(view==='home')return renderHome(); if(view==='report')return renderReport(); if(view==='sinkron')return renderSinkron(); if(view==='settings')return renderSettings(); if(view==='add')return renderAdd(); }
+function goView(v){ if(view==='struk' && v!=='struk') cleanupWorker(); view=v; setNav(); render(); S().scrollTop=0; }
+function render(){ if(view==='home')return renderHome(); if(view==='report')return renderReport(); if(view==='sinkron')return renderSinkron(); if(view==='settings')return renderSettings(); if(view==='add')return renderAdd(); if(view==='struk')return renderStruk(); }
 
 function periodeSeg(){
   return '<div class="seg">'+['harian','mingguan','bulanan'].map(function(p){return '<button data-p="'+p+'" class="'+(periode===p?'on':'')+'">'+p[0].toUpperCase()+p.slice(1)+'</button>';}).join('')+'</div>';
@@ -336,9 +344,9 @@ function txRow(t){
     '<button class="delbtn" onclick="hapusTx(\''+t.id+'\')">&times;</button></div>';
 }
 
-/* ====== TAMBAH ====== */
+/* ====== TAMBAH (MANUAL) ====== */
 var addState=blankAdd();
-function blankAdd(){ return {tipe:'pengeluaran',metode:'manual',nominal:'',keterangan:'',kategori:'Belanja',tanggal:todayISO(),catatan:'',fotoData:null,ocrStatus:null,lines:[],scanErr:''}; }
+function blankAdd(){ return {tipe:'pengeluaran',metode:'manual',nominal:'',keterangan:'',kategori:'Belanja',tanggal:todayISO(),catatan:''}; }
 
 function renderAdd(){
   var a=addState, peng=a.tipe==='pengeluaran';
@@ -349,7 +357,8 @@ function renderAdd(){
       '<button class="pem '+(!peng?'on':'')+'" onclick="setTipe(\'pemasukan\')">Pemasukan</button></div>'+
     (peng?'<div class="metode"><button class="'+(a.metode==='manual'?'on':'')+'" onclick="setMetode(\'manual\')">&#9998; Ketik manual</button>'+
       '<button class="'+(a.metode==='struk'?'on':'')+'" onclick="setMetode(\'struk\')">&#128247; Foto struk</button></div>':'')+
-    (peng&&a.metode==='struk'?strukArea():'')+
+    (peng&&a.metode==='struk'?strukPicker():'')+
+    (peng&&a.metode==='struk'?'':(
     '<label class="fl">Nominal</label><div class="nominal-wrap"><span class="rp">Rp</span>'+
       '<input id="inNominal" inputmode="numeric" placeholder="0" value="'+(a.nominal?(+a.nominal).toLocaleString('id-ID'):'')+'" oninput="onNominal(this)"></div>'+
     '<label class="fl">'+(peng?'Toko / keterangan':'Sumber / keterangan')+'</label>'+
@@ -358,55 +367,53 @@ function renderAdd(){
       (peng?KAT_PENGELUARAN:KAT_PEMASUKAN).map(function(k){return '<option '+(a.kategori===k?'selected':'')+'>'+k+'</option>';}).join('')+'</select></div>'+
       '<div><label class="fl">Tanggal</label><input class="field" type="date" value="'+a.tanggal+'" onchange="addState.tanggal=this.value"></div></div>'+
     '<label class="fl">Catatan (opsional)</label><input class="field" placeholder="Tambah catatan" value="'+esc(a.catatan)+'" oninput="addState.catatan=this.value">'+
-    '<button class="save '+(peng?'':'pem')+'" onclick="onSimpan()">Simpan '+(peng?'pengeluaran':'pemasukan')+'</button></div>';
+    '<button class="save '+(peng?'':'pem')+'" onclick="onSimpan()">Simpan '+(peng?'pengeluaran':'pemasukan')+'</button>'))+
+    '</div>';
 }
-function strukArea(){
-  var a=addState;
-  if(a.fotoData&&a.ocrStatus==='load') return '<div class="scanbox"><img src="'+a.fotoData+'"><div class="scaninfo load"><div><span class="spin"></span>Membaca teks... <span id="ocrProg">menyiapkan...</span></div><div style="margin-top:4px;opacity:.85">Dibaca langsung di perangkat, tanpa internet setelah model siap.</div></div></div>';
-  if(a.fotoData&&a.ocrStatus==='done') return '<div class="scanbox"><img src="'+a.fotoData+'"><div class="scaninfo ok"><div>&#10003; Teks terbaca</div><div style="margin-top:4px;opacity:.85">Ketuk Rp untuk jadikan nominal, atau Toko untuk keterangan.</div></div></div>'+
-    '<div class="ocrwrap"><div class="rl">Teks dari struk</div>'+
-    a.lines.map(function(ln,i){ return '<div class="ocrline"><span class="ot">'+esc(ln)+'</span><button class="obtn" onclick="pilihNominal('+i+')">Rp</button><button class="obtn tk" onclick="pilihKeterangan('+i+')">Toko</button></div>'; }).join('')+
-    '</div><label class="btn-line" style="display:block;text-align:center;cursor:pointer;margin-top:0">Foto ulang<input type="file" accept="image/*" style="display:none" onchange="onFoto(this)"></label>';
-  if(a.fotoData&&a.ocrStatus==='err') return '<div class="scanbox"><img src="'+a.fotoData+'"><div class="scaninfo err"><div>Teks gagal dibaca</div><div style="margin-top:4px">'+esc(a.scanErr)+'. Coba foto lebih terang dan lurus, atau isi kolom manual.</div></div></div><label class="btn-line" style="display:block;text-align:center;cursor:pointer">Foto ulang<input type="file" accept="image/*" style="display:none" onchange="onFoto(this)"></label>';
-  return '<div style="display:flex;gap:10px;margin-bottom:16px">'+
+function strukPicker(){
+  return '<div style="display:flex;gap:10px;margin-bottom:8px">'+
     '<label class="upload" style="flex:1;margin:0;cursor:pointer;padding:20px 8px"><div class="big">&#128247;</div><div class="ut">Kamera</div><input type="file" accept="image/*" capture="environment" style="display:none" onchange="onFoto(this)"></label>'+
     '<label class="upload" style="flex:1;margin:0;cursor:pointer;padding:20px 8px"><div class="big">&#128194;</div><div class="ut">Galeri</div><input type="file" accept="image/*" style="display:none" onchange="onFoto(this)"></label>'+
-    '</div><div class="us" style="text-align:center;margin:-8px 0 16px;color:var(--tx3);font-size:11px">Teks dibaca di perangkat, lalu Anda pilih bagian yang dijadikan data</div>';
+    '</div><div class="us" style="text-align:center;margin:-4px 0 4px;color:var(--tx3);font-size:11px">Setelah memilih foto, Anda melingkari teks untuk membuat satu atau beberapa transaksi</div>';
 }
 function setTipe(t){ addState.tipe=t; addState.kategori=(t==='pengeluaran'?KAT_PENGELUARAN:KAT_PEMASUKAN)[0]; if(t==='pemasukan')addState.metode='manual'; renderAdd(); }
 function setMetode(m){ addState.metode=m; renderAdd(); }
 function onNominal(el){ var d=el.value.replace(/\D/g,''); addState.nominal=d; el.value=d?(+d).toLocaleString('id-ID'):''; }
+function onSimpan(){
+  var a=addState;
+  if(!a.nominal||+a.nominal<=0){ toast('Isi nominal dulu'); return; }
+  simpanTx({tanggal:a.tanggal,tipe:a.tipe,kategori:a.kategori,nominal:+a.nominal,keterangan:a.keterangan.trim(),catatan:a.catatan.trim(),createdAt:new Date().toISOString()});
+  addState=blankAdd();
+}
+
+/* ====== PEMINDAI STRUK: LINGKARI TEKS, BANYAK TRANSAKSI ====== */
 function onFoto(input){
-  var file=input.files[0]; if(!file)return;
+  var file=input.files[0]; if(!file) return;
   var reader=new FileReader();
-  reader.onload=async function(){
-    addState.fotoData=reader.result; addState.ocrStatus='load'; addState.lines=[]; renderAdd();
-    try{
-      var teks=await ocrGambar(reader.result);
-      var baris=teks.split('\n').map(function(s){return s.replace(/\s+/g,' ').trim();}).filter(function(s){return s.length>=1;});
-      if(!baris.length){ addState.ocrStatus='err'; addState.scanErr='Tidak ada teks terbaca'; }
-      else { addState.lines=baris; addState.ocrStatus='done'; }
-    }catch(e){ addState.ocrStatus='err'; addState.scanErr=(e&&e.message)||'Gagal membaca'; }
-    renderAdd();
+  reader.onload=function(){
+    var img=new Image();
+    img.onload=function(){
+      strukState=blankStruk();
+      strukState.fotoData=reader.result; strukState.img=img;
+      strukState.ch=Math.round(strukState.cw*img.naturalHeight/img.naturalWidth);
+      goView('struk');
+    };
+    img.onerror=function(){ toast('Gambar tidak terbaca'); };
+    img.src=reader.result;
   };
   reader.readAsDataURL(file);
 }
-function muatGambar(src){ return new Promise(function(res,rej){ var i=new Image(); i.onload=function(){res(i);}; i.onerror=function(){rej(new Error('Gambar tidak terbaca'));}; i.src=src; }); }
-function kecilkan(img,maxW){
-  if(img.width<=maxW) return img;
-  var r=maxW/img.width, c=document.createElement('canvas');
-  c.width=maxW; c.height=Math.round(img.height*r);
-  c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-  return c;
-}
-async function ocrGambar(dataUrl){
+function blankStruk(){ return {fotoData:null,img:null,cw:900,ch:0,boxes:[],draft:{keterangan:'',nominal:''},toko:'',catatan:'',tanggal:todayISO(),pending:[],recog:null,busy:false}; }
+var strukState=blankStruk();
+var ocrWorker=null;
+async function getWorker(){
   if(typeof Tesseract==='undefined') throw new Error('Mesin OCR belum termuat, perlu internet sekali untuk memuatnya');
-  var img=await muatGambar(dataUrl);
-  var input=kecilkan(img,1080);
-  var worker=await Tesseract.createWorker('ind',1,{ logger:function(m){ var el=document.getElementById('ocrProg'); if(el){ el.textContent = m.status==='recognizing text' ? Math.round((m.progress||0)*100)+'%' : 'menyiapkan...'; } } });
-  try{ var out=await worker.recognize(input); return (out&&out.data&&out.data.text)||''; }
-  finally{ await worker.terminate(); }
+  if(ocrWorker) return ocrWorker;
+  ocrWorker=await Tesseract.createWorker('ind',1,{ logger:function(m){ var el=document.getElementById('ocrBusy'); if(el && m.status==='recognizing text') el.textContent='Membaca... '+Math.round((m.progress||0)*100)+'%'; } });
+  try{ await ocrWorker.setParameters({tessedit_pageseg_mode:'6'}); }catch(e){}
+  return ocrWorker;
 }
+function cleanupWorker(){ if(ocrWorker){ try{ ocrWorker.terminate(); }catch(e){} ocrWorker=null; } }
 function angkaDariTeks(s){
   var nums=String(s).match(/[\d][\d.,]*[\d]|\d/g)||[];
   if(!nums.length) return '';
@@ -416,13 +423,98 @@ function angkaDariTeks(s){
   if(/[.,]\d{2}$/.test(best) && digits.length>2) digits=digits.slice(0,-2);
   return digits;
 }
-function pilihNominal(i){ var d=angkaDariTeks(addState.lines[i]||''); if(!d){ toast('Tidak ada angka di baris itu'); return; } addState.nominal=d; renderAdd(); toast('Nominal: '+rp(+d)); }
-function pilihKeterangan(i){ addState.keterangan=(addState.lines[i]||'').slice(0,60); renderAdd(); toast('Keterangan terisi'); }
-function onSimpan(){
-  var a=addState;
-  if(!a.nominal||+a.nominal<=0){ toast('Isi nominal dulu'); return; }
-  simpanTx({tanggal:a.tanggal,tipe:a.tipe,kategori:a.kategori,nominal:+a.nominal,keterangan:a.keterangan.trim(),catatan:a.catatan.trim(),createdAt:new Date().toISOString()});
-  addState=blankAdd();
+async function cropOCR(box){
+  var img=strukState.img, scale=img.naturalWidth/strukState.cw;
+  var sx=Math.max(0,box.x*scale), sy=Math.max(0,box.y*scale), sw=box.w*scale, sh=box.h*scale;
+  var c=document.createElement('canvas'); c.width=Math.max(1,Math.round(sw)); c.height=Math.max(1,Math.round(sh));
+  c.getContext('2d').drawImage(img, sx,sy,sw,sh, 0,0,c.width,c.height);
+  var w=await getWorker();
+  var out=await w.recognize(c);
+  return ((out&&out.data&&out.data.text)||'').replace(/\s+/g,' ').trim();
+}
+function renderStruk(){
+  var st=strukState;
+  S().innerHTML=
+    '<div class="fhead"><button class="bk" onclick="goView(\'add\')">&#8592;</button><div class="ti">Pindai struk</div></div>'+
+    '<div class="form">'+
+    '<div class="scanhint">Geser jari untuk melingkari teks di foto, lalu pilih perannya. Satu keterangan dan satu nominal otomatis menjadi satu transaksi.</div>'+
+    '<div class="canvaswrap"><canvas id="scanCanvas" width="'+st.cw+'" height="'+st.ch+'"></canvas><div id="ocrBusy" class="ocrbusy" style="display:'+(st.busy?'flex':'none')+'">Membaca...</div></div>'+
+    (st.recog?('<div class="chooser"><div class="ct">Teks: <b>'+esc(st.recog.text||'(kosong)')+'</b></div><div class="cbtns">'+
+      '<button class="cb k" onclick="assignRole(\'keterangan\')">Keterangan</button>'+
+      '<button class="cb n" onclick="assignRole(\'nominal\')">Nominal</button>'+
+      '<button class="cb" onclick="assignRole(\'toko\')">Nama toko</button>'+
+      '<button class="cb" onclick="assignRole(\'catatan\')">Catatan</button>'+
+      '<button class="cb x" onclick="batalRecog()">Batal</button></div></div>'):'')+
+    '<div class="draftbox"><div class="dl">Transaksi berikutnya</div>'+
+      '<div class="slot"><span>Keterangan</span><b>'+(st.draft.keterangan?esc(st.draft.keterangan):'<i>lingkari di foto</i>')+'</b></div>'+
+      '<div class="slot"><span>Nominal</span><b>'+(st.draft.nominal?rp(+st.draft.nominal):'<i>lingkari di foto</i>')+'</b></div></div>'+
+    '<label class="fl">Nama toko (opsional, berlaku untuk semua)</label><input class="field" value="'+esc(st.toko)+'" oninput="strukState.toko=this.value" placeholder="lingkari di foto atau ketik">'+
+    '<div class="duo"><div><label class="fl">Catatan (opsional)</label><input class="field" value="'+esc(st.catatan)+'" oninput="strukState.catatan=this.value" placeholder="opsional"></div>'+
+      '<div><label class="fl">Tanggal</label><input class="field" type="date" value="'+st.tanggal+'" onchange="strukState.tanggal=this.value"></div></div>'+
+    '<div class="dl" style="margin:4px 2px 6px">Daftar transaksi ('+st.pending.length+')</div>'+
+    (st.pending.length? st.pending.map(function(p,i){ return '<div class="pend"><div class="pmid"><div class="pnm">'+esc(p.keterangan)+'</div>'+
+      '<select class="psel" onchange="setKatPending('+i+',this.value)">'+KAT_PENGELUARAN.map(function(k){return '<option '+(p.kategori===k?'selected':'')+'>'+k+'</option>';}).join('')+'</select></div>'+
+      '<div class="pamt">'+rp(p.nominal)+'</div><button class="delbtn" onclick="hapusPending('+i+')">&times;</button></div>'; }).join('')
+      :'<div class="empty" style="padding:14px">Belum ada. Lingkari satu keterangan dan satu nominal untuk membuat transaksi pertama.</div>')+
+    '<button class="save" '+(st.pending.length?'':'disabled')+' onclick="simpanSemua()">Simpan '+st.pending.length+' transaksi</button>'+
+    '</div>';
+  setupCanvas();
+}
+function setupCanvas(){
+  var canvas=document.getElementById('scanCanvas'); if(!canvas||!strukState.img) return;
+  var st=strukState, ctx=canvas.getContext('2d');
+  function colorFor(role){ return role==='nominal'?'#C0392B':role==='toko'?'#7F77DD':role==='catatan'?'#888780':'#1D9E75'; }
+  function redraw(sel){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(st.img,0,0,canvas.width,canvas.height);
+    st.boxes.forEach(function(b){ ctx.strokeStyle=colorFor(b.role); ctx.lineWidth=3; ctx.strokeRect(b.x,b.y,b.w,b.h); });
+    if(sel){ ctx.strokeStyle='#185FA5'; ctx.lineWidth=2; ctx.setLineDash([8,5]); ctx.strokeRect(sel.x,sel.y,sel.w,sel.h); ctx.setLineDash([]); }
+  }
+  redraw();
+  var drawing=false, sx=0, sy=0, cur=null;
+  function toXY(e){ var r=canvas.getBoundingClientRect(), t=e.touches&&e.touches[0]; var cx=t?t.clientX:e.clientX, cy=t?t.clientY:e.clientY; return {x:(cx-r.left)*(canvas.width/r.width), y:(cy-r.top)*(canvas.height/r.height)}; }
+  function down(e){ if(st.busy||st.recog) return; e.preventDefault(); var p=toXY(e); drawing=true; sx=p.x; sy=p.y; cur={x:sx,y:sy,w:0,h:0}; }
+  function move(e){ if(!drawing) return; e.preventDefault(); var p=toXY(e); cur={x:Math.min(sx,p.x),y:Math.min(sy,p.y),w:Math.abs(p.x-sx),h:Math.abs(p.y-sy)}; redraw(cur); }
+  async function up(){ if(!drawing) return; drawing=false; var box=cur; cur=null; if(!box||box.w<12||box.h<8){ redraw(); return; }
+    st.busy=true; var b=document.getElementById('ocrBusy'); if(b){ b.style.display='flex'; b.textContent='Membaca...'; }
+    try{ var txt=await cropOCR(box); st.recog={text:txt,box:box}; }
+    catch(err){ toast('Gagal membaca: '+((err&&err.message)||'')); }
+    st.busy=false; renderStruk();
+  }
+  canvas.addEventListener('mousedown',down); canvas.addEventListener('mousemove',move);
+  if(window._scanUp) window.removeEventListener('mouseup',window._scanUp); window._scanUp=up; window.addEventListener('mouseup',up);
+  canvas.addEventListener('touchstart',down,{passive:false}); canvas.addEventListener('touchmove',move,{passive:false}); canvas.addEventListener('touchend',up);
+}
+function assignRole(role){
+  var st=strukState, txt=(st.recog&&st.recog.text)||'';
+  if(role==='keterangan') st.draft.keterangan=txt.slice(0,60);
+  else if(role==='nominal'){ var d=angkaDariTeks(txt); if(!d) toast('Tidak ada angka di lingkaran itu'); st.draft.nominal=d; }
+  else if(role==='toko') st.toko=txt.slice(0,60);
+  else if(role==='catatan') st.catatan=txt.slice(0,80);
+  if(st.recog&&st.recog.box){ st.recog.box.role=role; st.boxes.push(st.recog.box); }
+  st.recog=null;
+  if(st.draft.keterangan && st.draft.nominal){
+    st.pending.push({keterangan:st.draft.keterangan, nominal:+st.draft.nominal, kategori:'Belanja'});
+    st.draft={keterangan:'',nominal:''};
+    toast('Transaksi ditambahkan');
+  }
+  renderStruk();
+}
+function batalRecog(){ strukState.recog=null; renderStruk(); }
+function setKatPending(i,v){ strukState.pending[i].kategori=v; }
+function hapusPending(i){ strukState.pending.splice(i,1); renderStruk(); }
+async function simpanSemua(){
+  var st=strukState;
+  if(!st.pending.length){ toast('Belum ada transaksi'); return; }
+  var cat=[st.toko?('Toko: '+st.toko):'', st.catatan].filter(Boolean).join(' | ');
+  for(var i=0;i<st.pending.length;i++){
+    var p=st.pending[i];
+    var item={ id:uid(), tanggal:st.tanggal, tipe:'pengeluaran', kategori:p.kategori, nominal:+p.nominal, keterangan:p.keterangan, catatan:cat, createdAt:new Date().toISOString(), terkirim:false };
+    TX.unshift(item); await idbPut(item);
+  }
+  sortTX(); updatePip();
+  var n=st.pending.length; cleanupWorker(); strukState=blankStruk();
+  toast(n+' transaksi tersimpan'); goView('home');
 }
 
 /* ====== LAPORAN ====== */
@@ -454,7 +546,6 @@ function renderSinkron(){
   var tersambung=!!getGasUrl();
   var dalam=TX.filter(function(t){return dalamRentang(t.tanggal);});
   var belum=dalam.filter(function(t){return !t.terkirim;}).length;
-  var totalBelum=jumlahBelum();
   var chips=[['hari','Hari ini'],['minggu','Minggu ini'],['bulan','Bulan ini'],['tahun','Tahun ini'],['semua','Semua'],['kustom','Kustom']];
   S().innerHTML=
     '<div class="fhead"><div class="ti">Kirim ke Google Sheet</div></div>'+
@@ -480,7 +571,7 @@ function renderSettings(){
   var url=getGasUrl();
   S().innerHTML=
     '<div class="fhead"><div class="ti">Setelan</div></div>'+
-    '<div class="set"><p class="hint">Tempel URL Web App Apps Script (berakhiran /exec). Aplikasi menyimpan transaksi di perangkat (IndexedDB). Koneksi ke Sheet hanya dipakai saat Anda mengirim atau menarik data, dan saat membaca foto struk.</p>'+
+    '<div class="set"><p class="hint">Tempel URL Web App Apps Script (berakhiran /exec). Aplikasi menyimpan transaksi di perangkat (IndexedDB). Koneksi ke Sheet hanya dipakai saat Anda mengirim atau menarik data. Pembacaan struk berjalan di perangkat, tanpa internet setelah model OCR terunduh sekali.</p>'+
     '<label class="fl">URL Apps Script</label><input class="field" id="inUrl" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(url)+'">'+
     '<button class="save pem" onclick="simpanUrl()">Simpan & sambungkan</button>'+
     '<button class="btn-line" onclick="ujiKoneksi()">Uji koneksi</button>'+
