@@ -204,11 +204,12 @@ function setGasUrl(u){ localStorage.setItem(LS_URL,u.trim()); }
 
 /* ====== AKUN PENGGUNA ====== */
 var USER=null;
+var DEFAULT_CID='791377203575-aijrdmdnl9b7t8ri4qhsah0avr9mr4h4.apps.googleusercontent.com';
 var LS_USER='kk_user', LS_CID='kk_gclient', LS_DELQ='kk_delqueue';
 function getUser(){ try{ return JSON.parse(localStorage.getItem(LS_USER)||'null'); }catch(e){ return null; } }
 function setUser(u){ USER=u; localStorage.setItem(LS_USER, JSON.stringify(u)); }
 function clearUser(){ USER=null; localStorage.removeItem(LS_USER); }
-function getClientId(){ return localStorage.getItem(LS_CID)||''; }
+function getClientId(){ return localStorage.getItem(LS_CID)||DEFAULT_CID; }
 function setClientId(v){ localStorage.setItem(LS_CID, (v||'').trim()); }
 function emailUser(){ return (USER&&USER.email)||''; }
 
@@ -279,6 +280,7 @@ function rp(n){ return 'Rp '+(Number(n)||0).toLocaleString('id-ID'); }
 function todayISO(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove('show');},2400); }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function inisial(nm){ nm=(nm||'').trim(); if(!nm) return '?'; var p=nm.split(/\s+/); return ((p[0][0]||'')+(p.length>1?(p[1][0]||''):'')).toUpperCase(); }
 function esc(s){ return String(s||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function sortTX(){ TX.sort(function(a,b){ return (b.tanggal+(b.createdAt||'')).localeCompare(a.tanggal+(a.createdAt||'')); }); }
 function jumlahBelum(){ return TX.filter(function(t){return !t.terkirim;}).length; }
@@ -478,10 +480,12 @@ function renderHome(){
   var pK=px.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
   var terakhir=px.slice(0,homeLimit||px.length);
   S().innerHTML=
-    '<div class="topbar"><div class="greet"><div><div class="hi">Selamat datang,</div><div class="nm">Erik Simarmata</div></div><div class="ava">ES</div></div></div>'+
+    '<div class="topbar"><div class="greet"><div><div class="hi">Selamat datang,</div><div class="nm">'+esc((USER&&USER.name)||'')+'</div></div>'+((USER&&USER.picture)?'<img class="ava" style="padding:0" src="'+esc(USER.picture)+'">':'<div class="ava">'+esc(inisial(USER&&USER.name))+'</div>')+'</div></div>'+
     '<div class="saldo"><div class="lbl">Total saldo</div><div class="amt">'+rp(masuk-keluar)+'</div>'+
     '<div class="row"><div><div class="mini">&#9660; Pemasukan</div><div class="val">'+rp(pM)+'</div></div>'+
-    '<div><div class="mini">&#9650; Pengeluaran</div><div class="val">'+rp(pK)+'</div></div></div></div>'+
+    '<div><div class="mini">&#9650; Pengeluaran</div><div class="val">'+rp(pK)+'</div></div></div>'+
+    '<div style="border-top:1px solid rgba(255,255,255,.22);margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">'+
+      '<span class="mini">Sisa saldo periode ini</span><span class="val" style="font-size:16px">'+rp(pM-pK)+'</span></div></div>'+
     periodeSeg()+
     '<div class="sec-head"><div class="t">Transaksi '+periode+'</div><div style="font-size:11px;color:var(--tx3)">'+px.length+' transaksi</div></div>'+
     limitChips(homeLimit,'setHomeLimit')+
@@ -807,7 +811,7 @@ function limitChips(cur, fn){
 /* ====== PROFIL (akun + setelan + zona berbahaya) ====== */
 function renderSettings(){
   var url=getGasUrl(), u=USER||{};
-  var ava=u.picture?'<img class="pava" src="'+esc(u.picture)+'">':'<div class="pava pava-i">'+esc(((u.name||'?').slice(0,1)).toUpperCase())+'</div>';
+  var ava=u.picture?'<img class="pava" src="'+esc(u.picture)+'">':'<div class="pava pava-i">'+esc(inisial(u.name))+'</div>';
   S().innerHTML=
     '<div class="fhead"><div class="ti">Profil</div></div>'+
     '<div class="set">'+
