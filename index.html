@@ -167,6 +167,17 @@
   .toast{position:fixed; bottom:96px; left:50%; transform:translateX(-50%); background:#2C2C2A; color:#fff; padding:10px 18px; border-radius:24px; font-size:13px; z-index:50; opacity:0; transition:opacity .25s; pointer-events:none; max-width:90%; text-align:center;}
   .toast.show{opacity:1;}
   .delbtn{background:none; border:none; color:var(--tx3); font-size:16px; padding:4px 0 4px 8px;}
+  .login-wrap{padding:46px 24px 24px;}
+  .login-wrap .logo{font-size:26px; font-weight:700; color:var(--biru); text-align:center;}
+  .login-wrap .logo-sub{font-size:13px; color:var(--tx2); text-align:center; margin:6px 0 24px;}
+  .gbox{display:flex; justify-content:center; margin-bottom:10px; min-height:44px;}
+  .atau{text-align:center; font-size:12px; color:var(--tx3); margin:6px 0 12px;}
+  .prof-card{display:flex; align-items:center; gap:12px; background:#fff; border-radius:12px; padding:14px; margin-bottom:12px;}
+  .pava{width:48px; height:48px; border-radius:50%; object-fit:cover; flex-shrink:0;}
+  .pava-i{background:#E6F1FB; color:var(--biru); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px;}
+  .prof-card .pn{font-size:15px; font-weight:600;}
+  .prof-card .pe{font-size:12px; color:var(--tx2); margin-top:2px; word-break:break-all;}
+  .btn-danger{width:100%; border:.5px solid var(--merah); color:var(--merah-tx); background:#fff; border-radius:10px; padding:12px 0; font-size:14px; font-weight:600; margin-top:10px;}
 </style>
 </head>
 <body>
@@ -177,18 +188,45 @@
     <button data-nav="report"><span class="ico">&#9680;</span>Laporan</button>
     <button class="fab" id="fab">+</button>
     <button data-nav="sinkron"><span class="ico">&#9729;</span>Kirim<span class="pip" id="navPip" style="display:none"></span></button>
-    <button data-nav="settings"><span class="ico">&#9881;</span>Setelan</button>
+    <button data-nav="settings"><span class="ico">&#128100;</span>Profil</button>
   </div>
 </div>
 <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 /* ====== KONFIGURASI ====== */
 var LS_URL='kk_gas_url';
 function getGasUrl(){ return localStorage.getItem(LS_URL)||''; }
 function setGasUrl(u){ localStorage.setItem(LS_URL,u.trim()); }
+
+/* ====== AKUN PENGGUNA ====== */
+var USER=null;
+var LS_USER='kk_user', LS_CID='kk_gclient', LS_DELQ='kk_delqueue';
+function getUser(){ try{ return JSON.parse(localStorage.getItem(LS_USER)||'null'); }catch(e){ return null; } }
+function setUser(u){ USER=u; localStorage.setItem(LS_USER, JSON.stringify(u)); }
+function clearUser(){ USER=null; localStorage.removeItem(LS_USER); }
+function getClientId(){ return localStorage.getItem(LS_CID)||''; }
+function setClientId(v){ localStorage.setItem(LS_CID, (v||'').trim()); }
+function emailUser(){ return (USER&&USER.email)||''; }
+
+/* Antrean penghapusan: id yang dihapus saat offline disimpan di sini,
+   lalu disusulkan ke Google Sheet saat kembali online. */
+function getDelQueue(){ try{ return JSON.parse(localStorage.getItem(LS_DELQ)||'[]'); }catch(e){ return []; } }
+function setDelQueue(a){ localStorage.setItem(LS_DELQ, JSON.stringify(a)); }
+function addDel(ids){ var q=getDelQueue(); ids.forEach(function(id){ if(q.indexOf(String(id))<0) q.push(String(id)); }); setDelQueue(q); }
+function removeDel(ids){ var s={}; ids.forEach(function(id){ s[String(id)]=1; }); setDelQueue(getDelQueue().filter(function(id){ return !s[String(id)]; })); }
+async function flushDeletes(){
+  var q=getDelQueue(); if(!q.length || !getGasUrl()) return;
+  try{
+    await kirimNoCors('deleteMany',{ids:q, user:emailUser()});
+    var d=await jsonp('action=list'); var ada={}; (d.data||[]).forEach(function(r){ ada[String(r.id)]=1; });
+    var terhapus=q.filter(function(id){ return !ada[String(id)]; });
+    if(terhapus.length) removeDel(terhapus);
+  }catch(e){ /* gagal/offline: biarkan di antrean, dicoba lagi nanti */ }
+}
 
 /* ====== KATEGORI ====== */
 var KAT_PENGELUARAN=['Belanja','Makan & Minum','Transportasi','Listrik & Air','Pulsa & Internet','Kesehatan','Pendidikan','Hiburan','Lainnya'];
@@ -296,15 +334,33 @@ function kirimNoCors(action,extra){
 
 /* ====== OPERASI DATA (LOKAL) ====== */
 async function simpanTx(item){
-  item.id=uid(); item.terkirim=false;
+  item.id=uid(); item.terkirim=false; item.user=emailUser();
   TX.unshift(item); sortTX();
   await idbPut(item);
   toast('Tersimpan di perangkat'); updatePip(); goView('home');
 }
+async function claimOrphans(){
+  try{
+    var all=await idbGetAll();
+    var orphans=all.filter(function(t){ return !t.user; });
+    if(orphans.length){ orphans.forEach(function(t){ t.user=emailUser(); }); await idbBulkPut(orphans); return await idbGetAll(); }
+    return all;
+  }catch(e){ return await idbGetAll(); }
+}
 async function hapusTx(id){
-  if(!confirm('Hapus transaksi ini? Jika sudah pernah dikirim, baris di Sheet tidak ikut terhapus.')) return;
+  if(!confirm('Hapus transaksi ini? Penghapusan akan ikut disinkronkan ke Google Sheet.')) return;
   TX=TX.filter(function(t){return t.id!==id;});
-  await idbDelete(id); updatePip(); render();
+  await idbDelete(id); addDel([id]); updatePip(); render();
+  flushDeletes();
+}
+async function hapusSemua(){
+  if(!TX.length){ toast('Tidak ada transaksi milik Anda'); return; }
+  if(!confirm('Hapus SEMUA '+TX.length+' transaksi milik Anda dari perangkat dan Google Sheet? Tindakan ini tidak bisa dibatalkan.')) return;
+  var ids=TX.map(function(t){return t.id;});
+  for(var i=0;i<ids.length;i++){ await idbDelete(ids[i]); }
+  addDel(ids); TX=[]; updatePip(); render();
+  toast('Menghapus, menyinkronkan ke Sheet...'); await flushDeletes();
+  toast(getDelQueue().length? 'Dihapus di perangkat. Sheet menyusul saat online.' : 'Semua transaksi dihapus');
 }
 
 /* ====== KIRIM KE SHEET ====== */
@@ -314,13 +370,14 @@ async function kirimRentang(){
   var btn=document.getElementById('btnKirim');
   if(btn){ btn.disabled=true; btn.textContent='Mengirim '+dalam.length+' transaksi...'; }
   try{
-    var items=dalam.map(function(t){ return {id:t.id,tanggal:t.tanggal,tipe:t.tipe,kategori:t.kategori,nominal:t.nominal,keterangan:t.keterangan,catatan:t.catatan,createdAt:t.createdAt}; });
+    var items=dalam.map(function(t){ return {id:t.id,tanggal:t.tanggal,tipe:t.tipe,kategori:t.kategori,nominal:t.nominal,keterangan:t.keterangan,catatan:t.catatan,createdAt:t.createdAt,user:t.user||emailUser()}; });
     await kirimNoCors('sync',{items:items});
     var sukses=dalam;
     try{ var d=await jsonp('action=list'); var ada={}; (d.data||[]).forEach(function(r){ ada[String(r.id)]=true; }); var cek=dalam.filter(function(t){return ada[String(t.id)];}); if(cek.length) sukses=cek; }catch(e){}
     sukses.forEach(function(t){ t.terkirim=true; });
     await idbBulkPut(sukses);
     toast(sukses.length+' transaksi terkirim ke Sheet');
+    flushDeletes();
   }catch(e){ toast('Gagal kirim: '+e.message); }
   updatePip(); render();
 }
@@ -332,10 +389,11 @@ async function tarikDariSheet(){
   if(btn){ btn.disabled=true; btn.textContent='Menarik data...'; }
   try{
     var d=await jsonp('action=list');
-    var dari=(d.data||[]).map(function(r){ r.terkirim=true; return r; });
-    await idbBulkPut(dari);
-    TX=await idbGetAll(); sortTX();
-    toast(dari.length+' transaksi tersedia di perangkat');
+    var q=getDelQueue(), qset={}; q.forEach(function(id){ qset[String(id)]=1; });
+    var dari=(d.data||[]).filter(function(r){ return r.user===emailUser() && !qset[String(r.id)]; }).map(function(r){ r.terkirim=true; return r; });
+    if(dari.length) await idbBulkPut(dari);
+    var all=await idbGetAll(); TX=all.filter(function(t){ return t.user===emailUser(); }); sortTX();
+    toast(dari.length+' transaksi milik Anda tersedia di perangkat');
   }catch(e){ toast('Gagal tarik: '+e.message); }
   updatePip(); render();
 }
@@ -345,7 +403,68 @@ function S(){ return document.getElementById('scroll'); }
 function setNav(){ document.querySelectorAll('.nav [data-nav]').forEach(function(b){ b.classList.toggle('on',b.dataset.nav===view); }); }
 function updatePip(){ var p=document.getElementById('navPip'), n=jumlahBelum(); if(n>0){ p.style.display='flex'; p.textContent=n>99?'99+':n; } else p.style.display='none'; }
 function goView(v){ if(view==='struk' && v!=='struk') cleanupWorker(); view=v; setNav(); render(); S().scrollTop=0; }
-function render(){ if(view==='home')return renderHome(); if(view==='report')return renderReport(); if(view==='sinkron')return renderSinkron(); if(view==='settings')return renderSettings(); if(view==='add')return renderAdd(); if(view==='struk')return renderStruk(); }
+function render(){ var nav=document.querySelector('.nav'); if(nav) nav.style.display=USER?'flex':'none'; if(!USER) return renderLogin(); if(view==='home')return renderHome(); if(view==='report')return renderReport(); if(view==='sinkron')return renderSinkron(); if(view==='settings')return renderSettings(); if(view==='add')return renderAdd(); if(view==='struk')return renderStruk(); }
+
+/* ====== LOGIN / AKUN ====== */
+var loginManual=false;
+function manualForm(){
+  return '<div class="divider"></div>'+
+    '<label class="fl">Nama</label><input class="field" id="loginNama" placeholder="Nama Anda">'+
+    '<label class="fl">Email</label><input class="field" id="loginEmail" inputmode="email" placeholder="nama@gmail.com">'+
+    '<button class="save pem" onclick="masukManual()">Masuk manual</button>';
+}
+function toggleManual(){ loginManual=!loginManual; renderLogin(); }
+function renderLogin(){
+  var cid=getClientId();
+  var html='<div class="login-wrap"><div class="logo">KeuanganKu</div><div class="logo-sub">Masuk dengan akun Google Anda. Pengguna baru tidak perlu mendaftar dulu, cukup pilih akun Gmail.</div>';
+  if(cid){
+    html+='<div id="gbtn" class="gbox"></div>'+
+      '<div class="atau"><a href="javascript:void(0)" style="color:var(--biru)" onclick="toggleManual()">'+(loginManual?'Sembunyikan masuk manual':'Masuk tanpa Google (mode offline)')+'</a></div>'+
+      (loginManual?manualForm():'');
+  } else {
+    html+='<div class="peninfo idle" style="margin:0 0 14px;text-align:left">Tombol Sign in with Google muncul setelah pemilik aplikasi memasang Google Client ID satu kali. Tempel di bawah. Setelah itu, pengguna cukup pilih akun Gmail tanpa mendaftar.</div>'+
+      '<label class="fl">Google Client ID</label><input class="field" id="loginCid" placeholder="xxxx.apps.googleusercontent.com" value="'+esc(cid)+'">'+
+      '<button class="save pem" onclick="simpanClientId(\'loginCid\')">Simpan &amp; tampilkan tombol Google</button>'+
+      '<div class="atau"><a href="javascript:void(0)" style="color:var(--biru)" onclick="toggleManual()">'+(loginManual?'Sembunyikan masuk manual':'Atau masuk manual tanpa Google')+'</a></div>'+
+      (loginManual?manualForm():'');
+  }
+  html+='</div>';
+  S().innerHTML=html;
+  initGoogle();
+}
+function initGoogle(){
+  var cid=getClientId(), box=document.getElementById('gbtn');
+  if(!cid||!box) return;
+  if(!(window.google&&google.accounts&&google.accounts.id)){ setTimeout(initGoogle,400); return; }
+  try{
+    google.accounts.id.initialize({client_id:cid, callback:onGoogleCred});
+    google.accounts.id.renderButton(box,{theme:'outline',size:'large',width:300,text:'signin_with'});
+  }catch(e){ box.innerHTML='<div class="peninfo idle" style="margin:0">Client ID belum valid atau origin belum diizinkan di Google Cloud.</div>'; }
+}
+function decodeJWT(tok){
+  var b=tok.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
+  b+='='.repeat((4-b.length%4)%4);
+  var json=decodeURIComponent(atob(b).split('').map(function(c){ return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2); }).join(''));
+  return JSON.parse(json);
+}
+function onGoogleCred(resp){
+  try{ var p=decodeJWT(resp.credential); if(!p||!p.email){ toast('Login gagal'); return; }
+    setUser({email:String(p.email).toLowerCase(), name:p.name||p.email, picture:p.picture||''}); afterLogin();
+  }catch(e){ toast('Login gagal: '+e.message); }
+}
+function masukManual(){
+  var n=(document.getElementById('loginNama').value||'').trim();
+  var e=(document.getElementById('loginEmail').value||'').trim();
+  if(!n){ toast('Isi nama'); return; }
+  if(!/.+@.+\..+/.test(e)){ toast('Email tidak valid'); return; }
+  setUser({email:e.toLowerCase(), name:n, picture:''}); afterLogin();
+}
+function simpanClientId(inputId){ setClientId((document.getElementById(inputId).value||'').trim()); toast('Client ID disimpan'); render(); }
+async function afterLogin(){
+  try{ var all=await claimOrphans(); TX=all.filter(function(t){ return t.user===emailUser(); }); sortTX(); }catch(e){}
+  updatePip(); flushDeletes(); view='home'; setNav(); render();
+}
+function logout(){ if(!confirm('Keluar dari akun ini? Data tetap tersimpan di perangkat.')) return; clearUser(); TX=[]; view='home'; setNav(); render(); }
 
 function periodeSeg(){
   return '<div class="seg">'+['harian','mingguan','bulanan'].map(function(p){return '<button data-p="'+p+'" class="'+(periode===p?'on':'')+'">'+p[0].toUpperCase()+p.slice(1)+'</button>';}).join('')+'</div>';
@@ -618,7 +737,7 @@ async function simpanSemua(){
   for(var i=0;i<st.pending.length;i++){
     var p=st.pending[i];
     var catItem=[cat, p.diskon?('Diskon '+rp(p.diskon)):''].filter(Boolean).join(' | ');
-    var item={ id:uid(), tanggal:st.tanggal, tipe:'pengeluaran', kategori:p.kategori, nominal:+p.nominal, keterangan:p.keterangan, catatan:catItem, createdAt:new Date().toISOString(), terkirim:false };
+    var item={ id:uid(), tanggal:st.tanggal, tipe:'pengeluaran', kategori:p.kategori, nominal:+p.nominal, keterangan:p.keterangan, catatan:catItem, createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
     TX.unshift(item); await idbPut(item);
   }
   sortTX(); updatePip();
@@ -685,18 +804,33 @@ function limitChips(cur, fn){
   return '<div class="chips">'+[10,25,50,100].map(function(n){return '<button class="chip '+(cur===n?'on':'')+'" onclick="'+fn+'('+n+')">'+n+'</button>';}).join('')+'<button class="chip '+(cur===0?'on':'')+'" onclick="'+fn+'(0)">Semua</button></div>';
 }
 
-/* ====== SETELAN ====== */
+/* ====== PROFIL (akun + setelan + zona berbahaya) ====== */
 function renderSettings(){
-  var url=getGasUrl();
+  var url=getGasUrl(), u=USER||{};
+  var ava=u.picture?'<img class="pava" src="'+esc(u.picture)+'">':'<div class="pava pava-i">'+esc(((u.name||'?').slice(0,1)).toUpperCase())+'</div>';
   S().innerHTML=
-    '<div class="fhead"><div class="ti">Setelan</div></div>'+
-    '<div class="set"><p class="hint">Tempel URL Web App Apps Script (berakhiran /exec). Aplikasi menyimpan transaksi di perangkat (IndexedDB). Koneksi ke Sheet hanya dipakai saat Anda mengirim atau menarik data. Pembacaan struk berjalan di perangkat, tanpa internet setelah model OCR terunduh sekali.</p>'+
-    '<label class="fl">URL Apps Script</label><input class="field" id="inUrl" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(url)+'">'+
-    '<button class="save pem" onclick="simpanUrl()">Simpan & sambungkan</button>'+
-    '<button class="btn-line" onclick="ujiKoneksi()">Uji koneksi</button>'+
-    '<div class="ok-msg" id="setMsg"></div></div>';
+    '<div class="fhead"><div class="ti">Profil</div></div>'+
+    '<div class="set">'+
+      '<div class="prof-card">'+ava+'<div class="pinfo"><div class="pn">'+esc(u.name||'')+'</div><div class="pe">'+esc(u.email||'')+'</div></div></div>'+
+      '<button class="btn-line" onclick="logout()">Keluar akun</button>'+
+      '<div class="divider"></div>'+
+      '<div class="t" style="font-weight:600;font-size:14px;margin:0 2px 8px">Koneksi Google Sheet</div>'+
+      '<p class="hint">Tempel URL Web App Apps Script (berakhiran /exec). Transaksi disimpan di perangkat (IndexedDB) dan diberi tanda pemilik. Koneksi ke Sheet dipakai saat mengirim, menarik, atau menghapus data.</p>'+
+      '<label class="fl">URL Apps Script</label><input class="field" id="inUrl" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(url)+'">'+
+      '<button class="save pem" onclick="simpanUrl()">Simpan & sambungkan</button>'+
+      '<button class="btn-line" onclick="ujiKoneksi()">Uji koneksi</button>'+
+      '<div class="ok-msg" id="setMsg"></div>'+
+      '<div class="divider"></div>'+
+      '<label class="fl">Google Client ID (untuk login Google)</label>'+
+      '<input class="field" id="inCid" placeholder="xxxx.apps.googleusercontent.com" value="'+esc(getClientId())+'">'+
+      '<button class="btn-line" onclick="simpanClientId(\'inCid\')">Simpan Client ID</button>'+
+      '<div class="divider"></div>'+
+      '<div class="t" style="font-weight:600;font-size:14px;margin:0 2px 6px;color:var(--merah-tx)">Zona berbahaya</div>'+
+      '<p class="hint">Menghapus semua transaksi milik akun ini, di perangkat sekaligus di Google Sheet. Jika sedang offline, penghapusan di Sheet otomatis menyusul saat kembali online.'+(getDelQueue().length?(' Saat ini ada '+getDelQueue().length+' penghapusan menunggu dikirim ke Sheet.'):'')+'</p>'+
+      '<button class="btn-danger" onclick="hapusSemua()">Hapus semua transaksi saya</button>'+
+    '</div>';
 }
-function simpanUrl(){ var u=document.getElementById('inUrl').value.trim(); if(!u){toast('URL kosong');return;} setGasUrl(u); toast('Tersambung'); render(); }
+function simpanUrl(){ var u=document.getElementById('inUrl').value.trim(); if(!u){toast('URL kosong');return;} setGasUrl(u); toast('Tersambung'); flushDeletes(); render(); }
 async function ujiKoneksi(){ var m=document.getElementById('setMsg'); m.style.color='var(--tx2)'; m.textContent='Menguji...'; try{ var d=await jsonp('action=list'); m.style.color='var(--hijau-tx)'; m.textContent='Berhasil. '+(d.data?d.data.length:0)+' baris di Sheet.'; }catch(e){ m.style.color='var(--merah-tx)'; m.textContent='Gagal: '+e.message; } }
 
 /* ====== WIRING ====== */
@@ -706,9 +840,10 @@ document.getElementById('fab').onclick=function(){ addState=blankAdd(); goView('
 
 /* ====== MULAI ====== */
 (async function(){
-  try{ await openDB(); TX=await idbGetAll(); sortTX(); }catch(e){ toast('Gagal buka penyimpanan: '+e.message); }
+  USER=getUser();
+  try{ await openDB(); var all=USER?await claimOrphans():await idbGetAll(); TX=USER?all.filter(function(t){ return t.user===emailUser(); }):[]; sortTX(); }catch(e){ toast('Gagal buka penyimpanan: '+e.message); }
   updatePip();
-  if(!getGasUrl() && TX.length===0){ view='settings'; setNav(); }
+  if(USER) flushDeletes();
   render();
 })();
 </script>
