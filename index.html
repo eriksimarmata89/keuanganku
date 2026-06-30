@@ -178,6 +178,31 @@
   .prof-card .pn{font-size:15px; font-weight:600;}
   .prof-card .pe{font-size:12px; color:var(--tx2); margin-top:2px; word-break:break-all;}
   .btn-danger{width:100%; border:.5px solid var(--merah); color:var(--merah-tx); background:#fff; border-radius:10px; padding:12px 0; font-size:14px; font-weight:600; margin-top:10px;}
+  .prof-hero{display:flex; flex-direction:column; align-items:center; text-align:center; padding:8px 0 18px;}
+  .prof-hero .pava, .prof-hero .pava-i{width:74px; height:74px; font-size:26px; margin-bottom:10px;}
+  .prof-hero .pn{font-size:18px; font-weight:700;}
+  .prof-hero .pe{font-size:12px; color:var(--tx2); margin-top:3px; word-break:break-all;}
+  .grp-label{font-size:11px; color:var(--tx2); font-weight:600; letter-spacing:.5px; text-transform:uppercase; margin:14px 2px 8px;}
+  .menu{background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 1px 2px rgba(0,0,0,.04);}
+  .menu-row{display:flex; align-items:center; gap:12px; padding:13px 14px; border-bottom:.5px solid var(--line); width:100%; text-align:left; background:#fff; border:none;}
+  .menu-row:last-child{border-bottom:none;}
+  .menu-row:active{background:#F4F4F2;}
+  .menu-ic{width:34px; height:34px; border-radius:9px; background:#E6F1FB; color:var(--biru); display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0;}
+  .menu-tx{flex:1; min-width:0;}
+  .menu-tx .mt{font-size:14px; font-weight:600; color:var(--tx);}
+  .menu-tx .ms{font-size:11px; color:var(--tx2); margin-top:2px; display:flex; align-items:center; gap:6px;}
+  .menu-arr{color:var(--tx3); font-size:20px; line-height:1; flex-shrink:0;}
+  .stat-dot{width:7px; height:7px; border-radius:50%; display:inline-block; flex-shrink:0;}
+  .stat-dot.on{background:var(--hijau);} .stat-dot.off{background:#C9A227;}
+  .statcard{display:flex; align-items:center; gap:10px; border-radius:12px; padding:13px 14px; margin-bottom:16px; font-size:13px; line-height:1.4;}
+  .statcard.on{background:var(--hijau-bg); color:var(--hijau-tx);}
+  .statcard.off{background:var(--kuning-bg); color:var(--kuning-tx);}
+  .statcard .sc-ic{font-size:18px;}
+  .btn-logout{width:100%; border:.5px solid var(--line); color:var(--merah-tx); background:#fff; border-radius:10px; padding:13px 0; font-size:14px; font-weight:600; margin-top:22px;}
+  .btn-logout:active{background:#FCEBEB;}
+  .about-line{display:flex; justify-content:space-between; font-size:13px; padding:11px 14px; border-bottom:.5px solid var(--line);}
+  .about-line:last-child{border-bottom:none;}
+  .about-line span{color:var(--tx2);} .about-line b{font-weight:600;}
 </style>
 </head>
 <body>
@@ -273,6 +298,7 @@ var view='home';
 var repLimit=10;
 var homeLimit=10;
 var syncLimit=10;
+var profSub=null;
 var chart=null;
 
 /* ====== UTIL ====== */
@@ -404,7 +430,7 @@ async function tarikDariSheet(){
 function S(){ return document.getElementById('scroll'); }
 function setNav(){ document.querySelectorAll('.nav [data-nav]').forEach(function(b){ b.classList.toggle('on',b.dataset.nav===view); }); }
 function updatePip(){ var p=document.getElementById('navPip'), n=jumlahBelum(); if(n>0){ p.style.display='flex'; p.textContent=n>99?'99+':n; } else p.style.display='none'; }
-function goView(v){ if(view==='struk' && v!=='struk') cleanupWorker(); view=v; setNav(); render(); S().scrollTop=0; }
+function goView(v){ if(view==='struk' && v!=='struk') cleanupWorker(); profSub=null; view=v; setNav(); render(); S().scrollTop=0; }
 function render(){ var nav=document.querySelector('.nav'); if(nav) nav.style.display=USER?'flex':'none'; if(!USER) return renderLogin(); if(view==='home')return renderHome(); if(view==='report')return renderReport(); if(view==='sinkron')return renderSinkron(); if(view==='settings')return renderSettings(); if(view==='add')return renderAdd(); if(view==='struk')return renderStruk(); }
 
 /* ====== LOGIN / AKUN ====== */
@@ -808,30 +834,61 @@ function limitChips(cur, fn){
   return '<div class="chips">'+[10,25,50,100].map(function(n){return '<button class="chip '+(cur===n?'on':'')+'" onclick="'+fn+'('+n+')">'+n+'</button>';}).join('')+'<button class="chip '+(cur===0?'on':'')+'" onclick="'+fn+'(0)">Semua</button></div>';
 }
 
-/* ====== PROFIL (akun + setelan + zona berbahaya) ====== */
+/* ====== PROFIL (gaya menu + submenu) ====== */
+function openProf(sub){ profSub=sub; render(); S().scrollTop=0; }
+function backProf(){ profSub=null; render(); S().scrollTop=0; }
+function menuRow(icon,title,subHtml,onclick){
+  return '<button class="menu-row" onclick="'+onclick+'"><div class="menu-ic">'+icon+'</div>'+
+    '<div class="menu-tx"><div class="mt">'+title+'</div>'+(subHtml?'<div class="ms">'+subHtml+'</div>':'')+'</div>'+
+    '<div class="menu-arr">&#8250;</div></button>';
+}
+function avaBesar(u){ return u.picture?'<img class="pava" src="'+esc(u.picture)+'">':'<div class="pava pava-i">'+esc(inisial(u.name))+'</div>'; }
 function renderSettings(){
-  var url=getGasUrl(), u=USER||{};
-  var ava=u.picture?'<img class="pava" src="'+esc(u.picture)+'">':'<div class="pava pava-i">'+esc(inisial(u.name))+'</div>';
+  if(profSub==='sheet') return renderProfSheet();
+  if(profSub==='about') return renderProfAbout();
+  var u=USER||{};
+  var sheetOn=!!getGasUrl();
+  var sheetSub=sheetOn?'<span class="stat-dot on"></span>Tersambung':'<span class="stat-dot off"></span>Belum tersambung';
   S().innerHTML=
     '<div class="fhead"><div class="ti">Profil</div></div>'+
     '<div class="set">'+
-      '<div class="prof-card">'+ava+'<div class="pinfo"><div class="pn">'+esc(u.name||'')+'</div><div class="pe">'+esc(u.email||'')+'</div></div></div>'+
-      '<button class="btn-line" onclick="logout()">Keluar akun</button>'+
-      '<div class="divider"></div>'+
-      '<div class="t" style="font-weight:600;font-size:14px;margin:0 2px 8px">Koneksi Google Sheet</div>'+
-      '<p class="hint">Tempel URL Web App Apps Script (berakhiran /exec). Transaksi disimpan di perangkat (IndexedDB) dan diberi tanda pemilik. Koneksi ke Sheet dipakai saat mengirim, menarik, atau menghapus data.</p>'+
+      '<div class="prof-hero">'+avaBesar(u)+'<div class="pn">'+esc(u.name||'')+'</div><div class="pe">'+esc(u.email||'')+'</div></div>'+
+      '<div class="grp-label">Data &amp; Sinkronisasi</div>'+
+      '<div class="menu">'+
+        menuRow('&#9729;','Koneksi Google Sheet',sheetSub,"openProf('sheet')")+
+      '</div>'+
+      '<div class="grp-label">Tentang</div>'+
+      '<div class="menu">'+
+        menuRow('&#8505;','Tentang aplikasi','KeuanganKu','openProf(\'about\')')+
+      '</div>'+
+      '<button class="btn-logout" onclick="logout()">Keluar akun</button>'+
+    '</div>';
+}
+function renderProfSheet(){
+  var url=getGasUrl(), on=!!url;
+  S().innerHTML=
+    '<div class="fhead"><button class="bk" onclick="backProf()">&#8592;</button><div class="ti">Koneksi Google Sheet</div></div>'+
+    '<div class="set">'+
+      '<div class="statcard '+(on?'on':'off')+'"><span class="sc-ic">'+(on?'&#9729;':'&#9888;')+'</span><div>'+(on?'Tersambung ke Apps Script. Transaksi bisa dikirim, ditarik, dan dihapus terhubung ke Google Sheet.':'Belum tersambung. Tempel URL Web App Apps Script untuk mengaktifkan sinkronisasi.')+'</div></div>'+
+      '<p class="hint">Transaksi selalu tersimpan di perangkat ini (IndexedDB), bahkan saat offline. Koneksi Google Sheet dipakai untuk mencadangkan dan menyinkronkan data antar perangkat. Tempel URL Web App yang berakhiran /exec.</p>'+
       '<label class="fl">URL Apps Script</label><input class="field" id="inUrl" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(url)+'">'+
-      '<button class="save pem" onclick="simpanUrl()">Simpan & sambungkan</button>'+
+      '<button class="save pem" onclick="simpanUrl()">Simpan &amp; sambungkan</button>'+
       '<button class="btn-line" onclick="ujiKoneksi()">Uji koneksi</button>'+
       '<div class="ok-msg" id="setMsg"></div>'+
-      '<div class="divider"></div>'+
-      '<label class="fl">Google Client ID (untuk login Google)</label>'+
-      '<input class="field" id="inCid" placeholder="xxxx.apps.googleusercontent.com" value="'+esc(getClientId())+'">'+
-      '<button class="btn-line" onclick="simpanClientId(\'inCid\')">Simpan Client ID</button>'+
-      '<div class="divider"></div>'+
-      '<div class="t" style="font-weight:600;font-size:14px;margin:0 2px 6px;color:var(--merah-tx)">Zona berbahaya</div>'+
-      '<p class="hint">Menghapus semua transaksi milik akun ini, di perangkat sekaligus di Google Sheet. Jika sedang offline, penghapusan di Sheet otomatis menyusul saat kembali online.'+(getDelQueue().length?(' Saat ini ada '+getDelQueue().length+' penghapusan menunggu dikirim ke Sheet.'):'')+'</p>'+
-      '<button class="btn-danger" onclick="hapusSemua()">Hapus semua transaksi saya</button>'+
+    '</div>';
+}
+function renderProfAbout(){
+  S().innerHTML=
+    '<div class="fhead"><button class="bk" onclick="backProf()">&#8592;</button><div class="ti">Tentang aplikasi</div></div>'+
+    '<div class="set">'+
+      '<div class="prof-hero" style="padding-top:4px"><div class="pava pava-i" style="background:var(--biru);color:#fff">Rp</div><div class="pn">KeuanganKu</div><div class="pe">Pencatat keuangan pribadi</div></div>'+
+      '<div class="menu" style="margin-bottom:14px">'+
+        '<div class="about-line"><span>Versi</span><b>1.0</b></div>'+
+        '<div class="about-line"><span>Penyimpanan</span><b>Di perangkat (offline)</b></div>'+
+        '<div class="about-line"><span>Cadangan</span><b>Google Sheet</b></div>'+
+        '<div class="about-line"><span>Login</span><b>Akun Google</b></div>'+
+      '</div>'+
+      '<p class="hint">KeuanganKu mencatat pemasukan dan pengeluaran Anda, menyimpannya di perangkat agar tetap bisa dipakai tanpa internet, lalu mencadangkannya ke Google Sheet milik Anda sendiri. Pemindai struk membaca teks langsung di perangkat, jadi foto struk tidak dikirim ke mana pun.</p>'+
     '</div>';
 }
 function simpanUrl(){ var u=document.getElementById('inUrl').value.trim(); if(!u){toast('URL kosong');return;} setGasUrl(u); toast('Tersambung'); flushDeletes(); render(); }
