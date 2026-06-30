@@ -216,6 +216,51 @@
   .copy-btn{position:absolute; top:8px; right:8px; background:rgba(255,255,255,.14); color:#fff; border:none; border-radius:7px; padding:6px 11px; font-size:12px; font-weight:600;}
   .copy-btn:active{background:rgba(255,255,255,.28);}
   .gnote{background:var(--kuning-bg); color:var(--kuning-tx); font-size:12px; line-height:1.5; border-radius:10px; padding:11px 13px; margin:6px 0 4px;}
+
+  /* ====== TEMA GELAP ====== */
+  [data-theme="dark"]{
+    --biru:#3D8BD4; --biru-tua:#2A6CB0;
+    --hijau:#2BB387; --hijau-bg:#13322A; --hijau-tx:#62D7AD;
+    --merah:#E0594C; --merah-bg:#3A1E1C; --merah-tx:#F0897F;
+    --kuning-bg:#33291A; --kuning-tx:#E0B468;
+    --page:#14161A; --card:#1E2127; --line:#2C2F36;
+    --tx:#ECECEA; --tx2:#A6A6A0; --tx3:#76766F;
+  }
+  [data-theme="dark"] body{ background:#0A0B0D; }
+  [data-theme="dark"] .nav,
+  [data-theme="dark"] .field,
+  [data-theme="dark"] .nominal-wrap,
+  [data-theme="dark"] .tipe2 button,
+  [data-theme="dark"] .upload,
+  [data-theme="dark"] .chip,
+  [data-theme="dark"] .rep-card,
+  [data-theme="dark"] .chartwrap,
+  [data-theme="dark"] .panel,
+  [data-theme="dark"] .menu,
+  [data-theme="dark"] .menu-row,
+  [data-theme="dark"] .prof-card,
+  [data-theme="dark"] .btn-line,
+  [data-theme="dark"] .btn-logout,
+  [data-theme="dark"] .guide-toggle,
+  [data-theme="dark"] .btn-danger,
+  [data-theme="dark"] .penbtn,
+  [data-theme="dark"] .cb,
+  [data-theme="dark"] .pedit,
+  [data-theme="dark"] .psel{ background:var(--card); }
+  [data-theme="dark"] .seg,
+  [data-theme="dark"] .metode{ background:#0F1216; }
+  [data-theme="dark"] .seg button.on,
+  [data-theme="dark"] .metode button.on{ background:var(--card); color:var(--tx); }
+  [data-theme="dark"] .ava,
+  [data-theme="dark"] .pava-i,
+  [data-theme="dark"] .menu-ic,
+  [data-theme="dark"] .peninfo.aktif,
+  [data-theme="dark"] .scaninfo.load,
+  [data-theme="dark"] .chooser{ background:#1B2A3A; color:var(--biru); }
+  [data-theme="dark"] .draftbox,
+  [data-theme="dark"] .panel .bs,
+  [data-theme="dark"] .menu-row:active{ background:#181B20; }
+  [data-theme="dark"] .chart-legend, [data-theme="dark"] .catrow{ color:var(--tx); }
 </style>
 </head>
 <body>
@@ -367,6 +412,24 @@ function formatTanggal(v) {
 var LS_URL='kk_gas_url';
 function getGasUrl(){ return localStorage.getItem(LS_URL)||''; }
 function setGasUrl(u){ localStorage.setItem(LS_URL,u.trim()); }
+
+/* ====== TEMA (TERANG / GELAP / OTOMATIS) ====== */
+var LS_THEME='kk_theme';
+var THEME=localStorage.getItem(LS_THEME)||'terang';
+function temaEfektif(){
+  if(THEME==='auto') return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)?'gelap':'terang';
+  return THEME;
+}
+function applyTheme(){
+  var t=temaEfektif();
+  document.documentElement.setAttribute('data-theme', t==='gelap'?'dark':'light');
+  var meta=document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.setAttribute('content', t==='gelap'?'#14161A':'#185FA5');
+}
+function setTheme(v){ THEME=v; localStorage.setItem(LS_THEME, v); applyTheme(); render(); }
+function themeBtn(val,label){ return '<button class="'+(THEME===val?'on':'')+'" onclick="setTheme(\''+val+'\')">'+label+'</button>'; }
+applyTheme();
+
 
 /* ====== AKUN PENGGUNA ====== */
 var USER=null;
@@ -579,22 +642,29 @@ function render(){ var nav=document.querySelector('.nav'); if(nav) nav.style.dis
 
 /* ====== LOGIN / AKUN ====== */
 var loginManual=false;
-function manualForm(){
-  return '<div class="divider"></div>'+
-    '<label class="fl">Nama</label><input class="field" id="loginNama" placeholder="Nama Anda">'+
+function isWebView(){ var ua=(navigator.userAgent||''); return /Android/.test(ua) && /;\s*wv\)/.test(ua); }
+function manualFields(label){
+  return '<label class="fl">Nama</label><input class="field" id="loginNama" placeholder="Nama Anda">'+
     '<label class="fl">Email</label><input class="field" id="loginEmail" inputmode="email" placeholder="nama@gmail.com">'+
-    '<button class="save pem" onclick="masukManual()">Masuk manual</button>';
+    '<button class="save pem" onclick="masukManual()">'+(label||'Masuk')+'</button>';
 }
+function manualForm(){ return '<div class="divider"></div>'+manualFields('Masuk manual'); }
 function toggleManual(){ loginManual=!loginManual; renderLogin(); }
 function renderLogin(){
   var cid=getClientId();
-  var html='<div class="login-wrap"><div class="logo">KeuanganKu</div><div class="logo-sub">Masuk menggunakan akun Google. Pengguna baru cukup memilih akun Gmail tanpa pendaftaran terpisah.</div>';
-  if(cid){
-    html+='<div id="gbtn" class="gbox"></div>'+
+  var html='<div class="login-wrap"><div class="logo">KeuanganKu</div>';
+  if(isWebView()){
+    html+='<div class="logo-sub">Masuk dengan nama dan email Anda.</div>'+
+      '<div class="peninfo idle" style="text-align:left;margin:0 0 16px">Anda membuka aplikasi versi terpasang. Tombol Google hanya berfungsi di peramban, jadi di sini gunakan nama dan email. Pakai email yang sama dengan yang dipakai di peramban agar data tetap menyatu.</div>'+
+      manualFields('Masuk');
+  } else if(cid){
+    html+='<div class="logo-sub">Masuk menggunakan akun Google. Pengguna baru cukup memilih akun Gmail tanpa pendaftaran terpisah.</div>'+
+      '<div id="gbtn" class="gbox"></div>'+
       '<div class="atau"><a href="javascript:void(0)" style="color:var(--biru)" onclick="toggleManual()">'+(loginManual?'Sembunyikan masuk manual':'Masuk tanpa Google (mode offline)')+'</a></div>'+
       (loginManual?manualForm():'');
   } else {
-    html+='<div class="peninfo idle" style="margin:0 0 14px;text-align:left">Tombol Sign in with Google muncul setelah pemilik aplikasi memasang Google Client ID satu kali. Tempel di bawah. Setelah itu, pengguna cukup pilih akun Gmail tanpa mendaftar.</div>'+
+    html+='<div class="logo-sub">Masuk menggunakan akun Google.</div>'+
+      '<div class="peninfo idle" style="margin:0 0 14px;text-align:left">Tombol Sign in with Google muncul setelah pemilik aplikasi memasang Google Client ID satu kali. Tempel di bawah. Setelah itu, pengguna cukup pilih akun Gmail tanpa mendaftar.</div>'+
       '<label class="fl">Google Client ID</label><input class="field" id="loginCid" placeholder="xxxx.apps.googleusercontent.com" value="'+esc(cid)+'">'+
       '<button class="save pem" onclick="simpanClientId(\'loginCid\')">Simpan &amp; tampilkan tombol Google</button>'+
       '<div class="atau"><a href="javascript:void(0)" style="color:var(--biru)" onclick="toggleManual()">'+(loginManual?'Sembunyikan masuk manual':'Atau masuk manual tanpa Google')+'</a></div>'+
@@ -1084,6 +1154,9 @@ function renderSettings(){
     '<div class="fhead"><div class="ti">Profil</div></div>'+
     '<div class="set">'+
       '<div class="prof-hero">'+avaBesar(u)+'<div class="pn">'+esc(u.name||'')+'</div><div class="pe">'+esc(u.email||'')+'</div></div>'+
+      '<div class="grp-label">Tampilan</div>'+
+      '<div class="seg" style="margin:0 0 4px">'+themeBtn('terang','\u2600 Terang')+themeBtn('gelap','\u263E Gelap')+themeBtn('auto','\u25D1 Otomatis')+'</div>'+
+      '<div style="font-size:11px;color:var(--tx3);margin:0 2px 4px">Otomatis mengikuti pengaturan tema perangkat Anda.</div>'+
       '<div class="grp-label">Data &amp; Sinkronisasi</div>'+
       '<div class="menu">'+
         menuRow('&#9729;','Koneksi Google Sheet',sheetSub,"openProf('sheet')")+
@@ -1166,6 +1239,7 @@ document.getElementById('fab').onclick=function(){ addState=blankAdd(); goView('
 
 /* ====== MULAI ====== */
 (async function(){
+  if(window.matchMedia){ try{ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){ if(THEME==='auto') applyTheme(); }); }catch(e){} }
   USER=getUser();
   try{ await openDB(); var all=USER?await claimOrphans():await idbGetAll(); TX=USER?all.filter(function(t){ return t.user===emailUser(); }):[]; sortTX(); }catch(e){ toast('Gagal buka penyimpanan: '+e.message); }
   updatePip();
