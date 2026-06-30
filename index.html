@@ -203,6 +203,19 @@
   .about-line{display:flex; justify-content:space-between; font-size:13px; padding:11px 14px; border-bottom:.5px solid var(--line);}
   .about-line:last-child{border-bottom:none;}
   .about-line span{color:var(--tx2);} .about-line b{font-weight:600;}
+  .guide-toggle{width:100%; border:.5px solid var(--biru); color:var(--biru); background:#fff; border-radius:10px; padding:12px 0; font-size:14px; font-weight:600; margin-top:6px; display:flex; align-items:center; justify-content:center; gap:8px;}
+  .guide{margin-top:14px;}
+  .gstep{display:flex; gap:12px; margin-bottom:16px;}
+  .gnum{width:26px; height:26px; border-radius:50%; background:var(--biru); color:#fff; font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;}
+  .gbody{flex:1; min-width:0;}
+  .gbody .gt{font-size:14px; font-weight:600; margin-bottom:3px;}
+  .gbody .gd{font-size:12.5px; color:var(--tx2); line-height:1.55;}
+  .gbody .gd b{color:var(--tx); font-weight:600;}
+  .codebox{position:relative; background:#0F1B2A; border-radius:10px; margin:10px 0 4px; overflow:hidden;}
+  .codebox pre{margin:0; padding:13px 13px 13px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:11px; line-height:1.5; color:#D7E3F2; overflow-x:auto; max-height:240px; overflow-y:auto; white-space:pre;}
+  .copy-btn{position:absolute; top:8px; right:8px; background:rgba(255,255,255,.14); color:#fff; border:none; border-radius:7px; padding:6px 11px; font-size:12px; font-weight:600;}
+  .copy-btn:active{background:rgba(255,255,255,.28);}
+  .gnote{background:var(--kuning-bg); color:var(--kuning-tx); font-size:12px; line-height:1.5; border-radius:10px; padding:11px 13px; margin:6px 0 4px;}
 </style>
 </head>
 <body>
@@ -220,7 +233,135 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<script type="text/plain" id="gasCode">/**
+ * KeuanganKu - Backend Google Apps Script
+ * Tempel kode ini di editor Apps Script milik Google Sheet Anda,
+ * lalu Deploy sebagai Web app (Execute as: Me, Who has access: Anyone).
+ */
+
+var SHEET_NAME = 'Transaksi';
+var HEADERS = ['id', 'tanggal', 'tipe', 'kategori', 'nominal', 'keterangan', 'catatan', 'createdAt', 'user'];
+
+function doPost(e) {
+  try {
+    var body = JSON.parse(e.postData.contents);
+    var action = body.action;
+    var out;
+    if (action === 'list') out = listTransaksi(body.user);
+    else if (action === 'sync') out = syncTransaksi(body.items);
+    else if (action === 'add') out = syncTransaksi([body.item]);
+    else if (action === 'delete') out = deleteMany([body.id]);
+    else if (action === 'deleteMany') out = deleteMany(body.ids);
+    else out = { ok: false, error: 'Aksi tidak dikenal: ' + action };
+    return json(out);
+  } catch (err) {
+    return json({ ok: false, error: String(err) });
+  }
+}
+
+function doGet(e) {
+  var p = (e && e.parameter) || {};
+  var out = { ok: true, message: 'KeuanganKu API aktif' };
+  if (p.action === 'list') out = listTransaksi(p.user);
+  if (p.callback) {
+    return ContentService.createTextOutput(p.callback + '(' + JSON.stringify(out) + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return json(out);
+}
+
+function json(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function sheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SHEET_NAME);
+  if (!sh) { sh = ss.insertSheet(SHEET_NAME); sh.appendRow(HEADERS); }
+  if (sh.getLastRow() === 0) sh.appendRow(HEADERS);
+  return sh;
+}
+
+function rowDari(item) {
+  return [
+    item.id,
+    "'" + item.tanggal,
+    item.tipe,
+    item.kategori,
+    Number(item.nominal) || 0,
+    item.keterangan || '',
+    item.catatan || '',
+    item.createdAt || new Date().toISOString(),
+    item.user || ''
+  ];
+}
+
+function listTransaksi(user) {
+  var sh = sheet();
+  var values = sh.getDataRange().getValues();
+  var data = [];
+  for (var i = 1; i < values.length; i++) {
+    var r = values[i];
+    if (!r[0]) continue;
+    var u = r[8] != null ? String(r[8]) : '';
+    if (user && u !== String(user)) continue;
+    data.push({
+      id: String(r[0]), tanggal: formatTanggal(r[1]), tipe: r[2], kategori: r[3],
+      nominal: Number(r[4]) || 0, keterangan: r[5], catatan: r[6],
+      createdAt: r[7] ? String(r[7]) : '', user: u
+    });
+  }
+  return { ok: true, data: data };
+}
+
+function syncTransaksi(items) {
+  if (!items || !items.length) return { ok: true, count: 0 };
+  var sh = sheet();
+  var values = sh.getDataRange().getValues();
+  var indeks = {};
+  for (var i = 1; i < values.length; i++) {
+    if (values[i][0]) indeks[String(values[i][0])] = i + 1;
+  }
+  var barisBaru = [];
+  for (var j = 0; j < items.length; j++) {
+    var it = items[j];
+    var baris = rowDari(it);
+    var adaDi = indeks[String(it.id)];
+    if (adaDi) {
+      sh.getRange(adaDi, 1, 1, HEADERS.length).setValues([baris]);
+    } else {
+      barisBaru.push(baris);
+    }
+  }
+  if (barisBaru.length) {
+    sh.getRange(sh.getLastRow() + 1, 1, barisBaru.length, HEADERS.length).setValues(barisBaru);
+  }
+  return { ok: true, count: items.length };
+}
+
+function deleteMany(ids) {
+  if (!ids || !ids.length) return { ok: true, deleted: 0 };
+  var sh = sheet();
+  var values = sh.getDataRange().getValues();
+  var buang = {};
+  for (var k = 0; k < ids.length; k++) buang[String(ids[k])] = 1;
+  var n = 0;
+  for (var i = values.length - 1; i >= 1; i--) {
+    if (values[i][0] && buang[String(values[i][0])]) { sh.deleteRow(i + 1); n++; }
+  }
+  return { ok: true, deleted: n };
+}
+
+function formatTanggal(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  return String(v).replace(/^'/, '').slice(0, 10);
+}</script>
+
 <script>
 /* ====== KONFIGURASI ====== */
 var LS_URL='kk_gas_url';
@@ -299,6 +440,9 @@ var repLimit=10;
 var homeLimit=10;
 var syncLimit=10;
 var profSub=null;
+var showGuide=false;
+var expRange='bulan';
+var expAwal=todayISO(), expAkhir=todayISO();
 var chart=null;
 
 /* ====== UTIL ====== */
@@ -342,11 +486,11 @@ function labelTanggal(tgl){
 function jsonp(params){
   return new Promise(function(res,rej){
     var url=getGasUrl();
-    if(!url){ rej(new Error('URL Apps Script belum diisi di Setelan')); return; }
+    if(!url){ rej(new Error('Google Sheet belum terhubung. Atur di tab Profil, menu Koneksi Google Sheet.')); return; }
     var cb='kk_cb_'+Date.now().toString(36)+Math.floor(Math.random()*1e4);
     var sep=url.indexOf('?')>=0?'&':'?';
     var s=document.createElement('script');
-    var timer=setTimeout(function(){ cleanup(); rej(new Error('Tidak ada balasan. Periksa URL dan deployment (akses harus Anyone).')); },20000);
+    var timer=setTimeout(function(){ cleanup(); rej(new Error('Server tidak merespons. Periksa kembali URL dan pastikan akses deployment disetel ke Anyone.')); },20000);
     function cleanup(){ clearTimeout(timer); try{ delete window[cb]; }catch(e){ window[cb]=undefined; } if(s.parentNode) s.parentNode.removeChild(s); }
     window[cb]=function(data){ cleanup(); res(data); };
     s.onerror=function(){ cleanup(); rej(new Error('Gagal memuat dari server')); };
@@ -356,7 +500,7 @@ function jsonp(params){
 }
 function kirimNoCors(action,extra){
   var url=getGasUrl();
-  if(!url) return Promise.reject(new Error('URL Apps Script belum diisi di Setelan'));
+  if(!url) return Promise.reject(new Error('Google Sheet belum terhubung. Atur di tab Profil, menu Koneksi Google Sheet.'));
   return fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({action:action},extra||{}))});
 }
 
@@ -430,7 +574,7 @@ async function tarikDariSheet(){
 function S(){ return document.getElementById('scroll'); }
 function setNav(){ document.querySelectorAll('.nav [data-nav]').forEach(function(b){ b.classList.toggle('on',b.dataset.nav===view); }); }
 function updatePip(){ var p=document.getElementById('navPip'), n=jumlahBelum(); if(n>0){ p.style.display='flex'; p.textContent=n>99?'99+':n; } else p.style.display='none'; }
-function goView(v){ if(view==='struk' && v!=='struk') cleanupWorker(); profSub=null; view=v; setNav(); render(); S().scrollTop=0; }
+function goView(v){ if(view==='struk' && v!=='struk') cleanupWorker(); profSub=null; showGuide=false; view=v; setNav(); render(); S().scrollTop=0; }
 function render(){ var nav=document.querySelector('.nav'); if(nav) nav.style.display=USER?'flex':'none'; if(!USER) return renderLogin(); if(view==='home')return renderHome(); if(view==='report')return renderReport(); if(view==='sinkron')return renderSinkron(); if(view==='settings')return renderSettings(); if(view==='add')return renderAdd(); if(view==='struk')return renderStruk(); }
 
 /* ====== LOGIN / AKUN ====== */
@@ -444,7 +588,7 @@ function manualForm(){
 function toggleManual(){ loginManual=!loginManual; renderLogin(); }
 function renderLogin(){
   var cid=getClientId();
-  var html='<div class="login-wrap"><div class="logo">KeuanganKu</div><div class="logo-sub">Masuk dengan akun Google Anda. Pengguna baru tidak perlu mendaftar dulu, cukup pilih akun Gmail.</div>';
+  var html='<div class="login-wrap"><div class="logo">KeuanganKu</div><div class="logo-sub">Masuk menggunakan akun Google. Pengguna baru cukup memilih akun Gmail tanpa pendaftaran terpisah.</div>';
   if(cid){
     html+='<div id="gbtn" class="gbox"></div>'+
       '<div class="atau"><a href="javascript:void(0)" style="color:var(--biru)" onclick="toggleManual()">'+(loginManual?'Sembunyikan masuk manual':'Masuk tanpa Google (mode offline)')+'</a></div>'+
@@ -560,7 +704,7 @@ function strukPicker(){
   return '<div style="display:flex;gap:10px;margin-bottom:8px">'+
     '<label class="upload" style="flex:1;margin:0;cursor:pointer;padding:20px 8px"><div class="big">&#128247;</div><div class="ut">Kamera</div><input type="file" accept="image/*" capture="environment" style="display:none" onchange="onFoto(this)"></label>'+
     '<label class="upload" style="flex:1;margin:0;cursor:pointer;padding:20px 8px"><div class="big">&#128194;</div><div class="ut">Galeri</div><input type="file" accept="image/*" style="display:none" onchange="onFoto(this)"></label>'+
-    '</div><div class="us" style="text-align:center;margin:-4px 0 4px;color:var(--tx3);font-size:11px">Setelah memilih foto, Anda melingkari teks untuk membuat satu atau beberapa transaksi</div>';
+    '</div><div class="us" style="text-align:center;margin:-4px 0 4px;color:var(--tx3);font-size:11px">Setelah memilih foto, ketuk teks pada struk untuk menyusun transaksi.</div>';
 }
 function setTipe(t){ addState.tipe=t; addState.kategori=(t==='pengeluaran'?KAT_PENGELUARAN:KAT_PEMASUKAN)[0]; if(t==='pemasukan')addState.metode='manual'; renderAdd(); }
 function setMetode(m){ addState.metode=m; renderAdd(); }
@@ -654,11 +798,11 @@ async function startScanOCR(){
   st.busy=false; renderStruk();
 }
 function infoPeran(r){
-  if(r==='keterangan') return 'Ketuk tiap kata nama barang. Untuk nama panjang, ketuk kata pertama lalu kata terakhir, semua di antaranya ikut terambil. Lalu pilih Nominal untuk harganya.';
-  if(r==='nominal') return 'Ketuk satu kata angka harganya.';
-  if(r==='toko') return 'Ketuk kata nama toko (boleh beberapa).';
-  if(r==='catatan') return 'Ketuk kata untuk catatan (boleh beberapa).';
-  if(r==='diskon') return 'Ketuk angka potongan, termasuk yang dalam kurung. Potongan mengurangi nominal transaksi terakhir di daftar.';
+  if(r==='keterangan') return 'Pilih nama barang dengan mengetuk teksnya pada foto, lalu pilih Nominal untuk menandai harganya.';
+  if(r==='nominal') return 'Ketuk angka harga pada foto.';
+  if(r==='toko') return 'Ketuk nama toko pada foto.';
+  if(r==='catatan') return 'Ketuk teks yang ingin dijadikan catatan.';
+  if(r==='diskon') return 'Ketuk angka potongan pada foto. Potongan akan dikurangkan dari transaksi terakhir pada daftar.';
   return '';
 }
 function renderStruk(){
@@ -676,9 +820,9 @@ function renderStruk(){
   S().innerHTML=
     '<div class="fhead"><button class="bk" onclick="goView(\'add\')">&#8592;</button><div class="ti">Pindai struk</div></div>'+
     '<div class="form">'+
-    '<div class="scanhint">Setiap kata jadi satu kotak. Ketuk kata yang Anda mau. Nama panjang: ketuk kata pertama lalu kata terakhir untuk ambil sekaligus.</div>'+
+    '<div class="scanhint">Ketuk teks pada foto untuk memilihnya. Untuk nama yang terdiri dari beberapa kata, ketuk kata pertama lalu kata terakhir.</div>'+
     '<div class="penbar">'+penBtn('keterangan','k','Keterangan')+penBtn('nominal','n','Nominal')+penBtn('toko','t','Nama toko')+penBtn('catatan','c','Catatan')+penBtn('diskon','d','Diskon')+'</div>'+
-    (st.activeRole?'<div class="peninfo aktif">Jenis aktif: <b>'+labelPeran(st.activeRole)+'</b>. '+infoPeran(st.activeRole)+'</div>':'<div class="peninfo idle">Pilih salah satu jenis di atas, lalu ketuk katanya di foto.</div>')+
+    (st.activeRole?'<div class="peninfo aktif">Jenis aktif: <b>'+labelPeran(st.activeRole)+'</b>. '+infoPeran(st.activeRole)+'</div>':'<div class="peninfo idle">Pilih salah satu jenis di atas, lalu ketuk teksnya pada foto.</div>')+
     '<div class="canvaswrap"><canvas id="scanCanvas" width="'+st.cw+'" height="'+st.ch+'"></canvas>'+ov+'<div id="ocrBusy" class="ocrbusy" style="display:'+(st.busy?'flex':'none')+'">Membaca struk...</div></div>'+
     '<div class="draftbox"><div class="dl" style="display:flex;justify-content:space-between;align-items:center">Transaksi berikutnya'+(adaDraft?'<button class="mini-clear" onclick="bersihkanDraft()">Bersihkan</button>':'')+'</div>'+
       '<div class="slot"><span>Keterangan</span><b>'+(st.draft.keterangan?esc(st.draft.keterangan):'<i>ketuk kata</i>')+'</b></div>'+
@@ -697,12 +841,12 @@ function renderStruk(){
       return '<div class="pend"><div class="pmid">'+ketHtml+
       '<select class="psel" onchange="setKatPending('+i+',this.value)">'+KAT_PENGELUARAN.map(function(k){return '<option '+(p.kategori===k?'selected':'')+'>'+k+'</option>';}).join('')+'</select></div>'+
       nomHtml+'<button class="delbtn" onclick="hapusPending('+i+')">&times;</button></div>'; }).join('')
-      :'<div class="empty" style="padding:14px">Belum ada. Ketuk kata nama barang, lalu pilih Nominal dan ketuk harganya.</div>')+
+      :'<div class="empty" style="padding:14px">Belum ada transaksi. Pilih nama barang, lalu tandai nominalnya.</div>')+
     (st.pending.length?('<div class="draftbox" style="background:#E6F1FB;margin-top:4px">'+
       '<div class="slot"><span>Jumlah transaksi</span><b>'+st.pending.length+'</b></div>'+
       (st.pending.reduce(function(s,p){return s+(+(p.diskon||0));},0)?('<div class="slot"><span>Total potongan</span><b style="color:#BA7517">- '+rp(st.pending.reduce(function(s,p){return s+(+(p.diskon||0));},0))+'</b></div>'):'')+
       '<div class="slot" style="font-size:15px;border-top:.5px solid var(--line);padding-top:8px;margin-top:2px"><span style="font-weight:600">Total daftar</span><b>'+rp(st.pending.reduce(function(s,p){return s+(+p.nominal);},0))+'</b></div>'+
-      '<div style="font-size:11px;color:var(--tx2);margin-top:4px">Cocokkan dengan total yang dibayar di struk.</div></div>'):'')+
+      '<div style="font-size:11px;color:var(--tx2);margin-top:4px">Bandingkan dengan total pembayaran pada struk.</div></div>'):'')+
     '<button class="save" '+(st.pending.length?'':'disabled')+' onclick="simpanSemua()">Simpan '+st.pending.length+' transaksi</button>'+
     '</div>';
   drawScan();
@@ -783,6 +927,7 @@ function renderReport(){
   var perKat={}; px.filter(function(t){return t.tipe==='pengeluaran';}).forEach(function(t){ perKat[t.kategori]=(perKat[t.kategori]||0)+(+t.nominal); });
   var kats=Object.keys(perKat).map(function(k){return [k,perKat[k]];}).sort(function(a,b){return b[1]-a[1];});
   var tot=keluar||1;
+  var nExp=TX.filter(function(t){return inRange(t.tanggal,expRange,expAwal,expAkhir);}).length;
   S().innerHTML=
     '<div class="fhead"><div class="ti">Laporan</div></div>'+periodeSeg()+
     '<div class="rep-cards"><div class="rep-card"><div class="l">Pemasukan</div><div class="v" style="color:var(--hijau-tx)">'+rp(masuk)+'</div></div>'+
@@ -791,6 +936,14 @@ function renderReport(){
     (kats.length?'<div class="chartwrap"><canvas id="donut"></canvas></div><div class="catlist">'+
       kats.map(function(kv,i){return '<div class="catrow"><span class="dot" style="background:'+WARNA_KAT[i%WARNA_KAT.length]+'"></span><span class="cn">'+kv[0]+'</span><span class="cv">'+rp(kv[1])+'</span><span class="cp">'+Math.round(kv[1]/tot*100)+'%</span></div>';}).join('')+'</div>'
       :'<div class="empty">Belum ada pengeluaran pada periode ini.</div>')+
+    '<div class="sec-head" style="padding-top:14px"><div class="t">Unduh laporan</div></div>'+
+    '<div class="chips">'+[['hari','Harian'],['minggu','Mingguan'],['bulan','Bulanan'],['kustom','Kustom']].map(function(c){return '<button class="chip '+(expRange===c[0]?'on':'')+'" onclick="setExpRange(\''+c[0]+'\')">'+c[1]+'</button>';}).join('')+'</div>'+
+    (expRange==='kustom'?'<div class="panel"><div class="kustom-date"><div><label class="fl">Dari</label><input class="field" type="date" value="'+expAwal+'" onchange="expAwal=this.value;render();"></div>'+
+      '<div><label class="fl">Sampai</label><input class="field" type="date" value="'+expAkhir+'" onchange="expAkhir=this.value;render();"></div></div></div>':'')+
+    '<div class="panel"><div style="font-size:12px;color:var(--tx2);margin-bottom:12px">'+nExp+' transaksi pada rentang '+esc(labelRentang())+'.</div>'+
+      '<div style="display:flex;gap:12px"><button class="btn-line" style="margin-top:0;flex:1" '+(nExp?'':'disabled')+' onclick="unduhPDF()">&#128196; PDF</button>'+
+      '<button class="btn-line" style="margin-top:0;flex:1" '+(nExp?'':'disabled')+' onclick="unduhExcel()">&#128202; Excel</button></div>'+
+      '<div style="font-size:11px;color:var(--tx3);margin-top:10px">Unduhan pertama memerlukan internet untuk memuat komponen, setelahnya dapat dipakai luring.</div></div>'+
     '<div class="sec-head" style="padding-top:10px"><div class="t">Daftar transaksi</div><div style="font-size:11px;color:var(--tx3)">'+px.length+' transaksi</div></div>'+
     limitChips(repLimit,'setRepLimit')+
     '<div class="list" style="padding-top:6px;padding-bottom:10px">'+(px.length?px.slice(0,repLimit||px.length).map(txRow).join(''):'<div class="empty">Belum ada transaksi pada periode ini.</div>')+'</div>';
@@ -802,6 +955,84 @@ function gambarDonut(kats){
   chart=new Chart(ctx,{type:'doughnut',data:{labels:kats.map(function(k){return k[0];}),datasets:[{data:kats.map(function(k){return k[1];}),backgroundColor:kats.map(function(k,i){return WARNA_KAT[i%WARNA_KAT.length];}),borderWidth:2,borderColor:'#fff'}]},options:{cutout:'62%',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+rp(c.parsed);}}}},maintainAspectRatio:false}});
 }
 
+/* ====== UNDUH LAPORAN (PDF / EXCEL) ====== */
+function setExpRange(r){ expRange=r; render(); }
+function inRange(tgl, mode, awal, akhir){
+  var t=new Date(tgl+'T00:00:00'), now=new Date(); now.setHours(0,0,0,0);
+  if(mode==='hari') return t.getTime()===now.getTime();
+  if(mode==='minggu'){ var a=new Date(now); a.setDate(now.getDate()-6); return t>=a && t<=now; }
+  if(mode==='bulan') return t.getMonth()===now.getMonth() && t.getFullYear()===now.getFullYear();
+  if(mode==='kustom') return tgl>=awal && tgl<=akhir;
+  return true;
+}
+function labelRentang(){
+  if(expRange==='hari') return new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
+  if(expRange==='minggu') return '7 hari terakhir';
+  if(expRange==='bulan') return new Date().toLocaleDateString('id-ID',{month:'long',year:'numeric'});
+  if(expRange==='kustom') return expAwal+' s/d '+expAkhir;
+  return '';
+}
+function dataExport(){
+  return TX.filter(function(t){ return inRange(t.tanggal, expRange, expAwal, expAkhir); })
+    .slice().sort(function(a,b){ return (a.tanggal+(a.createdAt||'')).localeCompare(b.tanggal+(b.createdAt||'')); });
+}
+function totalExport(rows){
+  var masuk=rows.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
+  var keluar=rows.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
+  return {masuk:masuk, keluar:keluar, selisih:masuk-keluar};
+}
+function namaFile(ext){ return 'Laporan-KeuanganKu-'+expRange+'-'+todayISO()+'.'+ext; }
+function unduhPDF(){
+  var rows=dataExport();
+  if(!rows.length){ toast('Tidak ada transaksi pada rentang ini'); return; }
+  if(!(window.jspdf&&window.jspdf.jsPDF)){ toast('Komponen PDF belum termuat. Periksa koneksi internet lalu coba lagi.'); return; }
+  var jsPDF=window.jspdf.jsPDF;
+  var doc=new jsPDF({unit:'pt',format:'a4'});
+  var t=totalExport(rows);
+  doc.setFontSize(16); doc.setTextColor(24,95,165); doc.text('Laporan Keuangan', 40, 48);
+  doc.setFontSize(10); doc.setTextColor(110,110,110);
+  doc.text('KeuanganKu', 40, 64);
+  doc.text('Pemilik: '+((USER&&USER.name)||'-'), 40, 80);
+  doc.text('Rentang: '+labelRentang(), 40, 94);
+  doc.text('Dicetak: '+new Date().toLocaleString('id-ID'), 40, 108);
+  var body=rows.map(function(r){ return [r.tanggal, r.tipe==='pemasukan'?'Masuk':'Keluar', r.kategori, r.keterangan||'', (r.tipe==='pemasukan'?'+ ':'- ')+rp(r.nominal)]; });
+  doc.autoTable({
+    startY:124,
+    head:[['Tanggal','Jenis','Kategori','Keterangan','Nominal']],
+    body:body,
+    styles:{fontSize:9, cellPadding:4, overflow:'linebreak'},
+    headStyles:{fillColor:[24,95,165], textColor:255},
+    alternateRowStyles:{fillColor:[244,247,251]},
+    columnStyles:{4:{halign:'right'}},
+    margin:{left:40,right:40}
+  });
+  var y=(doc.lastAutoTable?doc.lastAutoTable.finalY:140)+24;
+  doc.setFontSize(11); doc.setTextColor(40,40,40);
+  doc.text('Total pemasukan', 40, y); doc.text(rp(t.masuk), 320, y);
+  doc.text('Total pengeluaran', 40, y+16); doc.text(rp(t.keluar), 320, y+16);
+  doc.setFont(undefined,'bold');
+  doc.text('Selisih', 40, y+34); doc.text(rp(t.selisih), 320, y+34);
+  doc.save(namaFile('pdf'));
+  toast('PDF diunduh');
+}
+function unduhExcel(){
+  var rows=dataExport();
+  if(!rows.length){ toast('Tidak ada transaksi pada rentang ini'); return; }
+  if(typeof XLSX==='undefined'){ toast('Komponen Excel belum termuat. Periksa koneksi internet lalu coba lagi.'); return; }
+  var t=totalExport(rows);
+  var aoa=[['Tanggal','Jenis','Kategori','Keterangan','Catatan','Nominal']];
+  rows.forEach(function(r){ aoa.push([r.tanggal, r.tipe==='pemasukan'?'Pemasukan':'Pengeluaran', r.kategori, r.keterangan||'', r.catatan||'', r.tipe==='pemasukan'?(+r.nominal):-(+r.nominal)]); });
+  aoa.push([]);
+  aoa.push(['','','','','Total pemasukan', t.masuk]);
+  aoa.push(['','','','','Total pengeluaran', t.keluar]);
+  aoa.push(['','','','','Selisih', t.selisih]);
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:12},{wch:13},{wch:16},{wch:30},{wch:26},{wch:15}];
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Transaksi');
+  XLSX.writeFile(wb, namaFile('xlsx'));
+  toast('Excel diunduh');
+}
+
 /* ====== SINKRON / KIRIM ====== */
 function renderSinkron(){
   var tersambung=!!getGasUrl();
@@ -810,17 +1041,17 @@ function renderSinkron(){
   var chips=[['hari','Hari ini'],['minggu','Minggu ini'],['bulan','Bulan ini'],['tahun','Tahun ini'],['semua','Semua'],['kustom','Kustom']];
   S().innerHTML=
     '<div class="fhead"><div class="ti">Kirim ke Google Sheet</div></div>'+
-    (!tersambung?'<div class="panel" style="background:var(--kuning-bg)"><div style="font-size:13px;color:var(--kuning-tx);line-height:1.5">Belum tersambung ke Apps Script. Buka <b>Setelan</b> untuk menempel URL terlebih dulu.</div></div>':'')+
+    (!tersambung?'<div class="panel" style="background:var(--kuning-bg)"><div style="font-size:13px;color:var(--kuning-tx);line-height:1.5">Belum terhubung ke Google Sheet. Buka tab <b>Profil</b>, lalu menu <b>Koneksi Google Sheet</b> untuk mengaturnya.</div></div>':'')+
     '<div class="chips">'+chips.map(function(c){return '<button class="chip '+(syncRange===c[0]?'on':'')+'" onclick="setRange(\''+c[0]+'\')">'+c[1]+'</button>';}).join('')+'</div>'+
     (syncRange==='kustom'?'<div class="panel"><div class="kustom-date"><div><label class="fl">Dari</label><input class="field" type="date" value="'+kustomAwal+'" onchange="kustomAwal=this.value;render();"></div>'+
       '<div><label class="fl">Sampai</label><input class="field" type="date" value="'+kustomAkhir+'" onchange="kustomAkhir=this.value;render();"></div></div></div>':'')+
     '<div class="panel"><div class="big-stat"><div class="bs"><div class="n">'+dalam.length+'</div><div class="k">transaksi pada rentang</div></div>'+
       '<div class="bs warn"><div class="n">'+belum+'</div><div class="k">belum terkirim</div></div></div>'+
       '<button class="save pem" id="btnKirim" style="margin-top:14px" '+(tersambung&&dalam.length?'':'disabled')+' onclick="kirimRentang()">Kirim '+dalam.length+' transaksi ke Sheet</button>'+
-      '<div style="font-size:11px;color:var(--tx3);text-align:center;margin-top:8px">Pengiriman ulang aman, baris dengan id sama tidak akan tergandakan.</div></div>'+
+      '<div style="font-size:11px;color:var(--tx3);text-align:center;margin-top:8px">Pengiriman ulang aman. Baris dengan ID sama tidak akan tergandakan.</div></div>'+
     '<div class="divider"></div>'+
     '<div class="set"><div class="t" style="font-weight:600;font-size:14px;margin:0 2px 6px">Pemulihan data</div>'+
-      '<p class="hint">Tarik seluruh transaksi dari Google Sheet ke perangkat ini. Berguna saat ganti HP atau pasang ulang. Data digabung berdasarkan id, jadi tidak tergandakan.</p>'+
+      '<p class="hint">Mengambil seluruh transaksi dari Google Sheet ke perangkat ini, misalnya setelah berganti perangkat atau memasang ulang aplikasi. Data digabungkan berdasarkan ID sehingga tidak tergandakan.</p>'+
       '<button class="btn-line" id="btnTarik" '+(tersambung?'':'disabled')+' onclick="tarikDariSheet()">Tarik semua dari Sheet</button></div>'+
     '<div class="sec-head" style="padding-top:6px"><div class="t">Transaksi pada rentang ('+dalam.length+')</div></div>'+
     limitChips(syncLimit,'setSyncLimit')+
@@ -836,7 +1067,7 @@ function limitChips(cur, fn){
 
 /* ====== PROFIL (gaya menu + submenu) ====== */
 function openProf(sub){ profSub=sub; render(); S().scrollTop=0; }
-function backProf(){ profSub=null; render(); S().scrollTop=0; }
+function backProf(){ profSub=null; showGuide=false; render(); S().scrollTop=0; }
 function menuRow(icon,title,subHtml,onclick){
   return '<button class="menu-row" onclick="'+onclick+'"><div class="menu-ic">'+icon+'</div>'+
     '<div class="menu-tx"><div class="mt">'+title+'</div>'+(subHtml?'<div class="ms">'+subHtml+'</div>':'')+'</div>'+
@@ -869,13 +1100,47 @@ function renderProfSheet(){
   S().innerHTML=
     '<div class="fhead"><button class="bk" onclick="backProf()">&#8592;</button><div class="ti">Koneksi Google Sheet</div></div>'+
     '<div class="set">'+
-      '<div class="statcard '+(on?'on':'off')+'"><span class="sc-ic">'+(on?'&#9729;':'&#9888;')+'</span><div>'+(on?'Tersambung ke Apps Script. Transaksi bisa dikirim, ditarik, dan dihapus terhubung ke Google Sheet.':'Belum tersambung. Tempel URL Web App Apps Script untuk mengaktifkan sinkronisasi.')+'</div></div>'+
-      '<p class="hint">Transaksi selalu tersimpan di perangkat ini (IndexedDB), bahkan saat offline. Koneksi Google Sheet dipakai untuk mencadangkan dan menyinkronkan data antar perangkat. Tempel URL Web App yang berakhiran /exec.</p>'+
-      '<label class="fl">URL Apps Script</label><input class="field" id="inUrl" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(url)+'">'+
+      '<div class="statcard '+(on?'on':'off')+'"><span class="sc-ic">'+(on?'&#9729;':'&#9888;')+'</span><div>'+(on?'Aplikasi sudah terhubung ke Google Sheet. Pengiriman, penarikan, dan penghapusan data akan tersinkron otomatis.':'Aplikasi belum terhubung ke Google Sheet. Masukkan URL Web App untuk mengaktifkan pencadangan.')+'</div></div>'+
+      '<p class="hint">Seluruh transaksi tersimpan di perangkat dan tetap dapat diakses tanpa internet. Hubungkan ke Google Sheet untuk mencadangkan data dan menyelaraskannya antar perangkat. Masukkan URL Web App yang diakhiri /exec.</p>'+
+      '<label class="fl">URL Web App Apps Script</label><input class="field" id="inUrl" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(url)+'">'+
       '<button class="save pem" onclick="simpanUrl()">Simpan &amp; sambungkan</button>'+
       '<button class="btn-line" onclick="ujiKoneksi()">Uji koneksi</button>'+
       '<div class="ok-msg" id="setMsg"></div>'+
+      '<div class="divider"></div>'+
+      '<div class="grp-label" style="margin-top:0">Panduan</div>'+
+      '<p class="hint" style="margin-bottom:8px">Belum punya Google Sheet sendiri? Ikuti langkah berikut untuk menyiapkannya dari awal.</p>'+
+      '<button class="guide-toggle" onclick="toggleGuide()">'+(showGuide?'&#9650; Sembunyikan panduan':'&#9660; Lihat panduan lengkap')+'</button>'+
+      (showGuide?panduanSheet():'')+
     '</div>';
+}
+function toggleGuide(){ showGuide=!showGuide; renderProfSheet(); }
+function gstep(n,judul,isi){ return '<div class="gstep"><div class="gnum">'+n+'</div><div class="gbody"><div class="gt">'+judul+'</div><div class="gd">'+isi+'</div></div></div>'; }
+function panduanSheet(){
+  var kode=esc(document.getElementById('gasCode').textContent.trim());
+  return '<div class="guide">'+
+    gstep(1,'Siapkan akun Google','Jika belum memilikinya, buat akun Google secara gratis di <b>accounts.google.com</b>. Akun yang sama otomatis memberi Anda akses ke Google Drive dan Google Sheet.')+
+    gstep(2,'Buat Google Sheet baru','Buka <b>drive.google.com</b>, klik <b>Baru</b>, lalu pilih <b>Google Spreadsheet</b>. Beri nama, misalnya KeuanganKu. Lembar tidak perlu diisi apa pun, kolomnya akan dibuat otomatis oleh kode.')+
+    gstep(3,'Buka editor Apps Script','Di dalam Sheet, klik menu <b>Ekstensi</b>, lalu <b>Apps Script</b>. Sebuah tab editor kode akan terbuka.')+
+    gstep(4,'Tempel kode di bawah','Hapus seluruh kode contoh yang ada di editor, lalu tempel kode berikut. Gunakan tombol Salin kode, kemudian tekan ikon simpan (atau Ctrl+S).'+
+      '<div class="codebox"><button class="copy-btn" onclick="salinKode()">Salin kode</button><pre>'+kode+'</pre></div>')+
+    gstep(5,'Terbitkan sebagai Web App','Klik <b>Deploy</b> di kanan atas, lalu <b>New deployment</b>. Pada pilihan jenis, pilih <b>Web app</b>. Isi <b>Execute as</b> dengan <b>Me</b>, dan <b>Who has access</b> dengan <b>Anyone</b>. Klik <b>Deploy</b>.')+
+    gstep(6,'Berikan izin akses','Saat diminta, pilih akun Google Anda lalu setujui izin yang diminta. Jika muncul peringatan keamanan, buka <b>Advanced</b>, lalu lanjutkan ke aplikasi Anda. Ini wajar karena skrip dibuat oleh Anda sendiri.')+
+    gstep(7,'Salin URL Web App','Setelah berhasil, Google menampilkan tautan <b>Web app</b> yang diakhiri <b>/exec</b>. Salin tautan tersebut.')+
+    gstep(8,'Hubungkan ke aplikasi','Kembali ke halaman ini, tempel URL tadi pada kolom di atas, tekan <b>Simpan &amp; sambungkan</b>, lalu <b>Uji koneksi</b> untuk memastikan berhasil.')+
+    '<div class="gnote">Jika suatu saat kode diperbarui, buka <b>Deploy</b>, lalu <b>Manage deployments</b>, klik ikon pensil, dan pilih <b>New version</b> agar perubahan diterapkan.</div>'+
+  '</div>';
+}
+function salinKode(){
+  var t=document.getElementById('gasCode').textContent.trim();
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(function(){ toast('Kode disalin'); },function(){ salinManual(t); });
+  } else { salinManual(t); }
+}
+function salinManual(t){
+  var ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try{ document.execCommand('copy'); toast('Kode disalin'); }catch(e){ toast('Salin manual dari kotak kode'); }
+  document.body.removeChild(ta);
 }
 function renderProfAbout(){
   S().innerHTML=
@@ -888,7 +1153,7 @@ function renderProfAbout(){
         '<div class="about-line"><span>Cadangan</span><b>Google Sheet</b></div>'+
         '<div class="about-line"><span>Login</span><b>Akun Google</b></div>'+
       '</div>'+
-      '<p class="hint">KeuanganKu mencatat pemasukan dan pengeluaran Anda, menyimpannya di perangkat agar tetap bisa dipakai tanpa internet, lalu mencadangkannya ke Google Sheet milik Anda sendiri. Pemindai struk membaca teks langsung di perangkat, jadi foto struk tidak dikirim ke mana pun.</p>'+
+      '<p class="hint">KeuanganKu mencatat pemasukan dan pengeluaran, menyimpannya di perangkat agar tetap dapat digunakan tanpa internet, dan mencadangkannya ke Google Sheet milik Anda. Pemindai struk memproses teks langsung di perangkat sehingga foto tidak dikirim ke mana pun.</p>'+
     '</div>';
 }
 function simpanUrl(){ var u=document.getElementById('inUrl').value.trim(); if(!u){toast('URL kosong');return;} setGasUrl(u); toast('Tersambung'); flushDeletes(); render(); }
