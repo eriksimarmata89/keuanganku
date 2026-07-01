@@ -1172,6 +1172,23 @@ window.terimaFotoLuar=function(dataUrl){
     mulaiStrukDariDataURL(dataUrl);
   }catch(e){ toast('Gagal memproses foto'); }
 };
+/* ====== PEMANTAU WebViewString dari WebViewer bawaan Kodular ======
+   WebViewer bawaan tidak punya RunJavaScript, jadi kita polling
+   WebViewString secara berkala untuk mendeteksi foto baru dari Kodular. */
+var _lastWVS = '';
+setInterval(function(){
+  try{
+    if(window.AppInventor && window.AppInventor.getWebViewString){
+      var v = window.AppInventor.getWebViewString();
+      if(v && v !== _lastWVS){
+        _lastWVS = v;
+        if(String(v).indexOf('data:image') === 0){
+          terimaFotoLuar(v);
+        }
+      }
+    }
+  }catch(e){}
+}, 600);
 function blankStruk(){ return {fotoData:null,img:null,cw:900,ch:0,kata:[],kataRole:{},draftIdx:[],ketAnchor:null,ocrDone:false,draft:{keterangan:'',nominal:''},toko:'',catatan:'',tanggal:todayISO(),pending:[],editPend:null,activeRole:null,busy:false}; }
 var strukState=blankStruk();
 var ocrWorker=null;
