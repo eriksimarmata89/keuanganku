@@ -1859,5 +1859,64 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
   render();
 })();
 </script>
+
+<script>
+/* PATCH: PDF & Excel ASLI lewat KIO4 StringToFileASD (base64 -> biner) */
+(function(){
+  var SEP='|';
+  function kirimBiner(nama, b64){
+    if(window.AppInventor && window.AppInventor.setWebViewString){
+      window.AppInventor.setWebViewString('SIMPANTEKS'+SEP+nama+SEP+b64);
+      toast('Menyimpan '+nama+'...');
+    } else { toast('Simpan file hanya tersedia di aplikasi'); }
+  }
+
+  window.unduhHTML=function(){   // tombol berlabel "PDF"
+    var rows=dataExport();
+    if(!rows.length){ toast('Tidak ada transaksi pada rentang ini'); return; }
+    if(!(window.jspdf&&window.jspdf.jsPDF)){ toast('Komponen PDF belum termuat. Sambungkan internet sekali lalu coba lagi.'); return; }
+    var jsPDF=window.jspdf.jsPDF, doc=new jsPDF({unit:'pt',format:'a4'});
+    var t=totalExport(rows);
+    doc.setFontSize(16); doc.setTextColor(24,95,165); doc.text('Laporan Keuangan',40,48);
+    doc.setFontSize(10); doc.setTextColor(110,110,110);
+    doc.text('KeuanganKu',40,64);
+    doc.text('Pemilik: '+((USER&&USER.name)||'-'),40,80);
+    doc.text('Rentang: '+labelRentang(),40,94);
+    doc.text('Dicetak: '+new Date().toLocaleString('id-ID'),40,108);
+    var body=rows.map(function(r){ return [r.tanggal, r.tipe==='pemasukan'?'Masuk':'Keluar', r.kategori, r.keterangan||'', (r.tipe==='pemasukan'?'+ ':'- ')+rp(r.nominal)]; });
+    doc.autoTable({ startY:124, head:[['Tanggal','Jenis','Kategori','Keterangan','Nominal']], body:body,
+      styles:{fontSize:9,cellPadding:4,overflow:'linebreak'}, headStyles:{fillColor:[24,95,165],textColor:255},
+      alternateRowStyles:{fillColor:[244,247,251]}, columnStyles:{4:{halign:'right'}}, margin:{left:40,right:40} });
+    var y=(doc.lastAutoTable?doc.lastAutoTable.finalY:140)+24;
+    doc.setFontSize(11); doc.setTextColor(40,40,40);
+    doc.text('Total pemasukan',40,y); doc.text(rp(t.masuk),320,y);
+    doc.text('Total pengeluaran',40,y+16); doc.text(rp(t.keluar),320,y+16);
+    doc.setFont(undefined,'bold'); doc.text('Selisih',40,y+34); doc.text(rp(t.selisih),320,y+34);
+    if(window.AppInventor && window.AppInventor.setWebViewString){
+      var uri=doc.output('datauristring');
+      var b64=uri.substring(uri.indexOf(',')+1);   // base64 murni, tanpa "data:...,"
+      kirimBiner(namaFile('pdf'), b64);
+    } else { doc.save(namaFile('pdf')); }
+  };
+
+  window.unduhCSV=function(){   // tombol berlabel "Excel"
+    var rows=dataExport();
+    if(!rows.length){ toast('Tidak ada transaksi pada rentang ini'); return; }
+    if(typeof XLSX==='undefined'){ toast('Komponen Excel belum termuat. Sambungkan internet sekali lalu coba lagi.'); return; }
+    var t=totalExport(rows);
+    var aoa=[['Tanggal','Jenis','Kategori','Keterangan','Catatan','Nominal']];
+    rows.forEach(function(r){ aoa.push([r.tanggal, r.tipe==='pemasukan'?'Pemasukan':'Pengeluaran', r.kategori, r.keterangan||'', r.catatan||'', r.tipe==='pemasukan'?(+r.nominal):-(+r.nominal)]); });
+    aoa.push([]); aoa.push(['','','','','Total pemasukan',t.masuk]); aoa.push(['','','','','Total pengeluaran',t.keluar]); aoa.push(['','','','','Selisih',t.selisih]);
+    var ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols']=[{wch:12},{wch:13},{wch:16},{wch:30},{wch:26},{wch:15}];
+    var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Transaksi');
+    if(window.AppInventor && window.AppInventor.setWebViewString){
+      var b64=XLSX.write(wb,{bookType:'xlsx',type:'base64'});   // sudah base64
+      kirimBiner(namaFile('xlsx'), b64);
+    } else { XLSX.writeFile(wb, namaFile('xlsx')); }
+  };
+})();
+</script>
+  
 </body>
 </html>
