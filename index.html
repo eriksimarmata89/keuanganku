@@ -29,13 +29,16 @@
   .greet .nm{font-size:16px; font-weight:600; margin-top:2px;}
   .ava{width:38px; height:38px; border-radius:50%; background:#E6F1FB; color:var(--biru); display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px;}
 
-  .saldo{background:var(--biru); border-radius:16px; padding:18px 20px; color:#fff; margin:0 18px;}
+  .saldo{background:var(--biru); border-radius:16px; padding:18px 20px; color:#fff; margin:0 18px; position:relative;}
   .saldo .lbl{font-size:12px; color:#B5D4F4;}
   .saldo .amt{font-size:26px; font-weight:600; margin:4px 0 14px; letter-spacing:-.3px;}
   .saldo .row{display:flex; gap:16px;}
   .saldo .row>div{flex:1;}
   .saldo .mini{font-size:11px; color:#B5D4F4;}
   .saldo .val{font-size:14px; font-weight:600; margin-top:2px;}
+  .saldo-eye{position:absolute; top:14px; right:14px; width:28px; height:28px; border-radius:50%; border:none; background:rgba(255,255,255,.18); color:#fff; display:flex; align-items:center; justify-content:center; padding:0;}
+  .saldo-eye:active{background:rgba(255,255,255,.3);}
+  .appbar-ava{background:none; border:none; padding:0; display:flex; align-items:center; justify-content:center; line-height:0;}
 
   .seg{display:flex; background:#EDEDE8; border-radius:10px; padding:3px; margin:14px 18px;}
   .seg button{flex:1; border:none; background:transparent; padding:8px 0; font-size:13px; color:var(--tx2); border-radius:8px;}
@@ -598,14 +601,21 @@ var HIDE_AMT=localStorage.getItem(LS_HIDE)==='1';
 function setHideAmt(v){ HIDE_AMT=!!v; localStorage.setItem(LS_HIDE, HIDE_AMT?'1':'0'); render(); }
 function toggleHide(){ setHideAmt(!HIDE_AMT); }
 function fmtRp(n, paksa){ return (HIDE_AMT && !paksa) ? 'Rp \u2022\u2022\u2022\u2022\u2022' : rp(n); }
-function eyeIcon(){
+function eyeIcon(size){
+  size = size || 20;
   return HIDE_AMT
-    ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 002.8 2.8"/><path d="M9.4 5.1A9 9 0 0112 5c5 0 9 4.5 9 7a11.6 11.6 0 01-2.1 2.9"/><path d="M6.1 6.1C3.8 7.4 2.3 9.6 2 12c0 0 3.5 7 10 7 1 0 1.9-.1 2.7-.4"/></svg>'
-    : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+    ? '<svg width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 002.8 2.8"/><path d="M9.4 5.1A9 9 0 0112 5c5 0 9 4.5 9 7a11.6 11.6 0 01-2.1 2.9"/><path d="M6.1 6.1C3.8 7.4 2.3 9.6 2 12c0 0 3.5 7 10 7 1 0 1.9-.1 2.7-.4"/></svg>'
+    : '<svg width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
 }
 function appBar(){
+  var av = USER
+    ? ((USER.picture)
+        ? '<img class="ava" style="padding:0" src="'+esc(USER.picture)+'">'
+        : '<div class="ava">'+esc(inisial(USER.name))+'</div>')
+    : '';
   return '<div class="appbar"><div class="brand"><div class="mk">Rp</div><div class="bt">KeuanganKu</div></div>'+
-    '<button class="eye" onclick="toggleHide()" aria-label="Tampilkan atau sembunyikan nominal">'+eyeIcon()+'</button></div>';
+    (av?('<button class="appbar-ava" onclick="goView(\'settings\')" aria-label="Buka profil">'+av+'</button>'):'')+
+    '</div>';
 }
 
 
@@ -932,12 +942,13 @@ function renderHome(){
   var hutangSisa=UT.filter(function(u){return u.jenis==='hutang';}).reduce(function(s,u){return s+utSisa(u);},0);
   S().innerHTML=
     appBar()+
-    '<div class="topbar"><div class="greet"><div><div class="hi">Halo,</div><div class="nm">'+esc((USER&&USER.name)||'')+'</div></div>'+((USER&&USER.picture)?'<img class="ava" style="padding:0" src="'+esc(USER.picture)+'">':'<div class="ava">'+esc(inisial(USER&&USER.name))+'</div>')+'</div></div>'+
-    '<div class="saldo"><div class="lbl">Total saldo</div><div class="amt">'+fmtRp(masuk-keluar,true)+'</div>'+
+    '<div class="topbar"><div class="greet"><div><div class="hi">Halo,</div><div class="nm">'+esc((USER&&USER.name)||'')+'</div></div></div></div>'+
+    '<div class="saldo"><button class="saldo-eye" onclick="toggleHide()" aria-label="Tampilkan atau sembunyikan nominal">'+eyeIcon(15)+'</button>'+
+    '<div class="lbl">Total saldo</div><div class="amt">'+fmtRp(masuk-keluar)+'</div>'+
     '<div class="row"><div><div class="mini">&#9660; Pemasukan</div><div class="val">'+fmtRp(pM)+'</div></div>'+
     '<div><div class="mini">&#9650; Pengeluaran</div><div class="val">'+fmtRp(pK)+'</div></div></div>'+
     '<div style="border-top:1px solid rgba(255,255,255,.22);margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">'+
-      '<span class="mini">Sisa saldo periode ini</span><span class="val" style="font-size:16px">'+fmtRp(pM-pK)+'</span></div></div>'+
+      '<span class="mini">Sisa saldo periode ini</span><span class="val" style="font-size:16px">'+fmtRp(pM-pK,true)+'</span></div></div>'+
     '<div class="uring" onclick="goView(\'utang\')">'+
       '<div class="ur"><div class="url">Piutang berjalan</div><div class="urv pos">'+fmtRp(piutangSisa)+'</div></div>'+
       '<div class="ursep"></div>'+
