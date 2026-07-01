@@ -1401,7 +1401,7 @@ function renderReport(){
   var nExp=TX.filter(function(t){return inRange(t.tanggal,expRange,expAwal,expAkhir);}).length;
   S().innerHTML=
     appBar()+
-    '<div class="fhead"><div class="ti">Laporan</div></div>'+periodeSeg()+
+    '<div class="fhead"></div>'+periodeSeg()+
     '<div class="rep-cards"><div class="rep-card"><div class="l">Pemasukan</div><div class="v" style="color:var(--hijau-tx)">'+fmtRp(masuk)+'</div></div>'+
     '<div class="rep-card"><div class="l">Pengeluaran</div><div class="v" style="color:var(--merah-tx)">'+fmtRp(keluar)+'</div></div></div>'+
     '<div class="sec-head" style="padding-top:14px"><div class="t">Pengeluaran per kategori</div></div>'+
@@ -1555,7 +1555,7 @@ function renderSettings(){
   var sheetSub=sheetOn?'<span class="stat-dot on"></span>Tersambung':'<span class="stat-dot off"></span>Belum tersambung';
   S().innerHTML=
     appBar()+
-    '<div class="fhead"><div class="ti">Profil</div></div>'+
+    '<div class="fhead"></div>'+
     '<div class="set">'+
       '<div class="prof-hero">'+avaBesar(u)+'<div class="pn">'+esc(u.name||'')+'</div><div class="pe">'+esc(u.email||'')+'</div></div>'+
       '<div class="grp-label">Tampilan</div>'+
