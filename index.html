@@ -1121,9 +1121,16 @@ function renderAdd(){
 }
 function strukPicker(){
   return '<div style="display:flex;gap:10px;margin-bottom:8px">'+
-    '<label class="upload" style="flex:1;margin:0;cursor:pointer;padding:20px 8px"><div class="big">&#128247;</div><div class="ut">Kamera</div><input type="file" accept="image/*" capture="environment" style="display:none" onchange="onFoto(this)"></label>'+
-    '<label class="upload" style="flex:1;margin:0;cursor:pointer;padding:20px 8px"><div class="big">&#128194;</div><div class="ut">Galeri</div><input type="file" accept="image/*" style="display:none" onchange="onFoto(this)"></label>'+
+    '<button class="upload" style="flex:1;margin:0;padding:20px 8px;border:1.5px dashed #C9C9C2;background:#fff" onclick="mintaFoto(\'kamera\')"><div class="big">&#128247;</div><div class="ut">Kamera</div></button>'+
+    '<button class="upload" style="flex:1;margin:0;padding:20px 8px;border:1.5px dashed #C9C9C2;background:#fff" onclick="mintaFoto(\'galeri\')"><div class="big">&#128194;</div><div class="ut">Galeri</div></button>'+
     '</div><div class="us" style="text-align:center;margin:-4px 0 4px;color:var(--tx3);font-size:11px">Setelah memilih foto, ketuk teks pada struk untuk menyusun transaksi.</div>';
+}
+function mintaFoto(sumber){
+  if(window.AppInventor && window.AppInventor.setWebViewString){
+    window.AppInventor.setWebViewString('OPEN_'+sumber.toUpperCase()+'_'+Date.now());
+  } else {
+    toast('Fitur ini hanya tersedia di aplikasi');
+  }
 }
 function setTipe(t){ addState.tipe=t; addState.kategori=(t==='pengeluaran'?KAT_PENGELUARAN:KAT_PEMASUKAN)[0]; if(t==='pemasukan')addState.metode='manual'; renderAdd(); }
 function setMetode(m){ addState.metode=m; renderAdd(); }
