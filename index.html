@@ -1132,12 +1132,6 @@ function mintaFoto(sumber){
     toast('Fitur ini hanya tersedia di aplikasi');
   }
 }
-function didalamApk(){ return !!(window.AppInventor && window.AppInventor.setWebViewString); }
-function kirimFileKeApk(namaFile, base64){
-  // Format: SIMPANFILE|namafile|base64data
-  window.AppInventor.setWebViewString('SIMPANFILE|'+namaFile+'|'+base64);
-  toast('Menyimpan '+namaFile+'...');
-}
 function setTipe(t){ addState.tipe=t; addState.kategori=(t==='pengeluaran'?KAT_PENGELUARAN:KAT_PEMASUKAN)[0]; if(t==='pemasukan')addState.metode='manual'; renderAdd(); }
 function setMetode(m){ addState.metode=m; renderAdd(); }
 function onNominal(el){ var d=el.value.replace(/\D/g,''); addState.nominal=d; el.value=d?(+d).toLocaleString('id-ID'):''; }
@@ -1639,12 +1633,12 @@ function unduhPDF(){
   doc.text('Total pengeluaran', 40, y+16); doc.text(rp(t.keluar), 320, y+16);
   doc.setFont(undefined,'bold');
   doc.text('Selisih', 40, y+34); doc.text(rp(t.selisih), 320, y+34);
-  if(didalamApk()){
-    var b64pdf = doc.output('datauristring').split(',')[1];
-    kirimFileKeApk(namaFile('pdf'), b64pdf);
+  if(window.AppInventor && window.AppInventor.setWebViewString){
+    var uri = doc.output('datauristring');   // "data:application/pdf;base64,...."
+    window.AppInventor.setWebViewString('UNDUHURI|'+namaFile('pdf')+'|'+uri);
+    toast('Menyimpan '+namaFile('pdf')+'...');
   } else {
     doc.save(namaFile('pdf'));
-    toast('PDF diunduh');
   }
 }
 function unduhExcel(){
@@ -1661,12 +1655,13 @@ function unduhExcel(){
   var ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=[{wch:12},{wch:13},{wch:16},{wch:30},{wch:26},{wch:15}];
   var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Transaksi');
-  if(didalamApk()){
-    var b64xls = XLSX.write(wb, {bookType:'xlsx', type:'base64'});
-    kirimFileKeApk(namaFile('xlsx'), b64xls);
+  if(window.AppInventor && window.AppInventor.setWebViewString){
+    var b64 = XLSX.write(wb, {bookType:'xlsx', type:'base64'});
+    var uri = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,'+b64;
+    window.AppInventor.setWebViewString('UNDUHURI|'+namaFile('xlsx')+'|'+uri);
+    toast('Menyimpan '+namaFile('xlsx')+'...');
   } else {
     XLSX.writeFile(wb, namaFile('xlsx'));
-    toast('Excel diunduh');
   }
 }
 
