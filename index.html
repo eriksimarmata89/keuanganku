@@ -1562,8 +1562,8 @@ function renderReport(){
     (expRange==='kustom'?'<div class="panel"><div class="kustom-date"><div><label class="fl">Dari</label><input class="field" type="date" value="'+expAwal+'" onchange="expAwal=this.value;render();"></div>'+
       '<div><label class="fl">Sampai</label><input class="field" type="date" value="'+expAkhir+'" onchange="expAkhir=this.value;render();"></div></div></div>':'')+
     '<div class="panel"><div style="font-size:12px;color:var(--tx2);margin-bottom:12px">'+nExp+' transaksi pada rentang '+esc(labelRentang())+'.</div>'+
-      '<div style="display:flex;gap:12px"><button class="btn-line" style="margin-top:0;flex:1" '+(nExp?'':'disabled')+' onclick="unduhPDF()">&#128196; PDF</button>'+
-      '<button class="btn-line" style="margin-top:0;flex:1" '+(nExp?'':'disabled')+' onclick="unduhExcel()">&#128202; Excel</button></div>'+
+      '<div style="display:flex;gap:12px"><button class="btn-line" style="margin-top:0;flex:1" '+(nExp?'':'disabled')+' onclick="unduhHTML()">&#128196; PDF</button>'+
+      '<button class="btn-line" style="margin-top:0;flex:1" '+(nExp?'':'disabled')+' onclick="unduhCSV()">&#128202; Excel</button></div>'+
       '<div style="font-size:11px;color:var(--tx3);margin-top:10px">Unduhan pertama memerlukan internet untuk memuat komponen, setelahnya dapat dipakai luring.</div></div>'+
     '<div class="sec-head" style="padding-top:10px"><div class="t">Daftar transaksi</div><div style="font-size:11px;color:var(--tx3)">'+px.length+' transaksi</div></div>'+
     limitChips(repLimit,'setRepLimit')+
@@ -1662,6 +1662,52 @@ function unduhExcel(){
     toast('Menyimpan '+namaFile('xlsx')+'...');
   } else {
     XLSX.writeFile(wb, namaFile('xlsx'));
+  }
+}
+
+function unduhHTML(){
+  var rows=dataExport();
+  if(!rows.length){ toast('Tidak ada transaksi pada rentang ini'); return; }
+  var t=totalExport(rows);
+  var baris=rows.map(function(r){
+    return '<tr><td>'+r.tanggal+'</td><td>'+(r.tipe==='pemasukan'?'Masuk':'Keluar')+'</td><td>'+esc(r.kategori)+'</td><td>'+esc(r.keterangan||'')+'</td><td style="text-align:right">'+(r.tipe==='pemasukan'?'+ ':'- ')+rp(r.nominal)+'</td></tr>';
+  }).join('');
+  var html='<!doctype html><html><head><meta charset="utf-8"><title>Laporan KeuanganKu</title>'+
+    '<style>body{font-family:sans-serif;padding:20px;color:#222}h1{color:#185FA5}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #ccc;padding:6px 8px;font-size:13px}th{background:#185FA5;color:#fff}tfoot td{font-weight:bold}</style></head><body>'+
+    '<h1>Laporan Keuangan</h1><p>Pemilik: '+esc((USER&&USER.name)||'-')+'<br>Rentang: '+esc(labelRentang())+'<br>Dicetak: '+new Date().toLocaleString('id-ID')+'</p>'+
+    '<table><thead><tr><th>Tanggal</th><th>Jenis</th><th>Kategori</th><th>Keterangan</th><th>Nominal</th></tr></thead><tbody>'+baris+'</tbody>'+
+    '<tfoot><tr><td colspan="4">Total pemasukan</td><td style="text-align:right">'+rp(t.masuk)+'</td></tr>'+
+    '<tr><td colspan="4">Total pengeluaran</td><td style="text-align:right">'+rp(t.keluar)+'</td></tr>'+
+    '<tr><td colspan="4">Selisih</td><td style="text-align:right">'+rp(t.selisih)+'</td></tr></tfoot></table>'+
+    '<p style="margin-top:16px;font-size:12px;color:#666">Untuk menyimpan sebagai PDF, buka file ini di browser lalu pilih Cetak, Simpan sebagai PDF.</p></body></html>';
+  kirimTeksKeApk(namaFile('html'), html);
+}
+
+function unduhCSV(){
+  var rows=dataExport();
+  if(!rows.length){ toast('Tidak ada transaksi pada rentang ini'); return; }
+  var t=totalExport(rows);
+  function q(s){ return '"'+String(s||'').replace(/"/g,'""')+'"'; }
+  var lines=['Tanggal,Jenis,Kategori,Keterangan,Catatan,Nominal'];
+  rows.forEach(function(r){
+    lines.push([q(r.tanggal), q(r.tipe==='pemasukan'?'Pemasukan':'Pengeluaran'), q(r.kategori), q(r.keterangan), q(r.catatan), (r.tipe==='pemasukan'?(+r.nominal):-(+r.nominal))].join(','));
+  });
+  lines.push('');
+  lines.push(',,,,Total pemasukan,'+t.masuk);
+  lines.push(',,,,Total pengeluaran,'+t.keluar);
+  lines.push(',,,,Selisih,'+t.selisih);
+  kirimTeksKeApk(namaFile('csv'), lines.join('\n'));
+}
+
+function kirimTeksKeApk(namaFile, teks){
+  if(window.AppInventor && window.AppInventor.setWebViewString){
+    window.AppInventor.setWebViewString('SIMPANTEKS|'+namaFile+'|'+teks);
+    toast('Menyimpan '+namaFile+'...');
+  } else {
+    // fallback browser: unduh biasa
+    var a=document.createElement('a');
+    a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(teks);
+    a.download=namaFile; a.click();
   }
 }
 
