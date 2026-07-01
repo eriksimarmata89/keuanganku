@@ -624,6 +624,25 @@ function deleteUtang(ids) {
 
 <script>
 /* ====== KONFIGURASI ====== */
+/* ====== PENGAMAN: localStorage bisa diblokir di sebagian WebView ====== */
+(function(){
+  try{
+    var t='__ls_test__';
+    window.localStorage.setItem(t,'1');
+    window.localStorage.removeItem(t);
+  }catch(e){
+    var mem={};
+    var fakeLS={
+      getItem:function(k){ return Object.prototype.hasOwnProperty.call(mem,k)?mem[k]:null; },
+      setItem:function(k,v){ mem[k]=String(v); },
+      removeItem:function(k){ delete mem[k]; },
+      clear:function(){ mem={}; }
+    };
+    try{ Object.defineProperty(window,'localStorage',{value:fakeLS,configurable:true}); }
+    catch(e2){ window.localStorage=fakeLS; }
+  }
+})();
+  
 var LS_URL='kk_gas_url';
 function getGasUrl(){ return localStorage.getItem(LS_URL)||''; }
 function setGasUrl(u){ localStorage.setItem(LS_URL,u.trim()); }
