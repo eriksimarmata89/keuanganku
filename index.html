@@ -280,6 +280,34 @@
   .acts-tx .as{font-size:12px; color:var(--tx2); margin-top:1px;}
   .acts-cancel{width:100%; border:none; background:var(--page); border-radius:12px; padding:13px 0; font-size:15px; font-weight:600; color:var(--tx2); margin-top:14px;}
 
+  /* ====== MODAL KONFIRMASI ====== */
+  .cmask{position:fixed; inset:0; z-index:70; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.46); padding:24px;}
+  .cmask.show{display:flex;}
+  .cmcard{background:var(--card); border-radius:16px; padding:22px 20px 16px; width:100%; max-width:340px; box-shadow:0 12px 32px rgba(0,0,0,.22);}
+  .cmicon{width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; margin-bottom:12px;}
+  .cmicon.danger{background:var(--merah-bg); color:var(--merah-tx);}
+  .cmicon.info{background:#E6F1FB; color:var(--biru);}
+  .cmtitle{font-size:15px; font-weight:700; color:var(--tx); margin-bottom:6px;}
+  .cmtext{font-size:13px; color:var(--tx2); line-height:1.5; margin-bottom:18px;}
+  .cmbtns{display:flex; gap:10px;}
+  .cmbtn{flex:1; border:none; border-radius:10px; padding:11px 0; font-size:14px; font-weight:600;}
+  .cmbtn.cancel{background:var(--page); color:var(--tx2);}
+  .cmbtn.ok{background:var(--biru); color:#fff;}
+  .cmbtn.ok.danger{background:var(--merah);}
+  [data-theme="dark"] .cmbtn.cancel{background:#181B20;}
+
+  /* ====== OVERLAY PROGRES (KIRIM / TARIK DATA) ====== */
+  .pmask{position:fixed; inset:0; z-index:75; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.5); padding:24px;}
+  .pmask.show{display:flex;}
+  .pgcard{background:var(--card); border-radius:16px; padding:26px 22px; width:100%; max-width:320px; text-align:center; box-shadow:0 12px 32px rgba(0,0,0,.22);}
+  .pgspin{width:34px; height:34px; border:3px solid #D8E6F3; border-top-color:var(--biru); border-radius:50%; margin:0 auto 14px; animation:sp .8s linear infinite;}
+  [data-theme="dark"] .pgspin{border-color:#2C3540; border-top-color:var(--biru);}
+  .pgtitle{font-size:14px; font-weight:700; color:var(--tx); margin-bottom:4px;}
+  .pgsub{font-size:12px; color:var(--tx2); margin-top:10px; min-height:16px;}
+  .pgbarwrap{width:100%; height:7px; background:var(--page); border-radius:6px; overflow:hidden; margin-top:12px;}
+  .pgbar{height:100%; width:0%; background:var(--biru); border-radius:6px; transition:width .35s ease;}
+  .pgpct{font-size:11px; color:var(--tx3); margin-top:6px;}
+
   /* ====== TEMA GELAP ====== */
   [data-theme="dark"]{
     --biru:#3D8BD4; --biru-tua:#2A6CB0;
@@ -352,6 +380,28 @@
     <button class="acts-btn" onclick="actAdd('piutang')"><span class="acts-ic" style="background:var(--hijau)">&#8599;</span><div class="acts-tx"><div class="at">Piutang</div><div class="as">Uang Anda yang ada pada pihak lain</div></div></button>
     <button class="acts-btn" onclick="actAdd('hutang')"><span class="acts-ic" style="background:var(--merah)">&#8600;</span><div class="acts-tx"><div class="at">Hutang</div><div class="as">Kewajiban Anda kepada pihak lain</div></div></button>
     <button class="acts-cancel" onclick="closeSheet()">Batal</button>
+  </div>
+</div>
+
+<div class="cmask" id="cmMask">
+  <div class="cmcard">
+    <div class="cmicon info" id="cmIcon">&#10068;</div>
+    <div class="cmtitle" id="cmTitle">Konfirmasi</div>
+    <div class="cmtext" id="cmText"></div>
+    <div class="cmbtns">
+      <button class="cmbtn cancel" id="cmCancel">Batal</button>
+      <button class="cmbtn ok" id="cmOk">OK</button>
+    </div>
+  </div>
+</div>
+
+<div class="pmask" id="pgMask">
+  <div class="pgcard">
+    <div class="pgspin"></div>
+    <div class="pgtitle" id="pgTitle">Memproses...</div>
+    <div class="pgbarwrap"><div class="pgbar" id="pgBar"></div></div>
+    <div class="pgpct" id="pgPct">0%</div>
+    <div class="pgsub" id="pgSub">Menyiapkan...</div>
   </div>
 </div>
 
@@ -607,8 +657,8 @@ function eyeIcon(size){
     ? '<svg width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 002.8 2.8"/><path d="M9.4 5.1A9 9 0 0112 5c5 0 9 4.5 9 7a11.6 11.6 0 01-2.1 2.9"/><path d="M6.1 6.1C3.8 7.4 2.3 9.6 2 12c0 0 3.5 7 10 7 1 0 1.9-.1 2.7-.4"/></svg>'
     : '<svg width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
 }
-function appBar(){
-  var av = USER
+function appBar(hideAva){
+  var av = (USER && !hideAva)
     ? ((USER.picture)
         ? '<img class="ava" style="padding:0" src="'+esc(USER.picture)+'">'
         : '<div class="ava">'+esc(inisial(USER.name))+'</div>')
@@ -723,6 +773,41 @@ function esc(s){ return String(s||'').replace(/[&<>"]/g,function(c){return {'&':
 function sortTX(){ TX.sort(function(a,b){ return (b.tanggal+(b.createdAt||'')).localeCompare(a.tanggal+(a.createdAt||'')); }); }
 function jumlahBelum(){ return TX.filter(function(t){return !t.terkirim;}).length; }
 
+/* ====== MODAL KONFIRMASI (pengganti confirm() bawaan) ====== */
+function confirmModal(text, opt){
+  opt=opt||{};
+  return new Promise(function(res){
+    var mask=document.getElementById('cmMask');
+    var icon=document.getElementById('cmIcon');
+    document.getElementById('cmTitle').textContent=opt.title||(opt.danger?'Hapus data?':'Konfirmasi');
+    document.getElementById('cmText').textContent=text;
+    icon.className='cmicon '+(opt.danger?'danger':'info');
+    icon.innerHTML=opt.danger?'&#128465;':'&#10068;';
+    var okBtn=document.getElementById('cmOk'), cancelBtn=document.getElementById('cmCancel');
+    okBtn.textContent=opt.okText||(opt.danger?'Hapus':'OK');
+    okBtn.className='cmbtn ok'+(opt.danger?' danger':'');
+    cancelBtn.textContent=opt.cancelText||'Batal';
+    mask.classList.add('show');
+    function cleanup(v){ mask.classList.remove('show'); okBtn.onclick=null; cancelBtn.onclick=null; res(v); }
+    okBtn.onclick=function(){ cleanup(true); };
+    cancelBtn.onclick=function(){ cleanup(false); };
+  });
+}
+
+/* ====== OVERLAY PROGRES (kirim / tarik data Google Sheet) ====== */
+function showProgress(title){
+  document.getElementById('pgTitle').textContent=title;
+  setProgress(0,'Menyiapkan...');
+  document.getElementById('pgMask').classList.add('show');
+}
+function setProgress(pct, sub){
+  pct=Math.max(0,Math.min(100,pct));
+  document.getElementById('pgBar').style.width=pct+'%';
+  document.getElementById('pgPct').textContent=Math.round(pct)+'%';
+  if(sub!=null) document.getElementById('pgSub').textContent=sub;
+}
+function hideProgress(){ document.getElementById('pgMask').classList.remove('show'); }
+
 function dalamPeriode(tgl){
   var t=new Date(tgl+'T00:00:00'), now=new Date(); now.setHours(0,0,0,0);
   if(periode==='harian') return t.getTime()===now.getTime();
@@ -788,14 +873,14 @@ async function claimOrphans(){
   }catch(e){ return await idbGetAll(); }
 }
 async function hapusTx(id){
-  if(!confirm('Hapus transaksi ini? Penghapusan akan ikut disinkronkan ke Google Sheet.')) return;
+  if(!await confirmModal('Hapus transaksi ini?', {danger:true})) return;
   TX=TX.filter(function(t){return t.id!==id;});
   await idbDelete(id); addDel([id]); updatePip(); render();
   flushDeletes();
 }
 async function hapusSemua(){
   if(!TX.length){ toast('Tidak ada transaksi milik Anda'); return; }
-  if(!confirm('Hapus SEMUA '+TX.length+' transaksi milik Anda dari perangkat dan Google Sheet? Tindakan ini tidak bisa dibatalkan.')) return;
+  if(!await confirmModal('Hapus semua '+TX.length+' transaksi?', {danger:true})) return;
   var ids=TX.map(function(t){return t.id;});
   for(var i=0;i<ids.length;i++){ await idbDelete(ids[i]); }
   addDel(ids); TX=[]; updatePip(); render();
@@ -807,16 +892,18 @@ async function hapusSemua(){
 async function kirimRentang(){
   var dalam=TX.filter(function(t){return dalamRentang(t.tanggal);});
   if(!dalam.length){ toast('Tidak ada transaksi pada rentang ini'); return; }
-  var btn=document.getElementById('btnKirim');
-  if(btn){ btn.disabled=true; btn.textContent='Mengirim '+dalam.length+' transaksi...'; }
+  showProgress('Mengirim ke Google Sheet');
   try{
+    setProgress(10,'Menyiapkan '+dalam.length+' transaksi...');
     var items=dalam.map(function(t){ return {id:t.id,tanggal:t.tanggal,tipe:t.tipe,kategori:t.kategori,nominal:t.nominal,keterangan:t.keterangan,catatan:t.catatan,createdAt:t.createdAt,user:t.user||emailUser()}; });
+    setProgress(35,'Mengirim transaksi...');
     await kirimNoCors('sync',{items:items});
     var sukses=dalam;
+    setProgress(60,'Memverifikasi data...');
     try{ var d=await jsonp('action=list'); var ada={}; (d.data||[]).forEach(function(r){ ada[String(r.id)]=true; }); var cek=dalam.filter(function(t){return ada[String(t.id)];}); if(cek.length) sukses=cek; }catch(e){}
     sukses.forEach(function(t){ t.terkirim=true; });
     await idbBulkPut(sukses);
-    toast(sukses.length+' transaksi terkirim ke Sheet');
+    setProgress(80,'Menyinkronkan hutang & piutang...');
     try{
       var utBelum=UT.filter(function(u){ return !u.terkirim; });
       if(utBelum.length){
@@ -825,30 +912,41 @@ async function kirimRentang(){
         utBelum.forEach(function(u){ u.terkirim=true; }); await uBulkPut(utBelum);
       }
     }catch(e){}
+    setProgress(95,'Menyelesaikan...');
     flushDeletes();
-  }catch(e){ toast('Gagal kirim: '+e.message); }
+    setProgress(100,'Selesai');
+    await new Promise(function(r){setTimeout(r,350);});
+    hideProgress();
+    toast(sukses.length+' transaksi terkirim ke Sheet');
+  }catch(e){ hideProgress(); toast('Gagal kirim: '+e.message); }
   updatePip(); render();
 }
 
 /* ====== TARIK DARI SHEET (PEMULIHAN) ====== */
 async function tarikDariSheet(){
-  if(!confirm('Tarik semua transaksi dari Google Sheet dan gabungkan ke perangkat ini? Data yang sudah ada tidak akan tergandakan.')) return;
-  var btn=document.getElementById('btnTarik');
-  if(btn){ btn.disabled=true; btn.textContent='Menarik data...'; }
+  if(!await confirmModal('Tarik semua data dari Google Sheet ke perangkat ini?')) return;
+  showProgress('Menarik data dari Sheet');
   try{
+    setProgress(15,'Mengambil transaksi...');
     var d=await jsonp('action=list');
     var q=getDelQueue(), qset={}; q.forEach(function(id){ qset[String(id)]=1; });
     var dari=(d.data||[]).filter(function(r){ return r.user===emailUser() && !qset[String(r.id)]; }).map(function(r){ r.terkirim=true; return r; });
+    setProgress(45,'Menyimpan '+dari.length+' transaksi...');
     if(dari.length) await idbBulkPut(dari);
     var all=await idbGetAll(); TX=all.filter(function(t){ return t.user===emailUser(); }); sortTX();
+    setProgress(70,'Mengambil hutang & piutang...');
     try{
       var du=await jsonp('action=listUtang');
       var dariU=(du.data||[]).filter(function(r){ return r.user===emailUser(); }).map(function(r){ try{ r.pembayaran=JSON.parse(r.pembayaran||'[]'); }catch(e){ r.pembayaran=[]; } r.terkirim=true; return r; });
+      setProgress(88,'Menyimpan hutang & piutang...');
       if(dariU.length) await uBulkPut(dariU);
       await muatUtang();
     }catch(e){}
+    setProgress(100,'Selesai');
+    await new Promise(function(r){setTimeout(r,350);});
+    hideProgress();
     toast(dari.length+' transaksi milik Anda tersedia di perangkat');
-  }catch(e){ toast('Gagal tarik: '+e.message); }
+  }catch(e){ hideProgress(); toast('Gagal tarik: '+e.message); }
   updatePip(); render();
 }
 
@@ -925,7 +1023,10 @@ async function afterLogin(){
   try{ var all=await claimOrphans(); TX=all.filter(function(t){ return t.user===emailUser(); }); sortTX(); await muatUtang(); }catch(e){}
   updatePip(); flushDeletes(); view='home'; setNav(); render();
 }
-function logout(){ if(!confirm('Keluar dari akun ini? Data tetap tersimpan di perangkat.')) return; clearUser(); TX=[]; UT=[]; view='home'; setNav(); render(); }
+async function logout(){
+  if(!await confirmModal('Keluar dari akun ini?')) return;
+  clearUser(); TX=[]; UT=[]; view='home'; setNav(); render();
+}
 
 function periodeSeg(){
   return '<div class="seg">'+['harian','mingguan','bulanan'].map(function(p){return '<button data-p="'+p+'" class="'+(periode===p?'on':'')+'">'+p[0].toUpperCase()+p.slice(1)+'</button>';}).join('')+'</div>';
@@ -1262,18 +1363,18 @@ async function catatBayar(id){
 }
 async function hapusBayar(id, idx){
   var u=cariUt(id); if(!u||!u.pembayaran) return;
-  if(!confirm('Hapus catatan pembayaran ini?')) return;
+  if(!await confirmModal('Hapus catatan pembayaran ini?', {danger:true})) return;
   u.pembayaran.splice(idx,1); u.terkirim=false; await uPut(u); render();
 }
 async function lunasiUtang(id){
   var u=cariUt(id); if(!u) return;
   var sisa=utSisa(u); if(sisa<=0){ toast('Catatan sudah lunas'); return; }
-  if(!confirm('Tandai lunas? Sisa '+rp(sisa)+' dicatat sebagai pembayaran hari ini.')) return;
+  if(!await confirmModal('Tandai lunas sisa '+rp(sisa)+'?')) return;
   u.pembayaran=u.pembayaran||[]; u.pembayaran.push({tanggal:todayISO(), nominal:sisa, catatan:'Pelunasan'}); u.terkirim=false;
   await uPut(u); showPay=false; toast('Ditandai lunas'); render();
 }
 async function hapusUtang(id){
-  if(!confirm('Hapus catatan ini beserta seluruh riwayat pembayarannya?')) return;
+  if(!await confirmModal('Hapus catatan ini beserta riwayat pembayarannya?', {danger:true})) return;
   UT=UT.filter(function(x){ return x.id!==id; });
   await uDelete(id);
   if(getGasUrl()){ try{ kirimNoCors('deleteUtang',{ids:[id], user:emailUser()}); }catch(e){} }
@@ -1283,12 +1384,18 @@ async function cadangkanUtang(){
   if(!getGasUrl()){ toast('Hubungkan Google Sheet dahulu di menu Profil'); return; }
   var belum=UT.filter(function(u){ return !u.terkirim; });
   if(!belum.length){ toast('Semua catatan sudah tercadang'); return; }
+  showProgress('Mencadangkan ke Sheet');
   try{
+    setProgress(20,'Menyiapkan '+belum.length+' catatan...');
     var uitems=belum.map(function(u){ return {id:u.id,jenis:u.jenis,pihak:u.pihak,pokok:u.pokok,tanggal:u.tanggal,jatuhTempo:u.jatuhTempo||'',catatan:u.catatan||'',pembayaran:JSON.stringify(u.pembayaran||[]),createdAt:u.createdAt||'',user:u.user||emailUser()}; });
+    setProgress(55,'Mengirim ke Sheet...');
     await kirimNoCors('syncUtang',{items:uitems});
     belum.forEach(function(u){ u.terkirim=true; }); await uBulkPut(belum);
+    setProgress(100,'Selesai');
+    await new Promise(function(r){setTimeout(r,300);});
+    hideProgress();
     toast(uitems.length+' catatan tercadang ke Sheet');
-  }catch(e){ toast('Gagal mencadangkan: '+e.message); }
+  }catch(e){ hideProgress(); toast('Gagal mencadangkan: '+e.message); }
   render();
 }
 
@@ -1400,8 +1507,7 @@ function renderReport(){
   var tot=keluar||1;
   var nExp=TX.filter(function(t){return inRange(t.tanggal,expRange,expAwal,expAkhir);}).length;
   S().innerHTML=
-    appBar()+
-    '<div class="fhead"></div>'+periodeSeg()+
+    appBar()+periodeSeg()+
     '<div class="rep-cards"><div class="rep-card"><div class="l">Pemasukan</div><div class="v" style="color:var(--hijau-tx)">'+fmtRp(masuk)+'</div></div>'+
     '<div class="rep-card"><div class="l">Pengeluaran</div><div class="v" style="color:var(--merah-tx)">'+fmtRp(keluar)+'</div></div></div>'+
     '<div class="sec-head" style="padding-top:14px"><div class="t">Pengeluaran per kategori</div></div>'+
@@ -1554,8 +1660,7 @@ function renderSettings(){
   var sheetOn=!!getGasUrl();
   var sheetSub=sheetOn?'<span class="stat-dot on"></span>Tersambung':'<span class="stat-dot off"></span>Belum tersambung';
   S().innerHTML=
-    appBar()+
-    '<div class="fhead"></div>'+
+    appBar(true)+
     '<div class="set">'+
       '<div class="prof-hero">'+avaBesar(u)+'<div class="pn">'+esc(u.name||'')+'</div><div class="pe">'+esc(u.email||'')+'</div></div>'+
       '<div class="grp-label">Tampilan</div>'+
