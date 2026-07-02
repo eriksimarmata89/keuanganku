@@ -1866,7 +1866,9 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
   var SEP='|';
   function kirimBiner(nama, b64){
     if(window.AppInventor && window.AppInventor.setWebViewString){
-      window.AppInventor.setWebViewString('SIMPANTEKS'+SEP+nama+SEP+b64);
+      // Ubah base64 standar -> web-safe (sesuai yang diharapkan KIO4)
+      var ws = b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'*');
+      window.AppInventor.setWebViewString('SIMPANTEKS'+SEP+nama+SEP+ws);
       toast('Menyimpan '+nama+'...');
     } else { toast('Simpan file hanya tersedia di aplikasi'); }
   }
