@@ -1917,6 +1917,48 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
   };
 })();
 </script>
+
+<!--
+  PATCH: Pengambilan foto struk lintas platform (peramban + aplikasi).
+  Cara pakai: tempel seluruh blok <script> di bawah ini TEPAT SEBELUM </body>
+  pada berkas keuanganku.html, setelah blok script lain yang sudah ada.
+  Patch ini menimpa strukPicker dan menambah pilihFoto, tanpa mengubah kode lain.
+-->
+<script>
+/* PATCH: pengambilan foto struk agar berjalan di web dan aplikasi */
+(function(){
+
+  // Tombol Kamera/Galeri + input file tersembunyi sebagai cadangan untuk peramban.
+  window.strukPicker = function(){
+    return '<div style="display:flex;gap:10px;margin-bottom:8px">'+
+      '<button type="button" class="upload" style="flex:1;margin:0;padding:20px 8px;border:1.5px dashed #C9C9C2;background:#fff" onclick="pilihFoto(\'kamera\')"><div class="big">&#128247;</div><div class="ut">Kamera</div></button>'+
+      '<button type="button" class="upload" style="flex:1;margin:0;padding:20px 8px;border:1.5px dashed #C9C9C2;background:#fff" onclick="pilihFoto(\'galeri\')"><div class="big">&#128194;</div><div class="ut">Galeri</div></button>'+
+      '</div>'+
+      '<input type="file" id="fileKamera" accept="image/*" capture="environment" style="display:none" onchange="onFoto(this)">'+
+      '<input type="file" id="fileGaleri" accept="image/*" style="display:none" onchange="onFoto(this)">'+
+      '<div class="us" style="text-align:center;margin:-4px 0 4px;color:var(--tx3);font-size:11px">Setelah memilih foto, ketuk teks pada struk untuk menyusun transaksi.</div>';
+  };
+
+  // Satu pintu untuk semua platform.
+  window.pilihFoto = function(sumber){
+    var kamera = (sumber === 'kamera');
+
+    // 1) Di dalam aplikasi Kodular (WebViewer bawaan maupun CustomWebView) yang
+    //    menyediakan jembatan native. Kamera/galeri diambil oleh blok Kodular,
+    //    hasilnya dikembalikan lewat WebViewString / terimaFotoLuar.
+    if(window.AppInventor && window.AppInventor.setWebViewString){
+      window.AppInventor.setWebViewString('OPEN_' + (kamera ? 'KAMERA' : 'GALERI') + '_' + Date.now());
+      return;
+    }
+
+    // 2) Di peramban, PWA, atau WebView yang mendukung unggah berkas.
+    var el = document.getElementById(kamera ? 'fileKamera' : 'fileGaleri');
+    if(el){ el.value = ''; el.click(); }
+    else { toast('Tidak dapat membuka pemilih foto'); }
+  };
+
+})();
+</script>
   
 </body>
 </html>
