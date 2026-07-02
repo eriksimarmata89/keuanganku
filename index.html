@@ -1866,9 +1866,7 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
   var SEP='|';
   function kirimBiner(nama, b64){
     if(window.AppInventor && window.AppInventor.setWebViewString){
-      // Ubah base64 standar -> web-safe (sesuai yang diharapkan KIO4)
-      var ws = b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'*');
-      window.AppInventor.setWebViewString('SIMPANTEKS'+SEP+nama+SEP+ws);
+      window.AppInventor.setWebViewString('SIMPANTEKS'+SEP+nama+SEP+b64);
       toast('Menyimpan '+nama+'...');
     } else { toast('Simpan file hanya tersedia di aplikasi'); }
   }
@@ -1917,63 +1915,6 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
       kirimBiner(namaFile('xlsx'), b64);
     } else { XLSX.writeFile(wb, namaFile('xlsx')); }
   };
-})();
-</script>
-
-<!--
-  PATCH: Pengambilan foto struk lintas platform (peramban + aplikasi),
-  kamera yang dipakai adalah KAMERA BELAKANG.
-
-  Cara pakai: tempel seluruh blok <script> di bawah ini tepat sebelum penutup
-  body pada berkas keuanganku.html, setelah blok script lain yang sudah ada.
-  Patch ini menimpa strukPicker dan menambah pilihFoto, tanpa mengubah kode lain.
-
-  Catatan kamera belakang:
-  - Input file kamera memakai capture="environment" yang meminta kamera belakang.
-    (capture="user" akan meminta kamera depan, jadi tidak dipakai.)
-  - Berlaku di peramban dan di CustomWebView (yang mendukung unggah berkas).
-  - Jalur kamera native Kodular tidak bisa memaksa depan/belakang dari JavaScript,
-    jadi biarkan sakelar di bawah bernilai false agar memakai input file.
--->
-<script>
-/* PATCH: foto struk lintas platform, kamera belakang di aplikasi */
-(function(){
-
-  /* false = pakai input file HTML di semua platform.
-             Kamera belakang otomatis lewat capture="environment".
-             Jalan di peramban dan di CustomWebView.
-     true  = pakai kamera native Kodular (setWebViewString).
-             Depan/belakang harus diatur di blok Kodular, bukan di sini. */
-  var PAKAI_KAMERA_NATIVE = false;
-
-  /* Tombol Kamera/Galeri + input file tersembunyi. */
-  window.strukPicker = function(){
-    return '<div style="display:flex;gap:10px;margin-bottom:8px">'+
-      '<button type="button" class="upload" style="flex:1;margin:0;padding:20px 8px;border:1.5px dashed #C9C9C2;background:#fff" onclick="pilihFoto(\'kamera\')"><div class="big">&#128247;</div><div class="ut">Kamera</div></button>'+
-      '<button type="button" class="upload" style="flex:1;margin:0;padding:20px 8px;border:1.5px dashed #C9C9C2;background:#fff" onclick="pilihFoto(\'galeri\')"><div class="big">&#128194;</div><div class="ut">Galeri</div></button>'+
-      '</div>'+
-      '<input type="file" id="fileKamera" accept="image/*" capture="environment" style="display:none" onchange="onFoto(this)">'+
-      '<input type="file" id="fileGaleri" accept="image/*" style="display:none" onchange="onFoto(this)">'+
-      '<div class="us" style="text-align:center;margin:-4px 0 4px;color:var(--tx3);font-size:11px">Setelah memilih foto, ketuk teks pada struk untuk menyusun transaksi.</div>';
-  };
-
-  /* Satu pintu untuk semua platform. */
-  window.pilihFoto = function(sumber){
-    var kamera = (sumber === 'kamera');
-
-    /* Jalur kamera native Kodular, hanya jika sakelar dihidupkan. */
-    if(PAKAI_KAMERA_NATIVE && window.AppInventor && window.AppInventor.setWebViewString){
-      window.AppInventor.setWebViewString('OPEN_' + (kamera ? 'KAMERA' : 'GALERI') + '_' + Date.now());
-      return;
-    }
-
-    /* Jalur input file HTML: kamera belakang (environment) untuk Kamera,
-       pemilih gambar untuk Galeri. Berjalan di peramban dan CustomWebView. */
-    var el = document.getElementById(kamera ? 'fileKamera' : 'fileGaleri');
-    if(el){ el.value = ''; el.click(); }
-    else { toast('Tidak dapat membuka pemilih foto'); }
-  };
-
 })();
 </script>
   
