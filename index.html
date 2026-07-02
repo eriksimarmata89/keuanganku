@@ -1865,16 +1865,11 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
 (function(){
   var SEP='|';
   function kirimBiner(nama, b64){
-  if(window.AppInventor && window.AppInventor.setWebViewString){
-    var CHUNK = 4000;
-    var total = Math.ceil(b64.length / CHUNK);
-    for(var i = 0; i < total; i++){
-      var potongan = b64.substr(i*CHUNK, CHUNK);
-      var tanda = (i===0?'MULAI':(i===total-1?'SELESAI':'LANJUT'));
-      window.AppInventor.setWebViewString('CHUNK|'+tanda+'|'+nama+'|'+i+'|'+total+'|'+potongan);
-    }
+    if(window.AppInventor && window.AppInventor.setWebViewString){
+      window.AppInventor.setWebViewString('SIMPANTEKS'+SEP+nama+SEP+b64);
+      toast('Menyimpan '+nama+'...');
+    } else { toast('Simpan file hanya tersedia di aplikasi'); }
   }
-}
 
   window.unduhHTML=function(){   // tombol berlabel "PDF"
     var rows=dataExport();
