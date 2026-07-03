@@ -489,6 +489,7 @@ function doPost(e) {
     else if (action === 'deleteUtang') out = deleteUtang(body.ids);
     else if (action === 'kirimOtp') out = kirimOtp(body.phone);
     else if (action === 'verifikasiOtp') out = verifikasiOtp(body.phone, body.code);
+    else if (action === 'hapusLaporan') out = hapusLaporan(body.id);
     else out = { ok: false, error: 'Aksi tidak dikenal: ' + action };
     return json(out);
   } catch (err) {
@@ -935,6 +936,18 @@ function verifikasiOtp(phone, code) {
       }
     }
     return { ok: false, error: 'Belum ada permintaan kode untuk nomor ini' };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+/* Hapus file laporan sementara dari Drive, dipanggil otomatis oleh aplikasi
+   setelah pengguna mengunduh atau menutup pratinjau laporan. */
+function hapusLaporan(fileId) {
+  try {
+    if (!fileId) return { ok: false, error: 'ID file tidak ada' };
+    DriveApp.getFileById(fileId).setTrashed(true);
+    return { ok: true };
   } catch (err) {
     return { ok: false, error: String(err) };
   }
@@ -2276,7 +2289,7 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
 <script>
 /* PATCH: Laporan PDF & Excel dibuat di server, lalu ditampilkan pratinjaunya di dalam aplikasi */
 (function(){
-  var lapUrl='', lapDownloadUrl='', lapNama='';
+  var lapUrl='', lapDownloadUrl='', lapNama='', lapFileId='';
 
   function isoDari(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
@@ -2290,7 +2303,7 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
   }
 
   window.tampilkanLaporanModal=function(format, url, downloadUrl, nama, fileId){
-    lapUrl=url; lapDownloadUrl=downloadUrl; lapNama=nama;
+    lapUrl=url; lapDownloadUrl=downloadUrl; lapNama=nama; lapFileId=fileId||'';
     document.getElementById('lapTitle').textContent='Laporan '+format.toUpperCase()+' siap';
     document.getElementById('lapText').textContent=nama+' siap dilihat. Ketuk Unduh untuk menyimpannya.';
     var frame=document.getElementById('lapFrame');
@@ -2300,7 +2313,25 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
     document.getElementById('lapMask').classList.add('show');
   };
   window.onLapFrameLoad=function(){ var l=document.getElementById('lapFrameLoading'); if(l) l.style.display='none'; };
-  window.tutupLaporanModal=function(){ document.getElementById('lapMask').classList.remove('show'); document.getElementById('lapFrame').src='about:blank'; };
+
+  /* Sembunyikan modal saja (dipakai baik saat Tutup maupun setelah Unduh diklik). */
+  function sembunyikanModalLaporan(){
+    document.getElementById('lapMask').classList.remove('show');
+    document.getElementById('lapFrame').src='about:blank';
+  }
+  /* Hapus file sementara di Drive. "segera": langsung hapus (aman, belum ada unduhan berjalan).
+     Tidak segera (setelah klik Unduh): beri jeda dulu supaya proses unduh sempat selesai
+     sebelum filenya dibuang, baru dihapus di server. */
+  function hapusLaporanServer(segera){
+    var fileId=lapFileId; lapFileId='';
+    if(!fileId || !getGasUrl()) return;
+    var jalankan=function(){ kirimNoCors('hapusLaporan',{id:fileId}).catch(function(){}); };
+    if(segera) jalankan(); else setTimeout(jalankan, 6000);
+  }
+  window.tutupLaporanModal=function(){
+    sembunyikanModalLaporan();
+    hapusLaporanServer(true);
+  };
   window.unduhLaporanModal=function(){
     var target=lapDownloadUrl||lapUrl;
     if(window.AppInventor && window.AppInventor.setWebViewString){
@@ -2308,6 +2339,8 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
     } else {
       window.open(target,'_blank');
     }
+    sembunyikanModalLaporan();
+    hapusLaporanServer(false);
   };
 
   async function buatLaporanServer(format){
