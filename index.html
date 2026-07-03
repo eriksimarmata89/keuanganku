@@ -22,6 +22,7 @@
   body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; background:#e9e9e6; color:var(--tx);}
   #app{max-width:480px; margin:0 auto; min-height:100vh; background:var(--page); position:relative; display:flex; flex-direction:column;}
   .scroll{flex:1; overflow-y:auto; padding-bottom:90px;}
+  .scroll.has-appbar{padding-top:66px;}
   h1,h2,h3,p{margin:0;}
   button{font-family:inherit; cursor:pointer;}
 
@@ -62,8 +63,8 @@
   .sdot.belum{background:#E0A11B;} .sdot.kirim{background:var(--hijau);}
 
   .nav{position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; background:#fff; border-top:.5px solid var(--line); display:flex; justify-content:space-around; align-items:center; padding:8px 0 14px;}
-  .nav button{background:none; border:none; color:var(--tx3); display:flex; flex-direction:column; align-items:center; gap:2px; font-size:10px; padding:4px 8px; position:relative;}
-  .nav button.on{color:var(--biru);}
+  .nav button{background:none; border:none; color:var(--biru); opacity:.45; display:flex; flex-direction:column; align-items:center; gap:2px; font-size:10px; padding:4px 8px; position:relative;}
+  .nav button.on{color:var(--biru); opacity:1;}
   .nav .ico{font-size:21px; line-height:1;}
   .nav .pip{position:absolute; top:0; right:6px; min-width:16px; height:16px; background:var(--merah); color:#fff; border-radius:9px; font-size:9px; font-weight:600; display:flex; align-items:center; justify-content:center; padding:0 3px;}
   .fab{width:50px; height:50px; border-radius:50%; background:var(--biru); color:#fff; border:none; font-size:28px; margin-top:-24px; box-shadow:0 4px 12px rgba(24,95,165,.4); display:flex; align-items:center; justify-content:center; line-height:1;}
@@ -186,6 +187,9 @@
   .btn-danger{width:100%; border:.5px solid var(--merah); color:var(--merah-tx); background:#fff; border-radius:10px; padding:12px 0; font-size:14px; font-weight:600; margin-top:10px;}
   .prof-hero{display:flex; flex-direction:column; align-items:center; text-align:center; padding:8px 0 18px;}
   .prof-hero .pava, .prof-hero .pava-i{width:74px; height:74px; font-size:26px; margin-bottom:10px;}
+  .ava-edit-wrap{position:relative; display:inline-block;}
+  .ava-edit-btn{position:absolute; right:-2px; bottom:12px; width:26px; height:26px; border-radius:50%; background:var(--biru); border:2px solid var(--page); color:#fff; display:flex; align-items:center; justify-content:center; padding:0;}
+  .ava-edit-btn:active{background:var(--biru-tua);}
   .prof-hero .pava-logo{margin-bottom:10px; display:flex;}
   .prof-hero .pn{font-size:18px; font-weight:700;}
   .prof-hero .pe{font-size:12px; color:var(--tx2); margin-top:3px; word-break:break-all;}
@@ -225,7 +229,7 @@
   .gnote{background:var(--kuning-bg); color:var(--kuning-tx); font-size:12px; line-height:1.5; border-radius:10px; padding:11px 13px; margin:6px 0 4px;}
 
   /* ====== HEADER APLIKASI ====== */
-  .appbar{position:sticky; top:0; z-index:20; display:flex; align-items:center; justify-content:space-between; padding:12px 18px 10px; background:var(--page);}
+  .appbar{position:fixed; top:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; z-index:20; display:flex; align-items:center; justify-content:space-between; padding:12px 18px 10px; background:var(--page); box-sizing:border-box;}
   .appbar .brand{display:flex; align-items:center; gap:9px;}
   .appbar .brand .mk{width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
   .appbar .brand .bt{font-size:16px; font-weight:700; letter-spacing:-.2px;}
@@ -385,6 +389,18 @@
   </div>
 </div>
 <div class="toast" id="toast"></div>
+<input type="file" id="avatarFileInput" accept="image/*" style="display:none" onchange="onAvatarFileInput(this)">
+
+<div class="acts" id="avatarActs">
+  <div class="acts-mask" onclick="closeAvatarSheet()"></div>
+  <div class="acts-card">
+    <div class="acts-h">Foto profil</div>
+    <button class="acts-btn" onclick="pilihAvatar('kamera')"><span class="acts-ic" style="background:var(--biru)">&#128247;</span><div class="acts-tx"><div class="at">Kamera</div><div class="as">Ambil foto baru</div></div></button>
+    <button class="acts-btn" onclick="pilihAvatar('galeri')"><span class="acts-ic" style="background:var(--hijau)">&#128194;</span><div class="acts-tx"><div class="at">Galeri</div><div class="as">Pilih dari galeri</div></div></button>
+    <button class="acts-btn" onclick="hapusAvatar()" id="avatarHapusBtn"><span class="acts-ic" style="background:var(--merah)">&#128465;</span><div class="acts-tx"><div class="at">Hapus foto</div><div class="as">Kembali ke inisial nama</div></div></button>
+    <button class="acts-cancel" onclick="closeAvatarSheet()">Batal</button>
+  </div>
+</div>
 
 <div class="acts" id="acts">
   <div class="acts-mask" onclick="closeSheet()"></div>
@@ -445,7 +461,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 
 <script type="text/plain" id="gasCode">/**
  * KeuanganKu - Backend
@@ -472,6 +487,8 @@ function doPost(e) {
     else if (action === 'listUtang') out = listUtang(body.user);
     else if (action === 'syncUtang') out = syncUtang(body.items);
     else if (action === 'deleteUtang') out = deleteUtang(body.ids);
+    else if (action === 'kirimOtp') out = kirimOtp(body.phone);
+    else if (action === 'verifikasiOtp') out = verifikasiOtp(body.phone, body.code);
     else out = { ok: false, error: 'Aksi tidak dikenal: ' + action };
     return json(out);
   } catch (err) {
@@ -854,6 +871,75 @@ function buatFileDariSheet(rows, utangRows, namaFile, folder, pemilik, awal, akh
   }
 }
 
+/* =======================================================================
+ * VERIFIKASI NOMOR WHATSAPP (OTP VIA FONNTE)
+ * Sebelum dipakai: daftar gratis di fonnte.com, hubungkan satu nomor WA
+ * lewat scan QR di menu Device, salin Token-nya, lalu simpan sebagai
+ * Script Property bernama FONNTE_TOKEN (Project Settings > Script Properties).
+ * ======================================================================= */
+var SHEET_OTP = 'OTP';
+var OTP_MASA_BERLAKU_DETIK = 300; // 5 menit
+
+function sheetOtp() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SHEET_OTP);
+  if (!sh) { sh = ss.insertSheet(SHEET_OTP); sh.appendRow(['phone', 'code', 'expiresAt']); }
+  if (sh.getLastRow() === 0) sh.appendRow(['phone', 'code', 'expiresAt']);
+  return sh;
+}
+
+function kirimOtp(phone) {
+  try {
+    phone = String(phone || '').replace(/\D/g, '');
+    if (!phone) return { ok: false, error: 'Nomor tidak valid' };
+    var token = PropertiesService.getScriptProperties().getProperty('FONNTE_TOKEN');
+    if (!token) return { ok: false, error: 'FONNTE_TOKEN belum diatur di Script Properties' };
+
+    var code = String(Math.floor(100000 + Math.random() * 900000));
+    var expiresAt = Math.floor(Date.now() / 1000) + OTP_MASA_BERLAKU_DETIK;
+
+    var sh = sheetOtp();
+    var values = sh.getDataRange().getValues();
+    var baris = -1;
+    for (var i = 1; i < values.length; i++) { if (String(values[i][0]) === phone) { baris = i + 1; break; } }
+    if (baris > 0) sh.getRange(baris, 1, 1, 3).setValues([[phone, code, expiresAt]]);
+    else sh.appendRow([phone, code, expiresAt]);
+
+    var resp = UrlFetchApp.fetch('https://api.fonnte.com/send', {
+      method: 'post',
+      headers: { Authorization: token },
+      payload: { target: phone, message: 'Kode verifikasi KeuanganKu Anda: ' + code + '\nBerlaku 5 menit. Jangan bagikan kode ini ke siapa pun.' },
+      muteHttpExceptions: true
+    });
+    var hasil = JSON.parse(resp.getContentText() || '{}');
+    if (hasil.status === false) return { ok: false, error: hasil.reason || 'Gagal mengirim pesan' };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+function verifikasiOtp(phone, code) {
+  try {
+    phone = String(phone || '').replace(/\D/g, '');
+    code = String(code || '').trim();
+    var sh = sheetOtp();
+    var values = sh.getDataRange().getValues();
+    for (var i = 1; i < values.length; i++) {
+      if (String(values[i][0]) === phone) {
+        var cocok = String(values[i][1]) === code;
+        var belumKedaluwarsa = Math.floor(Date.now() / 1000) <= Number(values[i][2]);
+        if (cocok && belumKedaluwarsa) { sh.deleteRow(i + 1); return { ok: true }; }
+        if (cocok && !belumKedaluwarsa) return { ok: false, error: 'Kode sudah kedaluwarsa' };
+        return { ok: false, error: 'Kode salah' };
+      }
+    }
+    return { ok: false, error: 'Belum ada permintaan kode untuk nomor ini' };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 function ujiIzin() {
   var f = folderLaporan();
   Logger.log('Folder laporan siap: ' + f.getName());
@@ -939,14 +1025,23 @@ function appBar(hideAva){
 
 /* ====== AKUN PENGGUNA ====== */
 var USER=null;
-var DEFAULT_CID='791377203575-aijrdmdnl9b7t8ri4qhsah0avr9mr4h4.apps.googleusercontent.com';
-var LS_USER='kk_user', LS_CID='kk_gclient', LS_DELQ='kk_delqueue';
+var LS_USER='kk_user', LS_DELQ='kk_delqueue';
 function getUser(){ try{ return JSON.parse(localStorage.getItem(LS_USER)||'null'); }catch(e){ return null; } }
 function setUser(u){ USER=u; localStorage.setItem(LS_USER, JSON.stringify(u)); }
 function clearUser(){ USER=null; localStorage.removeItem(LS_USER); }
-function getClientId(){ return localStorage.getItem(LS_CID)||DEFAULT_CID; }
-function setClientId(v){ localStorage.setItem(LS_CID, (v||'').trim()); }
-function emailUser(){ return (USER&&USER.email)||''; }
+/* Nama fungsi dipertahankan "emailUser" agar seluruh pemanggilnya di bawah tidak perlu diubah,
+   namun sekarang mengembalikan NOMOR WHATSAPP pengguna (format 62xxxxxxxxxx), bukan email. */
+function emailUser(){ return (USER&&USER.phone)||''; }
+/* Ubah nomor menjadi format 62xxxxxxxxxx (tanpa spasi/strip/plus), siap dipakai untuk tautan WhatsApp. */
+function normalisasiHP(v){
+  var d=String(v||'').replace(/\D/g,'');
+  if(!d) return '';
+  if(d.charAt(0)==='0') d='62'+d.slice(1);
+  else if(d.slice(0,2)!=='62') d='62'+d;
+  return d;
+}
+function validHP(d){ return d.length>=10 && d.length<=15; }
+function formatHPTampil(d){ return d ? ('+'+d) : ''; }
 
 /* Antrean penghapusan: id yang dihapus saat offline disimpan di sini,
    lalu disusulkan saat kembali online. */
@@ -1222,70 +1317,40 @@ function S(){ return document.getElementById('scroll'); }
 function setNav(){ document.querySelectorAll('.nav [data-nav]').forEach(function(b){ b.classList.toggle('on',b.dataset.nav===view); }); }
 function updatePip(){ var p=document.getElementById('navPip'), n=jumlahBelum(); if(n>0){ p.style.display='flex'; p.textContent=n>99?'99+':n; } else p.style.display='none'; }
 function goView(v){ if(view==='struk' && v!=='struk') cleanupWorker(); profSub=null; showGuide=false; showPay=false; view=v; setNav(); render(); S().scrollTop=0; }
-function render(){ var nav=document.querySelector('.nav'); if(nav) nav.style.display=USER?'flex':'none'; if(!USER) return renderLogin(); if(view==='home')return renderHome(); if(view==='report')return renderReport(); if(view==='sinkron')return renderSinkron(); if(view==='settings')return renderSettings(); if(view==='add')return renderAdd(); if(view==='struk')return renderStruk(); if(view==='utang')return renderUtang(); if(view==='utangAdd')return renderUtangAdd(); if(view==='utangDetail')return renderUtangDetail(); }
+function render(){
+  var nav=document.querySelector('.nav'); if(nav) nav.style.display=USER?'flex':'none';
+  if(!USER){ renderLogin(); }
+  else if(view==='home'){ renderHome(); }
+  else if(view==='report'){ renderReport(); }
+  else if(view==='sinkron'){ renderSinkron(); }
+  else if(view==='settings'){ renderSettings(); }
+  else if(view==='add'){ renderAdd(); }
+  else if(view==='struk'){ renderStruk(); }
+  else if(view==='utang'){ renderUtang(); }
+  else if(view==='utangAdd'){ renderUtangAdd(); }
+  else if(view==='utangDetail'){ renderUtangDetail(); }
+  S().classList.toggle('has-appbar', !!document.querySelector('.appbar'));
+}
 
-/* ====== LOGIN / AKUN ====== */
-var loginManual=false;
-function isWebView(){ var ua=(navigator.userAgent||''); return /Android/.test(ua) && /;\s*wv\)/.test(ua); }
-function manualFields(label){
-  return '<label class="fl">Nama</label><input class="field" id="loginNama" placeholder="Nama Anda">'+
-    '<label class="fl">Email</label><input class="field" id="loginEmail" inputmode="email" placeholder="nama@gmail.com">'+
-    '<button class="save pem" onclick="masukManual()">'+(label||'Masuk')+'</button>';
-}
-function manualForm(){ return '<div class="divider"></div>'+manualFields('Masuk manual'); }
-function toggleManual(){ loginManual=!loginManual; renderLogin(); }
+/* ====== LOGIN / AKUN (NOMOR WHATSAPP) ====== */
 function renderLogin(){
-  var cid=getClientId();
-  var html='<div class="login-wrap"><div class="logo-mark">'+logoMark(64)+'</div><div class="logo">KeuanganKu</div>';
-  if(isWebView()){
-    html+='<div class="logo-sub">Masuk dengan nama dan email Anda.</div>'+
-      '<div class="peninfo idle" style="text-align:left;margin:0 0 16px">Anda membuka aplikasi versi terpasang. Tombol Google hanya berfungsi di peramban, jadi di sini gunakan nama dan email. Pakai email yang sama dengan yang dipakai di peramban agar data tetap menyatu.</div>'+
-      manualFields('Masuk');
-  } else if(cid){
-    html+='<div class="logo-sub">Masuk menggunakan akun Google. Pengguna baru cukup memilih akun Gmail tanpa pendaftaran terpisah.</div>'+
-      '<div id="gbtn" class="gbox"></div>'+
-      '<div class="atau"><a href="javascript:void(0)" style="color:var(--biru)" onclick="toggleManual()">'+(loginManual?'Sembunyikan masuk manual':'Masuk tanpa Google (mode offline)')+'</a></div>'+
-      (loginManual?manualForm():'');
-  } else {
-    html+='<div class="logo-sub">Masuk menggunakan akun Google.</div>'+
-      '<div class="peninfo idle" style="margin:0 0 14px;text-align:left">Tombol Sign in with Google muncul setelah pemilik aplikasi memasang Google Client ID satu kali. Tempel di bawah. Setelah itu, pengguna cukup pilih akun Gmail tanpa mendaftar.</div>'+
-      '<label class="fl">Google Client ID</label><input class="field" id="loginCid" placeholder="xxxx.apps.googleusercontent.com" value="'+esc(cid)+'">'+
-      '<button class="save pem" onclick="simpanClientId(\'loginCid\')">Simpan &amp; tampilkan tombol Google</button>'+
-      '<div class="atau"><a href="javascript:void(0)" style="color:var(--biru)" onclick="toggleManual()">'+(loginManual?'Sembunyikan masuk manual':'Atau masuk manual tanpa Google')+'</a></div>'+
-      (loginManual?manualForm():'');
-  }
-  html+='</div>';
+  var html='<div class="login-wrap"><div class="logo-mark">'+logoMark(64)+'</div><div class="logo">KeuanganKu</div>'+
+    '<div class="logo-sub">Masuk atau daftar menggunakan nomor WhatsApp Anda. Data tersimpan di perangkat ini dan tercatat atas nama nomor tersebut.</div>'+
+    '<label class="fl">Nama</label><input class="field" id="loginNama" placeholder="Nama Anda">'+
+    '<label class="fl">Nomor WhatsApp</label><input class="field" id="loginPhone" type="tel" inputmode="numeric" placeholder="08xxxxxxxxxx" oninput="onLoginPhone(this)">'+
+    '<button class="save pem" onclick="masukManual()">Masuk</button>'+
+    '</div>';
   S().innerHTML=html;
-  initGoogle();
 }
-function initGoogle(){
-  var cid=getClientId(), box=document.getElementById('gbtn');
-  if(!cid||!box) return;
-  if(!(window.google&&google.accounts&&google.accounts.id)){ setTimeout(initGoogle,400); return; }
-  try{
-    google.accounts.id.initialize({client_id:cid, callback:onGoogleCred});
-    google.accounts.id.renderButton(box,{theme:'outline',size:'large',width:300,text:'signin_with'});
-  }catch(e){ box.innerHTML='<div class="peninfo idle" style="margin:0">Client ID belum valid atau origin belum diizinkan.</div>'; }
-}
-function decodeJWT(tok){
-  var b=tok.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
-  b+='='.repeat((4-b.length%4)%4);
-  var json=decodeURIComponent(atob(b).split('').map(function(c){ return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2); }).join(''));
-  return JSON.parse(json);
-}
-function onGoogleCred(resp){
-  try{ var p=decodeJWT(resp.credential); if(!p||!p.email){ toast('Login gagal'); return; }
-    setUser({email:String(p.email).toLowerCase(), name:p.name||p.email, picture:p.picture||''}); afterLogin();
-  }catch(e){ toast('Login gagal: '+e.message); }
-}
+function onLoginPhone(el){ el.value=el.value.replace(/[^\d+]/g,''); }
 function masukManual(){
   var n=(document.getElementById('loginNama').value||'').trim();
-  var e=(document.getElementById('loginEmail').value||'').trim();
+  var raw=(document.getElementById('loginPhone').value||'').trim();
+  var hp=normalisasiHP(raw);
   if(!n){ toast('Nama belum diisi'); return; }
-  if(!/.+@.+\..+/.test(e)){ toast('Email tidak valid'); return; }
-  setUser({email:e.toLowerCase(), name:n, picture:''}); afterLogin();
+  if(!validHP(hp)){ toast('Nomor WhatsApp tidak valid'); return; }
+  setUser({phone:hp, name:n, picture:''}); afterLogin();
 }
-function simpanClientId(inputId){ setClientId((document.getElementById(inputId).value||'').trim()); toast('Client ID disimpan'); render(); }
 async function afterLogin(){
   try{ var all=await claimOrphans(); TX=all.filter(function(t){ return t.user===emailUser(); }); sortTX(); await muatUtang(); }catch(e){}
   updatePip(); flushDeletes(); view='home'; setNav(); render();
@@ -1380,6 +1445,64 @@ function mintaFoto(sumber){
     toast('Fitur ini hanya tersedia di aplikasi');
   }
 }
+
+/* ====== FOTO PROFIL (AVATAR) ====== */
+function openAvatarSheet(){
+  var hapusBtn=document.getElementById('avatarHapusBtn');
+  if(hapusBtn) hapusBtn.style.display=(USER&&USER.picture)?'flex':'none';
+  document.getElementById('avatarActs').classList.add('show');
+}
+function closeAvatarSheet(){ document.getElementById('avatarActs').classList.remove('show'); }
+function pilihAvatar(sumber){
+  closeAvatarSheet();
+  if(window.AppInventor && window.AppInventor.setWebViewString){
+    _fotoTarget='avatar';
+    window.AppInventor.setWebViewString('OPEN_'+sumber.toUpperCase()+'_'+Date.now());
+  } else {
+    document.getElementById('avatarFileInput').click();
+  }
+}
+function onAvatarFileInput(input){
+  var file=input.files[0]; if(!file) return;
+  var reader=new FileReader();
+  reader.onload=function(){ simpanAvatarDariFoto(reader.result); };
+  reader.readAsDataURL(file);
+  input.value='';
+}
+/* Perkecil & kompres foto sebelum disimpan, supaya ringan di localStorage. */
+function simpanAvatarDariFoto(dataUrl){
+  var img=new Image();
+  img.onload=function(){
+    var maxSisi=360;
+    var skala=Math.min(1, maxSisi/Math.max(img.naturalWidth,img.naturalHeight));
+    var w=Math.max(1,Math.round(img.naturalWidth*skala)), h=Math.max(1,Math.round(img.naturalHeight*skala));
+    var c=document.createElement('canvas'); c.width=w; c.height=h;
+    c.getContext('2d').drawImage(img,0,0,w,h);
+    var hasil; try{ hasil=c.toDataURL('image/jpeg',0.82); }catch(e){ hasil=dataUrl; }
+    simpanAvatar(hasil);
+  };
+  img.onerror=function(){ simpanAvatar(dataUrl); };
+  img.src=dataUrl;
+}
+function simpanAvatar(dataUrl){
+  if(!USER) return;
+  try{
+    var u=Object.assign({}, USER, {picture:dataUrl});
+    setUser(u); USER=u;
+    toast('Foto profil diperbarui');
+  }catch(e){
+    toast('Gagal menyimpan foto, mungkin ukurannya terlalu besar');
+  }
+  render();
+}
+async function hapusAvatar(){
+  closeAvatarSheet();
+  if(!USER||!USER.picture) return;
+  if(!await confirmModal('Hapus foto profil ini?', {danger:true})) return;
+  var u=Object.assign({}, USER, {picture:''});
+  setUser(u); USER=u;
+  toast('Foto profil dihapus'); render();
+}
 function setTipe(t){ addState.tipe=t; addState.kategori=(t==='pengeluaran'?KAT_PENGELUARAN:KAT_PEMASUKAN)[0]; if(t==='pemasukan')addState.metode='manual'; renderAdd(); }
 function setMetode(m){ addState.metode=m; renderAdd(); }
 function onNominal(el){ var d=el.value.replace(/\D/g,''); addState.nominal=d; el.value=d?(+d).toLocaleString('id-ID'):''; }
@@ -1411,12 +1534,15 @@ function onFoto(input){
   reader.readAsDataURL(file);
 }
 /* Jembatan untuk APK: setelah kamera native (mis. Kodular) mengambil foto,
-   panggil window.terimaFotoLuar('data:image/jpeg;base64,....') lewat RunJavaScript. */
+   panggil window.terimaFotoLuar('data:image/jpeg;base64,....') lewat RunJavaScript.
+   _fotoTarget menandai foto berikutnya untuk apa: 'struk' (default) atau 'avatar'. */
+var _fotoTarget='struk';
 window.terimaFotoLuar=function(dataUrl){
   try{
-    if(!USER){ toast('Masuk dulu sebelum memindai struk'); return; }
     if(!dataUrl){ toast('Foto kosong'); return; }
     if(String(dataUrl).indexOf('data:')!==0) dataUrl='data:image/jpeg;base64,'+dataUrl;
+    if(_fotoTarget==='avatar'){ _fotoTarget='struk'; simpanAvatarDariFoto(dataUrl); return; }
+    if(!USER){ toast('Masuk dulu sebelum memindai struk'); return; }
     mulaiStrukDariDataURL(dataUrl);
   }catch(e){ toast('Gagal memproses foto'); }
 };
@@ -2008,7 +2134,7 @@ function renderSettings(){
   S().innerHTML=
     appBar(true)+
     '<div class="set">'+
-      '<div class="prof-hero">'+avaBesar(u)+'<div class="pn">'+esc(u.name||'')+'</div><div class="pe">'+esc(u.email||'')+'</div></div>'+
+      '<div class="prof-hero"><div class="ava-edit-wrap">'+avaBesar(u)+'<button class="ava-edit-btn" onclick="openAvatarSheet()" aria-label="Ubah foto profil"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg></button></div><div class="pn">'+esc(u.name||'')+'</div><div class="pe">'+esc(formatHPTampil(u.phone))+'</div></div>'+
       '<div class="grp-label">Tampilan</div>'+
       '<div class="seg" style="margin:0 0 4px">'+themeBtn('terang','\u2600 Terang')+themeBtn('gelap','\u263E Gelap')+themeBtn('auto','\u25D1 Otomatis')+'</div>'+
       '<div style="font-size:11px;color:var(--tx3);margin:0 2px 4px">Otomatis mengikuti pengaturan tema perangkat Anda.</div>'+
@@ -2079,7 +2205,7 @@ function renderProfAbout(){
         '<div class="about-line"><span>Versi</span><b>1.0</b></div>'+
         '<div class="about-line"><span>Penyimpanan</span><b>Di perangkat (offline)</b></div>'+
         '<div class="about-line"><span>Cadangan</span><b>Layanan pencadangan pribadi</b></div>'+
-        '<div class="about-line"><span>Login</span><b>Akun Google</b></div>'+
+        '<div class="about-line"><span>Login</span><b>Nomor WhatsApp</b></div>'+
       '</div>'+
       '<p class="hint">KeuanganKu mencatat pemasukan dan pengeluaran, menyimpannya di perangkat agar tetap dapat digunakan tanpa internet, dan mencadangkannya ke layanan pribadi milik Anda. Pemindai struk memproses teks langsung di perangkat sehingga foto tidak dikirim ke mana pun.</p>'+
     '</div>';
