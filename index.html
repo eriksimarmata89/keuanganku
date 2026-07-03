@@ -1008,8 +1008,23 @@ function ujiIzin() {
 })();
   
 var LS_URL='kk_gas_url';
-function getGasUrl(){ return localStorage.getItem(LS_URL)||''; }
-function setGasUrl(u){ localStorage.setItem(LS_URL,u.trim()); }
+/* Alamat pencadangan disimpan terpisah per nomor WhatsApp yang sedang login,
+   supaya kalau logout lalu login dengan nomor lain, alamatnya menyesuaikan
+   nomor itu sendiri (kosong kalau nomor tersebut belum pernah mengatur). */
+function gasUrlKey(){ var p=(typeof emailUser==='function'?emailUser():''); return p ? (LS_URL+'_'+p) : LS_URL; }
+function getGasUrl(){
+  var key=gasUrlKey();
+  var v=localStorage.getItem(key);
+  if(v==null && key!==LS_URL){
+    /* migrasi ramah untuk pengguna lama: alamat tunggal sebelumnya (belum per-nomor)
+       dipindahkan sekali ke nomor yang sedang login saat ini. */
+    var lama=localStorage.getItem(LS_URL);
+    if(lama){ localStorage.setItem(key, lama); return lama; }
+    return '';
+  }
+  return v||'';
+}
+function setGasUrl(u){ localStorage.setItem(gasUrlKey(), u.trim()); }
 
 /* ====== TEMA (TERANG / GELAP / OTOMATIS) ====== */
 var LS_THEME='kk_theme';
@@ -2264,6 +2279,7 @@ function panduanSheet(){
     gstep(7,'Salin URL Web App','Setelah berhasil diterbitkan, Google menampilkan sebuah tautan yang diakhiri <b>/exec</b>. Salin tautan tersebut.')+
     gstep(8,'Hubungkan ke aplikasi','Kembali ke halaman ini, tempel alamat tadi pada kolom di atas, lalu tekan <b>Simpan &amp; sambungkan</b>. Aplikasi akan otomatis menguji koneksi ke Google Sheet dan menampilkan sisa penyimpanan Google Drive Anda pada langkah ini juga.')+
     '<div class="gnote">Jika suatu saat kode diperbarui, buka kembali Apps Script, lalu <b>Deploy</b> &rarr; <b>Manage deployments</b> &rarr; ikon pensil &rarr; <b>New version</b>, supaya perubahan diterapkan ke Google Sheet Anda.</div>'+
+    '<div class="gnote">Jika penyimpanan Google Drive Anda sudah penuh, Anda bisa berpindah ke Google Drive lain sebagai cadangan baru: ulangi panduan dari <b>Langkah 1</b> di atas untuk membuat Google Sheet &amp; Web App baru (boleh pakai akun Google yang sama atau akun lain yang masih punya ruang kosong), lalu ganti alamat lama pada kolom <b>Alamat Web App Google Apps Script</b> di atas dengan alamat Web App yang baru, dan tekan <b>Simpan &amp; sambungkan</b> lagi. Perlu diketahui, data lama yang sudah tersimpan di Google Sheet sebelumnya tidak otomatis ikut pindah ke Sheet yang baru.</div>'+
   '</div>';
 }
 function salinKode(){
