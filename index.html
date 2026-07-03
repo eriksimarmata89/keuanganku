@@ -35,7 +35,8 @@
   .saldo{background:var(--biru); border-radius:16px; padding:18px 20px; color:#fff; position:relative;}
   .saldo-carousel{display:flex; gap:12px; overflow-x:auto; scroll-snap-type:x mandatory; padding:0 18px; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
   .saldo-carousel::-webkit-scrollbar{display:none;}
-  .saldo-slide{scroll-snap-align:start; flex:0 0 92%; min-width:0;}
+  .saldo-slide{scroll-snap-align:start; flex:0 0 calc(100% - 34px); min-width:0;}
+  .saldo-slide.full{flex:0 0 100%;}
   .saldo-dots{display:flex; justify-content:center; gap:6px; margin:9px 0 2px;}
   .saldo-dot{width:6px; height:6px; border-radius:50%; background:var(--line); transition:.2s;}
   .saldo-dot.on{background:var(--biru); width:16px; border-radius:4px;}
@@ -87,6 +88,8 @@
   .metode button{flex:1; border:none; background:transparent; padding:9px 0; font-size:13px; color:var(--tx2); border-radius:8px; display:flex; align-items:center; justify-content:center; gap:6px;}
   .metode button.on{background:#fff; color:var(--tx); font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.06);}
   label.fl{display:block; font-size:11px; color:var(--tx2); margin:0 0 6px 2px;}
+  .cklabel{display:flex; align-items:flex-start; gap:9px; font-size:12.5px; line-height:1.5; background:var(--kuning-bg); color:var(--kuning-tx); border-radius:10px; padding:10px 12px; margin:-2px 0 14px;}
+  .cklabel input{margin-top:2px; flex-shrink:0;}
   .field{width:100%; border:.5px solid var(--line); border-radius:10px; padding:11px 12px; font-size:15px; color:var(--tx); background:#fff; font-family:inherit; margin-bottom:14px;}
   .field:focus{outline:none; border-color:var(--biru);}
   select.field{appearance:none; background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="%236B6B66" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>'); background-repeat:no-repeat; background-position:right 12px center;}
@@ -396,6 +399,7 @@
 </div>
 <div class="toast" id="toast"></div>
 <input type="file" id="avatarFileInput" accept="image/*" style="display:none" onchange="onAvatarFileInput(this)">
+<input type="file" id="akunLogoFileInput" accept="image/*" style="display:none" onchange="onAkunLogoFileInput(this)">
 
 <div class="acts" id="avatarActs">
   <div class="acts-mask" onclick="closeAvatarSheet()"></div>
@@ -1708,7 +1712,7 @@ function renderHome(){
   S().innerHTML=
     appBar()+
     '<div class="topbar"><div class="greet"><div><div class="hi">Halo,</div><div class="nm">'+esc((USER&&USER.name)||'')+'</div></div></div></div>'+
-    '<div class="saldo-carousel" id="saldoCarousel">'+slides.map(function(s){return '<div class="saldo-slide">'+s+'</div>';}).join('')+'</div>'+
+    '<div class="saldo-carousel" id="saldoCarousel">'+slides.map(function(s){return '<div class="saldo-slide'+(slides.length===1?' full':'')+'">'+s+'</div>';}).join('')+'</div>'+
     (slides.length>1?('<div class="saldo-dots" id="saldoDots">'+slides.map(function(_,i){return '<span class="saldo-dot'+(i===0?' on':'')+'"></span>';}).join('')+'</div>'):'')+
     '<div class="uring" onclick="goView(\'utang\')">'+
       '<div class="ur"><div class="url">Piutang berjalan</div><div class="urv pos">'+fmtRp(piutangSisa)+'</div></div>'+
@@ -1734,7 +1738,7 @@ function totalSlideHTML(saldoTotal,pM,pK){
 function akunSlideHTML(a){
   var p=akunPeriode(a.id);
   return '<div class="saldo" onclick="bukaAkun(\''+a.id+'\')" style="cursor:pointer">'+
-    '<div class="lbl">'+akunIkon(a.jenis)+' '+esc(a.nama)+'</div><div class="amt">'+fmtRp(saldoAkunSaatIni(a.id))+'</div>'+
+    '<div class="lbl">'+akunIconHTML(a,15)+' '+esc(a.nama)+'</div><div class="amt">'+fmtRp(saldoAkunSaatIni(a.id))+'</div>'+
     '<div class="row"><div><div class="mini">&#9660; Pemasukan</div><div class="val">'+fmtRp(p.masuk)+'</div></div>'+
     '<div><div class="mini">&#9650; Pengeluaran</div><div class="val">'+fmtRp(p.keluar)+'</div></div></div>'+
     '<div style="border-top:1px solid rgba(255,255,255,.22);margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">'+
@@ -1764,7 +1768,7 @@ function txRow(t){
 
 /* ====== TAMBAH (MANUAL) ====== */
 var addState=blankAdd();
-function blankAdd(){ return {tipe:'pengeluaran',metode:'manual',nominal:'',keterangan:'',kategori:'Belanja',tanggal:todayISO(),catatan:'',akunId:(AK[0]?AK[0].id:'')}; }
+function blankAdd(){ return {tipe:'pengeluaran',metode:'manual',nominal:'',keterangan:'',kategori:'Belanja',tanggal:todayISO(),catatan:'',akunId:(AK[0]?AK[0].id:''),jadiHutang:false}; }
 
 function renderAdd(){
   if(!AK.length){
@@ -1776,12 +1780,15 @@ function renderAdd(){
   }
   var a=addState, peng=a.tipe==='pengeluaran';
   if(!a.akunId) a.akunId=AK[0].id;
+  var akunTerpilih=cariAkun(a.akunId);
+  var isKK=peng && akunTerpilih && akunTerpilih.jenis==='kartu';
   S().innerHTML=
     '<div class="fhead"><button class="bk" onclick="goView(\'home\')">&#8592;</button><div class="ti">Tambah transaksi</div></div>'+
     '<div class="form"><div class="tipe2">'+
       '<button class="peng '+(peng?'on':'')+'" onclick="setTipe(\'pengeluaran\')">Pengeluaran</button>'+
       '<button class="pem '+(!peng?'on':'')+'" onclick="setTipe(\'pemasukan\')">Pemasukan</button></div>'+
-    '<label class="fl">Penampung saldo</label><select class="field" onchange="addState.akunId=this.value">'+akunOptionsHTML(a.akunId)+'</select>'+
+    '<label class="fl">Penampung saldo</label><select class="field" onchange="addState.akunId=this.value;renderAdd()">'+akunOptionsHTML(a.akunId)+'</select>'+
+    (isKK?('<label class="cklabel"><input type="checkbox" '+(a.jadiHutang?'checked':'')+' onchange="addState.jadiHutang=this.checked"> Catat juga sebagai hutang (tagihan '+esc(akunTerpilih.nama)+' yang perlu dibayar nanti)</label>'):'')+
     (peng?'<div class="metode"><button class="'+(a.metode==='manual'?'on':'')+'" onclick="setMetode(\'manual\')">&#9998; Ketik manual</button>'+
       '<button class="'+(a.metode==='struk'?'on':'')+'" onclick="setMetode(\'struk\')">&#128247; Foto struk</button></div>':'')+
     (peng&&a.metode==='struk'?strukPicker():'')+
@@ -1877,8 +1884,18 @@ function onSimpan(){
   var a=addState;
   if(!a.akunId){ toast('Pilih penampung saldo terlebih dahulu'); return; }
   if(!a.nominal||+a.nominal<=0){ toast('Nominal belum diisi'); return; }
+  var akunTerpilih=cariAkun(a.akunId);
+  var buatHutang=a.tipe==='pengeluaran' && a.jadiHutang && akunTerpilih && akunTerpilih.jenis==='kartu';
   simpanTx({tanggal:a.tanggal,tipe:a.tipe,kategori:a.kategori,nominal:+a.nominal,keterangan:a.keterangan.trim(),catatan:a.catatan.trim(),akunId:a.akunId,createdAt:new Date().toISOString()});
+  if(buatHutang) catatHutangKartuKredit(+a.nominal, a.keterangan.trim(), a.tanggal, akunTerpilih.nama);
   addState=blankAdd();
+}
+/* Buat catatan hutang otomatis untuk transaksi yang dibayar via kartu kredit,
+   supaya tercatat sebagai kewajiban yang perlu dibayar saat tagihan datang. */
+async function catatHutangKartuKredit(nominal, keterangan, tanggal, namaAkun){
+  var item={ id:uid(), jenis:'hutang', pihak:'Tagihan '+namaAkun, pokok:nominal, tanggal:tanggal, jatuhTempo:'', catatan:'Otomatis dari transaksi'+(keterangan?(': '+keterangan):''), pembayaran:[], createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
+  UT.unshift(item); await uPut(item);
+  toast('Transaksi & hutang tagihan kartu tersimpan');
 }
 /* ====== PEMINDAI STRUK: KETUK PER KATA, BANYAK TRANSAKSI ======
    Seluruh struk dibaca OCR sekali. Tiap kata (pisah spasi) jadi satu
@@ -1903,13 +1920,14 @@ function onFoto(input){
 }
 /* Jembatan untuk APK: setelah kamera native (mis. Kodular) mengambil foto,
    panggil window.terimaFotoLuar('data:image/jpeg;base64,....') lewat RunJavaScript.
-   _fotoTarget menandai foto berikutnya untuk apa: 'struk' (default) atau 'avatar'. */
+   _fotoTarget menandai foto berikutnya untuk apa: 'struk' (default), 'avatar', atau 'akunLogo'. */
 var _fotoTarget='struk';
 window.terimaFotoLuar=function(dataUrl){
   try{
     if(!dataUrl){ toast('Foto kosong'); return; }
     if(String(dataUrl).indexOf('data:')!==0) dataUrl='data:image/jpeg;base64,'+dataUrl;
     if(_fotoTarget==='avatar'){ _fotoTarget='struk'; simpanAvatarDariFoto(dataUrl); return; }
+    if(_fotoTarget==='akunLogo'){ _fotoTarget='struk'; simpanAkunLogoDariFoto(dataUrl); return; }
     if(!USER){ toast('Masuk dulu sebelum memindai struk'); return; }
     mulaiStrukDariDataURL(dataUrl);
   }catch(e){ toast('Gagal memproses foto'); }
@@ -1931,7 +1949,7 @@ setInterval(function(){
     }
   }catch(e){}
 }, 600);
-function blankStruk(){ return {fotoData:null,img:null,cw:900,ch:0,kata:[],kataRole:{},draftIdx:[],ketAnchor:null,ocrDone:false,draft:{keterangan:'',nominal:''},toko:'',catatan:'',tanggal:todayISO(),akunId:(AK[0]?AK[0].id:''),pending:[],editPend:null,activeRole:null,busy:false}; }
+function blankStruk(){ return {fotoData:null,img:null,cw:900,ch:0,kata:[],kataRole:{},draftIdx:[],ketAnchor:null,ocrDone:false,draft:{keterangan:'',nominal:''},toko:'',catatan:'',tanggal:todayISO(),akunId:(AK[0]?AK[0].id:''),jadiHutang:false,pending:[],editPend:null,activeRole:null,busy:false}; }
 var strukState=blankStruk();
 var ocrWorker=null;
 async function getWorker(){
@@ -2023,7 +2041,8 @@ function renderStruk(){
       '<div class="slot"><span>Keterangan</span><b>'+(st.draft.keterangan?esc(st.draft.keterangan):'<i>ketuk kata</i>')+'</b></div>'+
       '<div class="slot"><span>Nominal</span><b>'+(st.draft.nominal?rp(+st.draft.nominal):'<i>ketuk kata angka</i>')+'</b></div></div>'+
     '<label class="fl">Nama toko (opsional, berlaku untuk semua)</label><input class="field" value="'+esc(st.toko)+'" oninput="strukState.toko=this.value" placeholder="ketuk di foto atau ketik">'+
-    '<label class="fl">Penampung saldo</label><select class="field" onchange="strukState.akunId=this.value">'+akunOptionsHTML(st.akunId)+'</select>'+
+    '<label class="fl">Penampung saldo</label><select class="field" onchange="strukState.akunId=this.value;renderStruk()">'+akunOptionsHTML(st.akunId)+'</select>'+
+    (function(){ var ak=cariAkun(st.akunId); return (ak&&ak.jenis==='kartu')?('<label class="cklabel"><input type="checkbox" '+(st.jadiHutang?'checked':'')+' onchange="strukState.jadiHutang=this.checked"> Catat juga sebagai hutang (tagihan '+esc(ak.nama)+' yang perlu dibayar nanti)</label>'):''; })()+
     '<div class="duo"><div><label class="fl">Catatan (opsional)</label><input class="field" value="'+esc(st.catatan)+'" oninput="strukState.catatan=this.value" placeholder="opsional"></div>'+
       '<div><label class="fl">Tanggal</label><input class="field" type="date" value="'+st.tanggal+'" onchange="strukState.tanggal=this.value"></div></div>'+
     '<div class="dl" style="margin:4px 2px 6px">Daftar transaksi ('+st.pending.length+')'+(st.pending.length?' &middot; ketuk dua kali nama/nominal untuk ubah':'')+'</div>'+
@@ -2104,15 +2123,20 @@ async function simpanSemua(){
   var st=strukState;
   if(!st.pending.length){ toast('Belum ada transaksi'); return; }
   if(!st.akunId){ toast('Pilih penampung saldo terlebih dahulu'); return; }
+  var akunTerpilih=cariAkun(st.akunId);
+  var buatHutang=st.jadiHutang && akunTerpilih && akunTerpilih.jenis==='kartu';
   var cat=[st.toko?('Toko: '+st.toko):'', st.catatan].filter(Boolean).join(' | ');
+  var totalNominal=0;
   for(var i=0;i<st.pending.length;i++){
     var p=st.pending[i];
     var catItem=[cat, p.diskon?('Diskon '+rp(p.diskon)):''].filter(Boolean).join(' | ');
     var item={ id:uid(), tanggal:st.tanggal, tipe:'pengeluaran', kategori:p.kategori, nominal:+p.nominal, keterangan:p.keterangan, catatan:catItem, akunId:st.akunId, createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
     TX.unshift(item); await idbPut(item);
+    totalNominal+=(+p.nominal);
   }
   sortTX(); updatePip();
   var n=st.pending.length; cleanupWorker(); strukState=blankStruk();
+  if(buatHutang) await catatHutangKartuKredit(totalNominal, st.toko||(n+' transaksi struk'), st.tanggal, akunTerpilih.nama);
   toast(n+' transaksi tersimpan'); goView('home');
 }
 
@@ -2286,6 +2310,12 @@ function togglePay(){ showPay=!showPay; render(); }
 /* ====== PENAMPUNG SALDO (AKUN: BANK / DOMPET DIGITAL / KARTU KREDIT) ====== */
 var JENIS_AKUN=[['bank','Bank'],['ewallet','Dompet Digital'],['kartu','Kartu Kredit'],['lainnya','Lainnya']];
 function akunIkon(j){ return j==='bank'?'\uD83C\uDFE6': j==='ewallet'?'\uD83D\uDCF1': j==='kartu'?'\uD83D\uDCB3':'\uD83D\uDCB0'; }
+/* Tampilkan logo yang diunggah pengguna jika ada, kalau tidak pakai ikon emoji sesuai jenis. */
+function akunIconHTML(a, size){
+  size=size||20;
+  if(a && a.logo) return '<img src="'+a.logo+'" style="width:'+size+'px;height:'+size+'px;border-radius:'+Math.round(size*0.28)+'px;object-fit:cover;vertical-align:middle;flex-shrink:0">';
+  return '<span style="font-size:'+size+'px;vertical-align:middle;line-height:1">'+akunIkon(a?a.jenis:'lainnya')+'</span>';
+}
 function akunLabelJenis(j){ for(var i=0;i<JENIS_AKUN.length;i++){ if(JENIS_AKUN[i][0]===j) return JENIS_AKUN[i][1]; } return 'Lainnya'; }
 function cariAkun(id){ for(var i=0;i<AK.length;i++){ if(AK[i].id===id) return AK[i]; } return null; }
 async function muatAkun(){
@@ -2311,11 +2341,11 @@ function akunPeriode(akunId){
   var pK=px.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
   return {masuk:pM, keluar:pK};
 }
-function blankAkun(){ return {jenis:'bank', nama:'', saldoAwal:'', catatan:''}; }
+function blankAkun(){ return {jenis:'bank', nama:'', saldoAwal:'', catatan:'', logo:''}; }
 async function simpanAkun(){
   var a=akunState;
   if(!a.nama||!a.nama.trim()){ toast('Nama penampung saldo belum diisi'); return; }
-  var item={ id:uid(), nama:a.nama.trim(), jenis:a.jenis, saldoAwal:+a.saldoAwal||0, catatan:(a.catatan||'').trim(), createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
+  var item={ id:uid(), nama:a.nama.trim(), jenis:a.jenis, saldoAwal:+a.saldoAwal||0, catatan:(a.catatan||'').trim(), logo:a.logo||'', createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
   AK.push(item); await akPut(item);
   akunState=null; toast('Penampung saldo tersimpan'); goView('akunList');
 }
@@ -2331,6 +2361,17 @@ function renderAkunAdd(){
   S().innerHTML=
     '<div class="fhead"><button class="bk" onclick="goView(\'akunList\')">&#8592;</button><div class="ti">Tambah penampung saldo</div></div>'+
     '<div class="form">'+
+    '<label class="fl">Logo (opsional)</label>'+
+    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">'+
+      '<div style="width:52px;height:52px;border-radius:13px;background:var(--page);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">'+
+        (a.logo?('<img src="'+a.logo+'" style="width:100%;height:100%;object-fit:cover">'):('<span style="font-size:22px">'+akunIkon(a.jenis)+'</span>'))+
+      '</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+        '<button type="button" class="cb" onclick="pilihAkunLogo(\'kamera\')">Kamera</button>'+
+        '<button type="button" class="cb" onclick="pilihAkunLogo(\'galeri\')">Galeri</button>'+
+        (a.logo?'<button type="button" class="cb x" onclick="hapusAkunLogo()">Hapus</button>':'')+
+      '</div>'+
+    '</div>'+
     '<label class="fl">Jenis</label><div class="chips" style="padding:0 0 14px">'+JENIS_AKUN.map(function(j){ return '<button class="chip '+(a.jenis===j[0]?'on':'')+'" onclick="akunSetJenis(\''+j[0]+'\')">'+akunIkon(j[0])+' '+j[1]+'</button>'; }).join('')+'</div>'+
     '<label class="fl">Nama</label><input class="field" placeholder="mis. BCA, OVO, Kartu Kredit BNI" value="'+esc(a.nama)+'" oninput="akunState.nama=this.value">'+
     '<label class="fl">Saldo awal (opsional)</label><div class="nominal-wrap"><span class="rp">Rp</span><input inputmode="numeric" placeholder="0" value="'+(a.saldoAwal?(+a.saldoAwal).toLocaleString('id-ID'):'')+'" oninput="akunOnSaldo(this)"></div>'+
@@ -2340,6 +2381,38 @@ function renderAkunAdd(){
 }
 function akunSetJenis(j){ akunState.jenis=j; renderAkunAdd(); }
 function akunOnSaldo(el){ var d=el.value.replace(/\D/g,''); akunState.saldoAwal=d; el.value=d?(+d).toLocaleString('id-ID'):''; }
+function pilihAkunLogo(sumber){
+  if(window.AppInventor && window.AppInventor.setWebViewString){
+    _fotoTarget='akunLogo';
+    window.AppInventor.setWebViewString('OPEN_'+sumber.toUpperCase()+'_'+Date.now());
+  } else {
+    document.getElementById('akunLogoFileInput').click();
+  }
+}
+function onAkunLogoFileInput(input){
+  var file=input.files[0]; if(!file) return;
+  var reader=new FileReader();
+  reader.onload=function(){ simpanAkunLogoDariFoto(reader.result); };
+  reader.readAsDataURL(file);
+  input.value='';
+}
+/* Perkecil logo sebelum disimpan, disimpan lokal saja (tidak ikut dicadangkan ke Drive). */
+function simpanAkunLogoDariFoto(dataUrl){
+  var img=new Image();
+  img.onload=function(){
+    var maxSisi=200;
+    var skala=Math.min(1, maxSisi/Math.max(img.naturalWidth,img.naturalHeight));
+    var w=Math.max(1,Math.round(img.naturalWidth*skala)), h=Math.max(1,Math.round(img.naturalHeight*skala));
+    var c=document.createElement('canvas'); c.width=w; c.height=h;
+    c.getContext('2d').drawImage(img,0,0,w,h);
+    var hasil; try{ hasil=c.toDataURL('image/png'); }catch(e){ hasil=dataUrl; }
+    if(!akunState) akunState=blankAkun();
+    akunState.logo=hasil; renderAkunAdd();
+  };
+  img.onerror=function(){ if(!akunState) akunState=blankAkun(); akunState.logo=dataUrl; renderAkunAdd(); };
+  img.src=dataUrl;
+}
+function hapusAkunLogo(){ akunState.logo=''; renderAkunAdd(); }
 function renderAkunList(){
   var totalSaldo=AK.reduce(function(s,a){ return s+saldoAkunSaatIni(a.id); },0);
   S().innerHTML=
@@ -2353,7 +2426,7 @@ function renderAkunList(){
 }
 function akunRow(a){
   return '<button class="uitem" onclick="bukaAkun(\''+a.id+'\')">'+
-    '<div class="uic p" style="background:#E6F1FB;color:var(--biru)">'+akunIkon(a.jenis)+'</div>'+
+    '<div class="uic p" style="background:#E6F1FB;color:var(--biru);overflow:hidden">'+akunIconHTML(a,26)+'</div>'+
     '<div class="umid"><div class="unm">'+esc(a.nama)+'</div><div class="usub">'+akunLabelJenis(a.jenis)+'</div></div>'+
     '<div class="uamt" style="color:var(--tx)">'+fmtRp(saldoAkunSaatIni(a.id))+'</div>'+
     '</button>';
@@ -2369,7 +2442,7 @@ function renderAkunDetail(){
   S().innerHTML=
     '<div class="fhead"><button class="bk" onclick="goView(\'akunList\')">&#8592;</button><div class="ti">'+esc(a.nama)+'</div></div>'+
     '<div class="set">'+
-    '<div class="udetail p"><div class="udlbl">'+akunIkon(a.jenis)+' '+akunLabelJenis(a.jenis)+'</div><div class="udname">'+esc(a.nama)+'</div>'+
+    '<div class="udetail p"><div class="udlbl">'+akunIconHTML(a,15)+' '+akunLabelJenis(a.jenis)+'</div><div class="udname">'+esc(a.nama)+'</div>'+
     '<div class="udsisa">'+fmtRp(saldo)+'</div><div class="udcap">saldo saat ini</div></div>'+
     (a.catatan?('<div class="panel" style="margin:12px 0 0"><div style="font-size:13px;color:var(--tx2);line-height:1.5">'+esc(a.catatan)+'</div></div>'):'')+
     '<div class="sec-head" style="padding:18px 0 4px"><div class="t">Riwayat transaksi</div></div>'+
