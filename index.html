@@ -2236,15 +2236,15 @@ function renderProfSheet(){
   S().innerHTML=
     '<div class="fhead"><button class="bk" onclick="backProf()">&#8592;</button><div class="ti">Koneksi Pencadangan</div></div>'+
     '<div class="set">'+
-      '<div class="statcard '+(on?'on':'off')+'"><span class="sc-ic">'+(on?'&#9729;':'&#9888;')+'</span><div>'+(on?'Aplikasi sudah terhubung ke layanan pencadangan. Pencadangan, pemulihan, dan penghapusan data akan diselaraskan otomatis.':'Aplikasi belum terhubung ke layanan pencadangan. Masukkan alamat layanan untuk mengaktifkan pencadangan.')+'</div></div>'+
-      '<p class="hint">Seluruh transaksi tersimpan di perangkat dan tetap dapat diakses tanpa internet. Hubungkan ke layanan pencadangan untuk menyimpan salinan data dan menyelaraskannya antar perangkat. Masukkan alamat layanan yang diakhiri /exec.</p>'+
-      '<label class="fl">Alamat layanan pencadangan</label><input class="field" id="inUrl" placeholder="https://.../exec" value="'+esc(url)+'">'+
+      '<div class="statcard '+(on?'on':'off')+'"><span class="sc-ic">'+(on?'&#9729;':'&#9888;')+'</span><div>'+(on?'Aplikasi sudah terhubung ke Google Drive Anda (lewat Google Sheet &amp; Apps Script). Pencadangan, pemulihan, dan penghapusan data akan diselaraskan otomatis ke sana.':'Aplikasi belum terhubung ke Google Drive. Hubungkan Google Sheet Anda sendiri sebagai tempat pencadangan untuk mengaktifkan fitur ini.')+'</div></div>'+
+      '<p class="hint">Seluruh transaksi tersimpan di perangkat dan tetap dapat diakses tanpa internet. Pencadangan pada aplikasi ini memakai <b>Google Drive</b> milik Anda sendiri &mdash; data disimpan di dalam <b>Google Sheet</b> pribadi yang dijalankan lewat <b>Google Apps Script</b>, sehingga sepenuhnya berada dalam kendali akun Google Anda. Masukkan alamat Web App Apps Script yang diakhiri /exec.</p>'+
+      '<label class="fl">Alamat Web App Google Apps Script</label><input class="field" id="inUrl" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(url)+'">'+
       '<button class="save pem" onclick="simpanUrl()">Simpan &amp; sambungkan</button>'+
-      '<div style="font-size:11px;color:var(--tx3);margin:8px 2px 0">Koneksi otomatis diuji dan sisa penyimpanan Drive Anda ditampilkan setelah tersambung.</div>'+
+      '<div style="font-size:11px;color:var(--tx3);margin:8px 2px 0">Koneksi ke Google Sheet otomatis diuji dan sisa penyimpanan Google Drive Anda ditampilkan setelah tersambung.</div>'+
       '<div class="ok-msg" id="setMsg"></div>'+
       '<div class="divider"></div>'+
       '<div class="grp-label" style="margin-top:0">Panduan</div>'+
-      '<p class="hint" style="margin-bottom:8px">Belum punya layanan pencadangan sendiri? Ikuti langkah berikut untuk menyiapkannya dari awal.</p>'+
+      '<p class="hint" style="margin-bottom:8px">Belum punya Google Sheet sendiri untuk pencadangan? Ikuti langkah berikut untuk menyiapkan Google Drive &amp; Google Sheet Anda dari awal.</p>'+
       '<button class="guide-toggle" onclick="toggleGuide()">'+(showGuide?'&#9650; Sembunyikan panduan':'&#9660; Lihat panduan lengkap')+'</button>'+
       (showGuide?panduanSheet():'')+
     '</div>';
@@ -2254,16 +2254,16 @@ function gstep(n,judul,isi){ return '<div class="gstep"><div class="gnum">'+n+'<
 function panduanSheet(){
   var kode=esc(document.getElementById('gasCode').textContent.trim());
   return '<div class="guide">'+
-    gstep(1,'Siapkan akun','Jika belum memilikinya, buat akun secara gratis terlebih dahulu.')+
-    gstep(2,'Siapkan lembar data baru','Buat sebuah lembar data baru untuk menyimpan catatan Anda. Beri nama, misalnya KeuanganKu. Lembar tidak perlu diisi apa pun, kolomnya akan dibuat otomatis oleh kode.')+
-    gstep(3,'Buka editor skrip','Buka menu editor skrip yang tersedia pada lembar data tersebut. Sebuah tab editor kode akan terbuka.')+
-    gstep(4,'Tempel kode di bawah','Hapus seluruh kode contoh yang ada di editor, lalu tempel kode berikut. Gunakan tombol Salin kode, kemudian simpan.'+
+    gstep(1,'Siapkan akun Google','Jika belum memilikinya, buat akun Google secara gratis di accounts.google.com. Akun ini yang akan menyimpan cadangan data Anda di Google Drive.')+
+    gstep(2,'Buat Google Sheet baru','Buka drive.google.com, klik <b>Baru</b> &rarr; <b>Google Spreadsheet</b>. Beri nama, misalnya KeuanganKu. Lembar tidak perlu diisi apa pun, kolomnya akan dibuat otomatis oleh kode.')+
+    gstep(3,'Buka Apps Script dari dalam Sheet','Di dalam Google Sheet tadi, klik menu <b>Ekstensi</b> &rarr; <b>Apps Script</b>. Sebuah tab editor kode Google Apps Script akan terbuka.')+
+    gstep(4,'Tempel kode di bawah','Hapus seluruh kode contoh yang ada di editor, lalu tempel kode berikut. Gunakan tombol Salin kode, kemudian simpan (Ctrl+S).'+
       '<div class="codebox"><button class="copy-btn" onclick="salinKode()">Salin kode</button><pre>'+kode+'</pre></div>')+
-    gstep(5,'Terbitkan sebagai layanan web','Terbitkan skrip sebagai layanan web. Atur akses eksekusi sesuai akun Anda, dan izinkan akses agar aplikasi dapat terhubung. Terbitkan.')+
-    gstep(6,'Berikan izin akses','Saat diminta, pilih akun Anda lalu setujui izin yang diminta. Jika muncul peringatan keamanan, lanjutkan ke aplikasi Anda. Ini wajar karena skrip dibuat oleh Anda sendiri.')+
-    gstep(7,'Salin alamat layanan','Setelah berhasil diterbitkan, sistem menampilkan sebuah tautan layanan yang diakhiri <b>/exec</b>. Salin tautan tersebut.')+
-    gstep(8,'Hubungkan ke aplikasi','Kembali ke halaman ini, tempel alamat tadi pada kolom di atas, lalu tekan <b>Simpan &amp; sambungkan</b>. Aplikasi akan otomatis menguji koneksinya dan menampilkan sisa penyimpanan Drive Anda pada langkah ini juga.')+
-    '<div class="gnote">Jika suatu saat kode diperbarui, terbitkan kembali sebagai versi baru agar perubahan diterapkan.</div>'+
+    gstep(5,'Terbitkan sebagai Web App','Klik <b>Deploy</b> &rarr; <b>New deployment</b>. Pilih jenis <b>Web app</b>. Atur <b>Execute as: Me</b> dan <b>Who has access: Anyone</b>, lalu klik <b>Deploy</b>.')+
+    gstep(6,'Berikan izin akses Google','Pilih akun Google Anda, lalu setujui izin yang diminta &mdash; termasuk akses ke Google Drive, karena laporan PDF/Excel nanti disimpan sementara di Drive Anda. Jika muncul peringatan keamanan, klik <b>Advanced</b> lalu lanjutkan; ini wajar karena skripnya dibuat oleh Anda sendiri.')+
+    gstep(7,'Salin URL Web App','Setelah berhasil diterbitkan, Google menampilkan sebuah tautan yang diakhiri <b>/exec</b>. Salin tautan tersebut.')+
+    gstep(8,'Hubungkan ke aplikasi','Kembali ke halaman ini, tempel alamat tadi pada kolom di atas, lalu tekan <b>Simpan &amp; sambungkan</b>. Aplikasi akan otomatis menguji koneksi ke Google Sheet dan menampilkan sisa penyimpanan Google Drive Anda pada langkah ini juga.')+
+    '<div class="gnote">Jika suatu saat kode diperbarui, buka kembali Apps Script, lalu <b>Deploy</b> &rarr; <b>Manage deployments</b> &rarr; ikon pensil &rarr; <b>New version</b>, supaya perubahan diterapkan ke Google Sheet Anda.</div>'+
   '</div>';
 }
 function salinKode(){
