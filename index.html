@@ -6,6 +6,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#185FA5">
 <title>KeuanganKu</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%233D8BD4'/%3E%3Cstop offset='100%25' stop-color='%230C447C'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='40' height='40' rx='11' fill='url(%23g)'/%3E%3Ctext x='20' y='27.5' font-family='Arial' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3ERp%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cdefs%3E%3ClinearGradient id='g2' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%233D8BD4'/%3E%3Cstop offset='100%25' stop-color='%230C447C'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='40' height='40' rx='11' fill='url(%23g2)'/%3E%3Ctext x='20' y='27.5' font-family='Arial' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3ERp%3C/text%3E%3C/svg%3E">
 <style>
   :root{
     --biru:#185FA5; --biru-tua:#0C447C;
@@ -171,6 +173,7 @@
   .toast.show{opacity:1;}
   .delbtn{background:none; border:none; color:var(--tx3); font-size:16px; padding:4px 0 4px 8px;}
   .login-wrap{padding:46px 24px 24px;}
+  .login-wrap .logo-mark{display:flex; justify-content:center; margin-bottom:10px;}
   .login-wrap .logo{font-size:26px; font-weight:700; color:var(--biru); text-align:center;}
   .login-wrap .logo-sub{font-size:13px; color:var(--tx2); text-align:center; margin:6px 0 24px;}
   .gbox{display:flex; justify-content:center; margin-bottom:10px; min-height:44px;}
@@ -183,6 +186,7 @@
   .btn-danger{width:100%; border:.5px solid var(--merah); color:var(--merah-tx); background:#fff; border-radius:10px; padding:12px 0; font-size:14px; font-weight:600; margin-top:10px;}
   .prof-hero{display:flex; flex-direction:column; align-items:center; text-align:center; padding:8px 0 18px;}
   .prof-hero .pava, .prof-hero .pava-i{width:74px; height:74px; font-size:26px; margin-bottom:10px;}
+  .prof-hero .pava-logo{margin-bottom:10px; display:flex;}
   .prof-hero .pn{font-size:18px; font-weight:700;}
   .prof-hero .pe{font-size:12px; color:var(--tx2); margin-top:3px; word-break:break-all;}
   .grp-label{font-size:11px; color:var(--tx2); font-weight:600; letter-spacing:.5px; text-transform:uppercase; margin:14px 2px 8px;}
@@ -223,7 +227,7 @@
   /* ====== HEADER APLIKASI ====== */
   .appbar{position:sticky; top:0; z-index:20; display:flex; align-items:center; justify-content:space-between; padding:12px 18px 10px; background:var(--page);}
   .appbar .brand{display:flex; align-items:center; gap:9px;}
-  .appbar .brand .mk{width:30px; height:30px; border-radius:9px; background:var(--biru); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; letter-spacing:-.5px;}
+  .appbar .brand .mk{width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
   .appbar .brand .bt{font-size:16px; font-weight:700; letter-spacing:-.2px;}
   .appbar .eye{width:38px; height:38px; border-radius:50%; border:none; background:var(--card); color:var(--tx2); display:flex; align-items:center; justify-content:center; box-shadow:0 1px 2px rgba(0,0,0,.05);}
   .appbar .eye:active{background:var(--line);}
@@ -263,8 +267,7 @@
   .udetail .udmeta .ubadge{background:rgba(255,255,255,.22); color:#fff;}
   .udetail .udtgl{font-size:12px; opacity:.9;}
   .udrow{display:flex; justify-content:space-between; align-items:center; font-size:14px; padding:12px 2px; border-bottom:.5px solid var(--line);}
-  .udrow span{color:var(--tx2);}
-  .udrow b{font-weight:600;}
+  .udrow span{color:var(--tx2);} .udrow b{font-weight:600;}
 
   /* ====== ACTION SHEET (TOMBOL +) ====== */
   .acts{position:fixed; inset:0; z-index:60; display:none;}
@@ -307,6 +310,17 @@
   .pgbarwrap{width:100%; height:7px; background:var(--page); border-radius:6px; overflow:hidden; margin-top:12px;}
   .pgbar{height:100%; width:0%; background:var(--biru); border-radius:6px; transition:width .35s ease;}
   .pgpct{font-size:11px; color:var(--tx3); margin-top:6px;}
+
+  /* ====== MODAL LAPORAN (PRATINJAU) ====== */
+  .lapcard{background:var(--card); border-radius:16px; padding:18px 18px 16px; width:100%; max-width:440px; max-height:88vh; display:flex; flex-direction:column; box-shadow:0 12px 32px rgba(0,0,0,.22); position:relative;}
+  .lapclose{position:absolute; top:12px; right:12px; width:28px; height:28px; border-radius:50%; background:var(--page); color:var(--tx2); display:flex; align-items:center; justify-content:center; font-size:18px; border:none; padding:0;}
+  .lapclose:active{background:var(--line);}
+  .laphead{display:flex; gap:12px; align-items:flex-start; margin-bottom:12px; padding-right:32px;}
+  .laphead .cmicon{margin-bottom:0; flex-shrink:0;}
+  .lapframe-wrap{position:relative; flex:1; min-height:280px; border-radius:10px; overflow:hidden; border:.5px solid var(--line); background:var(--page); margin-bottom:14px;}
+  .lapframe{width:100%; height:100%; min-height:280px; display:block; background:#fff; border:none;}
+  .lapframe-loading{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; font-size:12px; color:var(--tx2); background:var(--page);}
+  .lapbtns{display:flex; gap:10px;}
 
   /* ====== TEMA GELAP ====== */
   [data-theme="dark"]{
@@ -406,11 +420,20 @@
 </div>
 
 <div class="pmask" id="lapMask">
-  <div class="pgcard" style="text-align:left">
-    <div class="cmicon info" style="margin-bottom:12px">&#128196;</div>
-    <div class="cmtitle" id="lapTitle">Laporan siap</div>
-    <div class="cmtext" id="lapText"></div>
-    <div style="display:flex;gap:10px;margin-top:6px">
+  <div class="lapcard">
+    <button class="lapclose" onclick="tutupLaporanModal()" aria-label="Tutup">&times;</button>
+    <div class="laphead">
+      <div class="cmicon info">&#128196;</div>
+      <div style="min-width:0">
+        <div class="cmtitle" id="lapTitle">Laporan siap</div>
+        <div class="cmtext" id="lapText" style="margin-bottom:0"></div>
+      </div>
+    </div>
+    <div class="lapframe-wrap">
+      <div class="lapframe-loading" id="lapFrameLoading"><span class="pgspin" style="margin:0"></span>Menyiapkan pratinjau...</div>
+      <iframe id="lapFrame" class="lapframe" src="about:blank" onload="onLapFrameLoad()"></iframe>
+    </div>
+    <div class="lapbtns">
       <button class="cmbtn cancel" onclick="tutupLaporanModal()">Tutup</button>
       <button class="cmbtn ok" onclick="unduhLaporanModal()">Unduh</button>
     </div>
@@ -425,15 +448,16 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 <script type="text/plain" id="gasCode">/**
- * KeuanganKu - Backend Google Apps Script
- * Tempel kode ini di editor Apps Script milik Google Sheet Anda,
- * lalu Deploy sebagai Web app (Execute as: Me, Who has access: Anyone).
+ * KeuanganKu - Backend
+ * Tempel kode ini di editor skrip milik lembar data Anda,
+ * lalu terbitkan sebagai layanan web (Execute as: Me, Who has access: Anyone).
  */
 
 var SHEET_NAME = 'Transaksi';
 var HEADERS = ['id', 'tanggal', 'tipe', 'kategori', 'nominal', 'keterangan', 'catatan', 'createdAt', 'user'];
 var SHEET_UTANG = 'Utang';
 var HEADERS_UTANG = ['id', 'jenis', 'pihak', 'pokok', 'tanggal', 'jatuhTempo', 'catatan', 'pembayaran', 'createdAt', 'user'];
+var FOLDER_LAPORAN = 'KeuanganKu Laporan';
 
 function doPost(e) {
   try {
@@ -460,6 +484,7 @@ function doGet(e) {
   var out = { ok: true, message: 'KeuanganKu API aktif' };
   if (p.action === 'list') out = listTransaksi(p.user);
   if (p.action === 'listUtang') out = listUtang(p.user);
+  if (p.action === 'buatLaporan') out = buatLaporan(p.user, p.format, p.awal, p.akhir, p.nama);
   if (p.callback) {
     return ContentService.createTextOutput(p.callback + '(' + JSON.stringify(out) + ')')
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
@@ -632,6 +657,206 @@ function deleteUtang(ids) {
     if (values[i][0] && buang[String(values[i][0])]) { sh.deleteRow(i + 1); n++; }
   }
   return { ok: true, deleted: n };
+}
+
+/* =======================================================================
+ * PEMBUAT LAPORAN PDF / EXCEL
+ * ======================================================================= */
+
+function buatLaporan(user, format, awal, akhir, namaPemilik) {
+  try {
+    format = (format || 'pdf').toLowerCase();
+    if (format !== 'xlsx' && format !== 'pdf') format = 'pdf';
+
+    var rows = ambilRowLaporan(user, awal, akhir);
+    var utangRows = ambilRowUtangLaporan(user);
+    if (!rows.length && !utangRows.length) return { ok: false, error: 'Tidak ada data pada rentang ini' };
+
+    var namaFile = 'Laporan-KeuanganKu-' + (awal || '') + '-sd-' + (akhir || '');
+    var file = buatFileDariSheet(rows, utangRows, namaFile, folderLaporan(), namaPemilik, awal, akhir, format);
+
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return {
+      ok: true,
+      url: file.getUrl(),
+      downloadUrl: 'https://drive.google.com/uc?export=download&id=' + file.getId(),
+      id: file.getId(),
+      nama: file.getName()
+    };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+function ambilRowUtangLaporan(user) {
+  var sh = sheetUtang();
+  var values = sh.getDataRange().getValues();
+  var rows = [];
+  for (var i = 1; i < values.length; i++) {
+    var r = values[i];
+    if (!r[0]) continue;
+    var u = r[9] != null ? String(r[9]) : '';
+    if (user && u !== String(user)) continue;
+
+    var pokok = Number(r[3]) || 0;
+    var pembayaran = [];
+    try { pembayaran = JSON.parse(r[7] || '[]'); } catch (e) {}
+    var terbayar = pembayaran.reduce(function (s, p) { return s + (Number(p.nominal) || 0); }, 0);
+    var sisa = Math.max(0, pokok - terbayar);
+    var status = sisa <= 0 ? 'Lunas' : (terbayar > 0 ? 'Sebagian' : 'Berjalan');
+
+    rows.push({
+      jenis: r[1] === 'piutang' ? 'Piutang' : 'Hutang',
+      pihak: r[2],
+      pokok: pokok,
+      tanggal: formatTanggal(r[4]),
+      jatuhTempo: r[5] ? formatTanggal(r[5]) : '',
+      terbayar: terbayar,
+      sisa: sisa,
+      status: status,
+      catatan: r[6] || ''
+    });
+  }
+  rows.sort(function (a, b) { return a.tanggal < b.tanggal ? -1 : (a.tanggal > b.tanggal ? 1 : 0); });
+  return rows;
+}
+
+function folderLaporan() {
+  var it = DriveApp.getFoldersByName(FOLDER_LAPORAN);
+  if (it.hasNext()) return it.next();
+  return DriveApp.createFolder(FOLDER_LAPORAN);
+}
+
+function ambilRowLaporan(user, awal, akhir) {
+  var sh = sheet();
+  var values = sh.getDataRange().getValues();
+  var rows = [];
+  for (var i = 1; i < values.length; i++) {
+    var r = values[i];
+    if (!r[0]) continue;
+    var u = r[8] != null ? String(r[8]) : '';
+    if (user && u !== String(user)) continue;
+    var tgl = formatTanggal(r[1]);
+    if (awal && tgl < awal) continue;
+    if (akhir && tgl > akhir) continue;
+    rows.push({
+      tanggal: tgl,
+      tipe: r[2],
+      kategori: r[3],
+      nominal: Number(r[4]) || 0,
+      keterangan: r[5] || '',
+      catatan: r[6] || ''
+    });
+  }
+  rows.sort(function (a, b) { return a.tanggal < b.tanggal ? -1 : (a.tanggal > b.tanggal ? 1 : 0); });
+  return rows;
+}
+
+function hitungTotal(rows) {
+  var masuk = 0, keluar = 0;
+  rows.forEach(function (r) {
+    if (r.tipe === 'pemasukan') masuk += r.nominal; else keluar += r.nominal;
+  });
+  return { masuk: masuk, keluar: keluar, selisih: masuk - keluar };
+}
+
+function buatFileDariSheet(rows, utangRows, namaFile, folder, pemilik, awal, akhir, format) {
+  var ss = SpreadsheetApp.create('tmp_laporan_' + Date.now());
+  var id = ss.getId();
+  try {
+    var sh = ss.getActiveSheet();
+    sh.setName('Transaksi');
+
+    sh.getRange(1, 1).setValue('Laporan Keuangan - KeuanganKu').setFontWeight('bold').setFontSize(14);
+    sh.getRange(2, 1).setValue('Pemilik: ' + (pemilik || '-'));
+    sh.getRange(3, 1).setValue('Rentang: ' + (awal || '-') + ' s/d ' + (akhir || '-'));
+    sh.getRange(4, 1).setValue('Dicetak: ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm'));
+
+    var headRow = 6;
+    var header = ['Tanggal', 'Jenis', 'Kategori', 'Keterangan', 'Catatan', 'Nominal'];
+    sh.getRange(headRow, 1, 1, header.length).setValues([header])
+      .setFontWeight('bold').setBackground('#185FA5').setFontColor('#FFFFFF');
+
+    var data = rows.map(function (r) {
+      return [
+        r.tanggal,
+        r.tipe === 'pemasukan' ? 'Pemasukan' : 'Pengeluaran',
+        r.kategori,
+        r.keterangan,
+        r.catatan,
+        r.tipe === 'pemasukan' ? r.nominal : -r.nominal
+      ];
+    });
+    if (data.length) sh.getRange(headRow + 1, 1, data.length, header.length).setValues(data);
+
+    var t = hitungTotal(rows);
+    var tot = headRow + 1 + data.length + 1;
+    sh.getRange(tot, 5).setValue('Total pemasukan');
+    sh.getRange(tot, 6).setValue(t.masuk);
+    sh.getRange(tot + 1, 5).setValue('Total pengeluaran');
+    sh.getRange(tot + 1, 6).setValue(t.keluar);
+    sh.getRange(tot + 2, 5).setValue('Selisih').setFontWeight('bold');
+    sh.getRange(tot + 2, 6).setValue(t.selisih).setFontWeight('bold');
+
+    sh.getRange(headRow, 6, (sh.getLastRow() - headRow + 1), 1).setNumberFormat('#,##0');
+    sh.autoResizeColumns(1, header.length);
+
+    var sh2 = ss.insertSheet('Hutang & Piutang');
+    sh2.getRange(1, 1).setValue('Hutang & Piutang - KeuanganKu').setFontWeight('bold').setFontSize(14);
+    sh2.getRange(2, 1).setValue('Pemilik: ' + (pemilik || '-'));
+    sh2.getRange(3, 1).setValue('Per tanggal: ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy'));
+
+    var headRow2 = 5;
+    var header2 = ['Jenis', 'Pihak', 'Pokok', 'Tanggal', 'Jatuh Tempo', 'Sudah Dibayar', 'Sisa', 'Status', 'Catatan'];
+    sh2.getRange(headRow2, 1, 1, header2.length).setValues([header2])
+      .setFontWeight('bold').setBackground('#185FA5').setFontColor('#FFFFFF');
+
+    var data2 = utangRows.map(function (u) {
+      return [u.jenis, u.pihak, u.pokok, u.tanggal, u.jatuhTempo, u.terbayar, u.sisa, u.status, u.catatan];
+    });
+    if (data2.length) sh2.getRange(headRow2 + 1, 1, data2.length, header2.length).setValues(data2);
+
+    var piutangSisa = utangRows.filter(function (u) { return u.jenis === 'Piutang'; })
+      .reduce(function (s, u) { return s + u.sisa; }, 0);
+    var hutangSisa = utangRows.filter(function (u) { return u.jenis === 'Hutang'; })
+      .reduce(function (s, u) { return s + u.sisa; }, 0);
+    var tot2 = headRow2 + 1 + data2.length + 1;
+    sh2.getRange(tot2, 6).setValue('Total piutang berjalan');
+    sh2.getRange(tot2, 7).setValue(piutangSisa);
+    sh2.getRange(tot2 + 1, 6).setValue('Total hutang berjalan');
+    sh2.getRange(tot2 + 1, 7).setValue(hutangSisa);
+
+    if (sh2.getLastRow() >= headRow2) {
+      sh2.getRange(headRow2, 3, sh2.getLastRow() - headRow2 + 1, 1).setNumberFormat('#,##0');
+      sh2.getRange(headRow2, 6, sh2.getLastRow() - headRow2 + 1, 2).setNumberFormat('#,##0');
+    }
+    sh2.autoResizeColumns(1, header2.length);
+
+    SpreadsheetApp.flush();
+
+    var ext = (format === 'xlsx') ? 'xlsx' : 'pdf';
+    var exportUrl;
+    if (format === 'xlsx') {
+      exportUrl = 'https://docs.google.com/spreadsheets/d/' + id + '/export?format=xlsx';
+    } else {
+      exportUrl = 'https://docs.google.com/spreadsheets/d/' + id +
+        '/export?format=pdf&portrait=true&size=A4&fitw=true&gridlines=false' +
+        '&sheetnames=true&printtitle=false&pagenumbers=false&fzr=false';
+    }
+
+    var token = ScriptApp.getOAuthToken();
+    var resp = UrlFetchApp.fetch(exportUrl, { headers: { Authorization: 'Bearer ' + token } });
+    var blob = resp.getBlob().setName(namaFile + '.' + ext);
+
+    return folder.createFile(blob);
+  } finally {
+    try { DriveApp.getFileById(id).setTrashed(true); } catch (e2) {}
+  }
+}
+
+function ujiIzin() {
+  var f = folderLaporan();
+  Logger.log('Folder laporan siap: ' + f.getName());
 }</script>
 
 <script>
@@ -688,13 +913,25 @@ function eyeIcon(size){
     ? '<svg width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 002.8 2.8"/><path d="M9.4 5.1A9 9 0 0112 5c5 0 9 4.5 9 7a11.6 11.6 0 01-2.1 2.9"/><path d="M6.1 6.1C3.8 7.4 2.3 9.6 2 12c0 0 3.5 7 10 7 1 0 1.9-.1 2.7-.4"/></svg>'
     : '<svg width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
 }
+var _logoSeq=0;
+function logoMark(size){
+  size = size || 30;
+  var gid = 'kkLogoGrad' + (_logoSeq++);
+  return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0">'+
+    '<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="1" y2="1">'+
+    '<stop offset="0%" stop-color="#3D8BD4"/><stop offset="100%" stop-color="#0C447C"/>'+
+    '</linearGradient></defs>'+
+    '<rect width="40" height="40" rx="11" fill="url(#'+gid+')"/>'+
+    '<text x="20" y="27.5" font-family="-apple-system,Segoe UI,Roboto,Arial,sans-serif" font-size="18" font-weight="800" fill="#ffffff" text-anchor="middle">Rp</text>'+
+  '</svg>';
+}
 function appBar(hideAva){
   var av = (USER && !hideAva)
     ? ((USER.picture)
         ? '<img class="ava" style="padding:0" src="'+esc(USER.picture)+'">'
         : '<div class="ava">'+esc(inisial(USER.name))+'</div>')
     : '';
-  return '<div class="appbar"><div class="brand"><div class="mk">Rp</div><div class="bt">KeuanganKu</div></div>'+
+  return '<div class="appbar"><div class="brand"><div class="mk">'+logoMark(30)+'</div><div class="bt">KeuanganKu</div></div>'+
     (av?('<button class="appbar-ava" onclick="goView(\'settings\')" aria-label="Buka profil">'+av+'</button>'):'')+
     '</div>';
 }
@@ -712,7 +949,7 @@ function setClientId(v){ localStorage.setItem(LS_CID, (v||'').trim()); }
 function emailUser(){ return (USER&&USER.email)||''; }
 
 /* Antrean penghapusan: id yang dihapus saat offline disimpan di sini,
-   lalu disusulkan ke Google Sheet saat kembali online. */
+   lalu disusulkan saat kembali online. */
 function getDelQueue(){ try{ return JSON.parse(localStorage.getItem(LS_DELQ)||'[]'); }catch(e){ return []; } }
 function setDelQueue(a){ localStorage.setItem(LS_DELQ, JSON.stringify(a)); }
 function addDel(ids){ var q=getDelQueue(); ids.forEach(function(id){ if(q.indexOf(String(id))<0) q.push(String(id)); }); setDelQueue(q); }
@@ -825,7 +1062,7 @@ function confirmModal(text, opt){
   });
 }
 
-/* ====== OVERLAY PROGRES (kirim / tarik data Google Sheet) ====== */
+/* ====== OVERLAY PROGRES ====== */
 function showProgress(title){
   document.getElementById('pgTitle').textContent=title;
   setProgress(0,'Menyiapkan...');
@@ -863,28 +1100,27 @@ function labelTanggal(tgl){
   return t.toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'});
 }
 
-/* ====== KOMUNIKASI KE APPS SCRIPT (kebal CORS) ======
-   Baca via JSONP (tag script), tulis via fetch mode no-cors.
-   Apps Script tidak mengirim header CORS, jadi dua teknik ini dipakai
+/* ====== KOMUNIKASI DENGAN LAYANAN PENCADANGAN (kebal CORS) ======
+   Baca via JSONP (tag script), tulis via fetch mode no-cors,
    agar berfungsi dari GitHub Pages tanpa galat CORS. */
 function jsonp(params){
   return new Promise(function(res,rej){
     var url=getGasUrl();
-    if(!url){ rej(new Error('Google Sheet belum terhubung. Atur di tab Profil, menu Koneksi Google Sheet.')); return; }
+    if(!url){ rej(new Error('Layanan pencadangan belum terhubung. Atur di tab Profil, menu Koneksi Pencadangan.')); return; }
     var cb='kk_cb_'+Date.now().toString(36)+Math.floor(Math.random()*1e4);
     var sep=url.indexOf('?')>=0?'&':'?';
     var s=document.createElement('script');
-    var timer=setTimeout(function(){ cleanup(); rej(new Error('Server tidak merespons. Periksa kembali URL dan pastikan akses deployment disetel ke Anyone.')); },20000);
+    var timer=setTimeout(function(){ cleanup(); rej(new Error('Layanan tidak merespons. Periksa kembali pengaturan koneksi lalu coba lagi.')); },20000);
     function cleanup(){ clearTimeout(timer); try{ delete window[cb]; }catch(e){ window[cb]=undefined; } if(s.parentNode) s.parentNode.removeChild(s); }
     window[cb]=function(data){ cleanup(); res(data); };
-    s.onerror=function(){ cleanup(); rej(new Error('Gagal memuat dari server')); };
+    s.onerror=function(){ cleanup(); rej(new Error('Gagal terhubung ke layanan')); };
     s.src=url+sep+params+'&callback='+cb;
     document.body.appendChild(s);
   });
 }
 function kirimNoCors(action,extra){
   var url=getGasUrl();
-  if(!url) return Promise.reject(new Error('Google Sheet belum terhubung. Atur di tab Profil, menu Koneksi Google Sheet.'));
+  if(!url) return Promise.reject(new Error('Layanan pencadangan belum terhubung. Atur di tab Profil, menu Koneksi Pencadangan.'));
   return fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({action:action},extra||{}))});
 }
 
@@ -915,26 +1151,26 @@ async function hapusSemua(){
   var ids=TX.map(function(t){return t.id;});
   for(var i=0;i<ids.length;i++){ await idbDelete(ids[i]); }
   addDel(ids); TX=[]; updatePip(); render();
-  toast('Menghapus, menyinkronkan ke Sheet...'); await flushDeletes();
-  toast(getDelQueue().length? 'Dihapus di perangkat. Sheet menyusul saat online.' : 'Semua transaksi dihapus');
+  toast('Menghapus data, mohon tunggu sebentar...'); await flushDeletes();
+  toast(getDelQueue().length? 'Dihapus di perangkat. Akan diselesaikan saat online.' : 'Semua transaksi dihapus');
 }
 
-/* ====== KIRIM KE SHEET ====== */
+/* ====== KIRIM DATA UNTUK DICADANGKAN ====== */
 async function kirimRentang(){
   var dalam=TX.filter(function(t){return dalamRentang(t.tanggal);});
   if(!dalam.length){ toast('Tidak ada transaksi pada rentang ini'); return; }
-  showProgress('Mengirim ke Google Sheet');
+  showProgress('Mencadangkan data');
   try{
     setProgress(10,'Menyiapkan '+dalam.length+' transaksi...');
     var items=dalam.map(function(t){ return {id:t.id,tanggal:t.tanggal,tipe:t.tipe,kategori:t.kategori,nominal:t.nominal,keterangan:t.keterangan,catatan:t.catatan,createdAt:t.createdAt,user:t.user||emailUser()}; });
-    setProgress(35,'Mengirim transaksi...');
+    setProgress(35,'Mengirim data...');
     await kirimNoCors('sync',{items:items});
     var sukses=dalam;
     setProgress(60,'Memverifikasi data...');
     try{ var d=await jsonp('action=list'); var ada={}; (d.data||[]).forEach(function(r){ ada[String(r.id)]=true; }); var cek=dalam.filter(function(t){return ada[String(t.id)];}); if(cek.length) sukses=cek; }catch(e){}
     sukses.forEach(function(t){ t.terkirim=true; });
     await idbBulkPut(sukses);
-    setProgress(80,'Menyinkronkan hutang & piutang...');
+    setProgress(80,'Menyelaraskan hutang & piutang...');
     try{
       var utBelum=UT.filter(function(u){ return !u.terkirim; });
       if(utBelum.length){
@@ -948,15 +1184,15 @@ async function kirimRentang(){
     setProgress(100,'Selesai');
     await new Promise(function(r){setTimeout(r,350);});
     hideProgress();
-    toast(sukses.length+' transaksi terkirim ke Sheet');
-  }catch(e){ hideProgress(); toast('Gagal kirim: '+e.message); }
+    toast(sukses.length+' transaksi berhasil dicadangkan');
+  }catch(e){ hideProgress(); toast('Gagal mencadangkan: '+e.message); }
   updatePip(); render();
 }
 
-/* ====== TARIK DARI SHEET (PEMULIHAN) ====== */
+/* ====== PEMULIHAN DATA ====== */
 async function tarikDariSheet(){
-  if(!await confirmModal('Tarik semua data dari Google Sheet ke perangkat ini?')) return;
-  showProgress('Menarik data dari Sheet');
+  if(!await confirmModal('Pulihkan semua data cadangan ke perangkat ini?')) return;
+  showProgress('Memulihkan data');
   try{
     setProgress(15,'Mengambil transaksi...');
     var d=await jsonp('action=list');
@@ -977,7 +1213,7 @@ async function tarikDariSheet(){
     await new Promise(function(r){setTimeout(r,350);});
     hideProgress();
     toast(dari.length+' transaksi milik Anda tersedia di perangkat');
-  }catch(e){ hideProgress(); toast('Gagal tarik: '+e.message); }
+  }catch(e){ hideProgress(); toast('Gagal memulihkan data: '+e.message); }
   updatePip(); render();
 }
 
@@ -1000,7 +1236,7 @@ function manualForm(){ return '<div class="divider"></div>'+manualFields('Masuk 
 function toggleManual(){ loginManual=!loginManual; renderLogin(); }
 function renderLogin(){
   var cid=getClientId();
-  var html='<div class="login-wrap"><div class="logo">KeuanganKu</div>';
+  var html='<div class="login-wrap"><div class="logo-mark">'+logoMark(64)+'</div><div class="logo">KeuanganKu</div>';
   if(isWebView()){
     html+='<div class="logo-sub">Masuk dengan nama dan email Anda.</div>'+
       '<div class="peninfo idle" style="text-align:left;margin:0 0 16px">Anda membuka aplikasi versi terpasang. Tombol Google hanya berfungsi di peramban, jadi di sini gunakan nama dan email. Pakai email yang sama dengan yang dipakai di peramban agar data tetap menyatu.</div>'+
@@ -1029,7 +1265,7 @@ function initGoogle(){
   try{
     google.accounts.id.initialize({client_id:cid, callback:onGoogleCred});
     google.accounts.id.renderButton(box,{theme:'outline',size:'large',width:300,text:'signin_with'});
-  }catch(e){ box.innerHTML='<div class="peninfo idle" style="margin:0">Client ID belum valid atau origin belum diizinkan di Google Cloud.</div>'; }
+  }catch(e){ box.innerHTML='<div class="peninfo idle" style="margin:0">Client ID belum valid atau origin belum diizinkan.</div>'; }
 }
 function decodeJWT(tok){
   var b=tok.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
@@ -1097,7 +1333,7 @@ function renderHome(){
 function txRow(t){
   var pos=t.tipe==='pemasukan';
   var bg=pos?'var(--hijau-bg)':'var(--merah-bg)';
-  var status=t.terkirim?'<span class="sdot kirim" title="Terkirim"></span>':'<span class="sdot belum" title="Belum terkirim"></span>';
+  var status=t.terkirim?'<span class="sdot kirim" title="Tercadang"></span>':'<span class="sdot belum" title="Belum tercadang"></span>';
   return '<div class="item"><div class="ic" style="background:'+bg+'">'+(IKON[t.kategori]||'\uD83D\uDCB3')+'</div>'+
     '<div class="mid"><div class="nm">'+esc(t.keterangan||t.kategori)+'</div>'+
     '<div class="dt">'+status+labelTanggal(t.tanggal)+' &middot; '+t.kategori+'</div></div>'+
@@ -1240,7 +1476,6 @@ function ambilKata(data, scale){
   } else if(data&&data.lines&&data.lines.length){
     data.lines.forEach(function(ln){ if(!ln.bbox) return; var toks=(ln.text||'').trim().split(/\s+/).filter(Boolean); if(!toks.length) return; var b=ln.bbox; var chars=ln.text.replace(/\s+/g,'').length||1; var x=b.x0; toks.forEach(function(tok){ var wpx=(b.x1-b.x0)*(tok.length/chars); out.push({text:tok,x:x*scale,y:b.y0*scale,w:wpx*scale,h:(b.y1-b.y0)*scale}); x+=wpx+(b.x1-b.x0)*0.015; }); });
   }
-  // Beri penanda baris berdasarkan lompatan posisi vertikal, untuk seleksi rentang
   var lineNo=0;
   for(var i=0;i<out.length;i++){
     if(i>0){ var prev=out[i-1]; if(out[i].y > prev.y + prev.h*0.6) lineNo++; }
@@ -1436,20 +1671,20 @@ async function hapusUtang(id){
   utDetail=null; toast('Catatan dihapus'); goView('utang');
 }
 async function cadangkanUtang(){
-  if(!getGasUrl()){ toast('Hubungkan Google Sheet dahulu di menu Profil'); return; }
+  if(!getGasUrl()){ toast('Hubungkan layanan pencadangan dahulu di menu Profil'); return; }
   var belum=UT.filter(function(u){ return !u.terkirim; });
   if(!belum.length){ toast('Semua catatan sudah tercadang'); return; }
-  showProgress('Mencadangkan ke Sheet');
+  showProgress('Mencadangkan data');
   try{
     setProgress(20,'Menyiapkan '+belum.length+' catatan...');
     var uitems=belum.map(function(u){ return {id:u.id,jenis:u.jenis,pihak:u.pihak,pokok:u.pokok,tanggal:u.tanggal,jatuhTempo:u.jatuhTempo||'',catatan:u.catatan||'',pembayaran:JSON.stringify(u.pembayaran||[]),createdAt:u.createdAt||'',user:u.user||emailUser()}; });
-    setProgress(55,'Mengirim ke Sheet...');
+    setProgress(55,'Mengirim data...');
     await kirimNoCors('syncUtang',{items:uitems});
     belum.forEach(function(u){ u.terkirim=true; }); await uBulkPut(belum);
     setProgress(100,'Selesai');
     await new Promise(function(r){setTimeout(r,300);});
     hideProgress();
-    toast(uitems.length+' catatan tercadang ke Sheet');
+    toast(uitems.length+' catatan berhasil dicadangkan');
   }catch(e){ hideProgress(); toast('Gagal mencadangkan: '+e.message); }
   render();
 }
@@ -1472,7 +1707,7 @@ function renderUtang(){
     '</div>'+
     (telat?'<div class="panel" style="margin-top:10px;background:var(--kuning-bg)"><div style="font-size:13px;color:var(--kuning-tx);line-height:1.5">'+telat+' catatan telah melewati jatuh tempo.</div></div>':'')+
     '<div class="chips" style="padding-top:12px">'+[['semua','Semua'],['piutang','Piutang'],['hutang','Hutang']].map(function(c){return '<button class="chip '+(utFilter===c[0]?'on':'')+'" onclick="setUtFilter(\''+c[0]+'\')">'+c[1]+'</button>';}).join('')+'</div>'+
-    (tersambung&&belumCadang?'<div class="set" style="padding-top:4px;padding-bottom:0"><button class="btn-line" style="margin-top:6px" onclick="cadangkanUtang()">Cadangkan '+belumCadang+' catatan ke Sheet</button></div>':'')+
+    (tersambung&&belumCadang?'<div class="set" style="padding-top:4px;padding-bottom:0"><button class="btn-line" style="margin-top:6px" onclick="cadangkanUtang()">Cadangkan '+belumCadang+' catatan</button></div>':'')+
     '<div class="list" style="padding-top:8px;padding-bottom:14px">'+
       (list.length? list.map(utRow).join('') : '<div class="empty">Belum ada catatan.<br>Ketuk tombol + untuk menambahkan.</div>')+
     '</div>';
@@ -1576,7 +1811,7 @@ function renderReport(){
     '<div class="panel"><div style="font-size:12px;color:var(--tx2);margin-bottom:12px">'+nExp+' transaksi pada rentang '+esc(labelRentang())+'.</div>'+
       '<div style="display:flex;gap:12px"><button class="btn-line" style="margin-top:0;flex:1" '+(nExp?'':'disabled')+' onclick="unduhHTML()">&#128196; PDF</button>'+
       '<button class="btn-line" style="margin-top:0;flex:1" '+(nExp?'':'disabled')+' onclick="unduhCSV()">&#128202; Excel</button></div>'+
-      '<div style="font-size:11px;color:var(--tx3);margin-top:10px">Unduhan pertama memerlukan internet untuk memuat komponen, setelahnya dapat dipakai luring.</div></div>'+
+      '<div style="font-size:11px;color:var(--tx3);margin-top:10px">Pembuatan laporan pertama memerlukan internet, setelahnya laporan dapat dilihat kembali dari tautannya.</div></div>'+
     '<div class="sec-head" style="padding-top:10px"><div class="t">Daftar transaksi</div><div style="font-size:11px;color:var(--tx3)">'+px.length+' transaksi</div></div>'+
     limitChips(repLimit,'setRepLimit')+
     '<div class="list" style="padding-top:6px;padding-bottom:10px">'+(px.length?px.slice(0,repLimit||px.length).map(txRow).join(''):'<div class="empty">Belum ada transaksi pada periode ini.</div>')+'</div>';
@@ -1588,7 +1823,7 @@ function gambarDonut(kats){
   chart=new Chart(ctx,{type:'doughnut',data:{labels:kats.map(function(k){return k[0];}),datasets:[{data:kats.map(function(k){return k[1];}),backgroundColor:kats.map(function(k,i){return WARNA_KAT[i%WARNA_KAT.length];}),borderWidth:2,borderColor:'#fff'}]},options:{cutout:'62%',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return ' '+rp(c.parsed);}}}},maintainAspectRatio:false}});
 }
 
-/* ====== UNDUH LAPORAN (PDF / EXCEL) ====== */
+/* ====== UNDUH LAPORAN (fallback lokal PDF / Excel bila diperlukan) ====== */
 function setExpRange(r){ expRange=r; render(); }
 function inRange(tgl, mode, awal, akhir){
   var t=new Date(tgl+'T00:00:00'), now=new Date(); now.setHours(0,0,0,0);
@@ -1646,7 +1881,7 @@ function unduhPDF(){
   doc.setFont(undefined,'bold');
   doc.text('Selisih', 40, y+34); doc.text(rp(t.selisih), 320, y+34);
   if(window.AppInventor && window.AppInventor.setWebViewString){
-    var uri = doc.output('datauristring');   // "data:application/pdf;base64,...."
+    var uri = doc.output('datauristring');
     window.AppInventor.setWebViewString('UNDUHURI|'+namaFile('pdf')+'|'+uri);
     toast('Menyimpan '+namaFile('pdf')+'...');
   } else {
@@ -1677,7 +1912,7 @@ function unduhExcel(){
   }
 }
 
-function unduhHTML(){
+function unduhHTMLLokal(){
   var rows=dataExport();
   if(!rows.length){ toast('Tidak ada transaksi pada rentang ini'); return; }
   var t=totalExport(rows);
@@ -1695,7 +1930,7 @@ function unduhHTML(){
   kirimTeksKeApk(namaFile('html'), html);
 }
 
-function unduhCSV(){
+function unduhCSVLokal(){
   var rows=dataExport();
   if(!rows.length){ toast('Tidak ada transaksi pada rentang ini'); return; }
   var t=totalExport(rows);
@@ -1716,14 +1951,13 @@ function kirimTeksKeApk(namaFile, teks){
     window.AppInventor.setWebViewString('SIMPANTEKS|'+namaFile+'|'+teks);
     toast('Menyimpan '+namaFile+'...');
   } else {
-    // fallback browser: unduh biasa
     var a=document.createElement('a');
     a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(teks);
     a.download=namaFile; a.click();
   }
 }
 
-/* ====== SINKRON / KIRIM ====== */
+/* ====== KIRIM / CADANGKAN DATA ====== */
 function renderSinkron(){
   var tersambung=!!getGasUrl();
   var dalam=TX.filter(function(t){return dalamRentang(t.tanggal);});
@@ -1731,19 +1965,19 @@ function renderSinkron(){
   var chips=[['hari','Hari ini'],['minggu','Minggu ini'],['bulan','Bulan ini'],['tahun','Tahun ini'],['semua','Semua'],['kustom','Kustom']];
   S().innerHTML=
     appBar()+
-    '<div class="fhead"><div class="ti">Kirim ke Google Sheet</div></div>'+
-    (!tersambung?'<div class="panel" style="background:var(--kuning-bg)"><div style="font-size:13px;color:var(--kuning-tx);line-height:1.5">Belum terhubung ke Google Sheet. Buka tab <b>Profil</b>, lalu menu <b>Koneksi Google Sheet</b> untuk mengaturnya.</div></div>':'')+
+    '<div class="fhead"><div class="ti">Cadangkan Data</div></div>'+
+    (!tersambung?'<div class="panel" style="background:var(--kuning-bg)"><div style="font-size:13px;color:var(--kuning-tx);line-height:1.5">Belum terhubung ke layanan pencadangan. Buka tab <b>Profil</b>, lalu menu <b>Koneksi Pencadangan</b> untuk mengaturnya.</div></div>':'')+
     '<div class="chips">'+chips.map(function(c){return '<button class="chip '+(syncRange===c[0]?'on':'')+'" onclick="setRange(\''+c[0]+'\')">'+c[1]+'</button>';}).join('')+'</div>'+
     (syncRange==='kustom'?'<div class="panel"><div class="kustom-date"><div><label class="fl">Dari</label><input class="field" type="date" value="'+kustomAwal+'" onchange="kustomAwal=this.value;render();"></div>'+
       '<div><label class="fl">Sampai</label><input class="field" type="date" value="'+kustomAkhir+'" onchange="kustomAkhir=this.value;render();"></div></div></div>':'')+
     '<div class="panel"><div class="big-stat"><div class="bs"><div class="n">'+dalam.length+'</div><div class="k">transaksi pada rentang</div></div>'+
-      '<div class="bs warn"><div class="n">'+belum+'</div><div class="k">belum terkirim</div></div></div>'+
-      '<button class="save pem" id="btnKirim" style="margin-top:14px" '+(tersambung&&dalam.length?'':'disabled')+' onclick="kirimRentang()">Kirim '+dalam.length+' transaksi ke Sheet</button>'+
-      '<div style="font-size:11px;color:var(--tx3);text-align:center;margin-top:8px">Pengiriman ulang aman. Baris dengan ID sama tidak akan tergandakan.</div></div>'+
+      '<div class="bs warn"><div class="n">'+belum+'</div><div class="k">belum tercadang</div></div></div>'+
+      '<button class="save pem" id="btnKirim" style="margin-top:14px" '+(tersambung&&dalam.length?'':'disabled')+' onclick="kirimRentang()">Cadangkan '+dalam.length+' transaksi</button>'+
+      '<div style="font-size:11px;color:var(--tx3);text-align:center;margin-top:8px">Pencadangan ulang aman. Catatan yang sama tidak akan tergandakan.</div></div>'+
     '<div class="divider"></div>'+
     '<div class="set"><div class="t" style="font-weight:600;font-size:14px;margin:0 2px 6px">Pemulihan data</div>'+
-      '<p class="hint">Mengambil seluruh transaksi dari Google Sheet ke perangkat ini, misalnya setelah berganti perangkat atau memasang ulang aplikasi. Data digabungkan berdasarkan ID sehingga tidak tergandakan.</p>'+
-      '<button class="btn-line" id="btnTarik" '+(tersambung?'':'disabled')+' onclick="tarikDariSheet()">Tarik semua dari Sheet</button></div>'+
+      '<p class="hint">Memulihkan seluruh transaksi dari cadangan ke perangkat ini, misalnya setelah berganti perangkat atau memasang ulang aplikasi. Data digabungkan sehingga tidak tergandakan.</p>'+
+      '<button class="btn-line" id="btnTarik" '+(tersambung?'':'disabled')+' onclick="tarikDariSheet()">Pulihkan data cadangan</button></div>'+
     '<div class="sec-head" style="padding-top:6px"><div class="t">Transaksi pada rentang ('+dalam.length+')</div></div>'+
     limitChips(syncLimit,'setSyncLimit')+
     '<div class="list" style="padding-top:6px;padding-bottom:10px">'+(dalam.length?dalam.slice(0,syncLimit||dalam.length).map(txRow).join(''):'<div class="empty">Tidak ada transaksi pada rentang ini.</div>')+'</div>';
@@ -1778,9 +2012,9 @@ function renderSettings(){
       '<div class="grp-label">Tampilan</div>'+
       '<div class="seg" style="margin:0 0 4px">'+themeBtn('terang','\u2600 Terang')+themeBtn('gelap','\u263E Gelap')+themeBtn('auto','\u25D1 Otomatis')+'</div>'+
       '<div style="font-size:11px;color:var(--tx3);margin:0 2px 4px">Otomatis mengikuti pengaturan tema perangkat Anda.</div>'+
-      '<div class="grp-label">Data &amp; Sinkronisasi</div>'+
+      '<div class="grp-label">Data &amp; Pencadangan</div>'+
       '<div class="menu">'+
-        menuRow('&#9729;','Koneksi Google Sheet',sheetSub,"openProf('sheet')")+
+        menuRow('&#9729;','Koneksi Pencadangan',sheetSub,"openProf('sheet')")+
       '</div>'+
       '<div class="grp-label">Tentang</div>'+
       '<div class="menu">'+
@@ -1792,17 +2026,17 @@ function renderSettings(){
 function renderProfSheet(){
   var url=getGasUrl(), on=!!url;
   S().innerHTML=
-    '<div class="fhead"><button class="bk" onclick="backProf()">&#8592;</button><div class="ti">Koneksi Google Sheet</div></div>'+
+    '<div class="fhead"><button class="bk" onclick="backProf()">&#8592;</button><div class="ti">Koneksi Pencadangan</div></div>'+
     '<div class="set">'+
-      '<div class="statcard '+(on?'on':'off')+'"><span class="sc-ic">'+(on?'&#9729;':'&#9888;')+'</span><div>'+(on?'Aplikasi sudah terhubung ke Google Sheet. Pengiriman, penarikan, dan penghapusan data akan tersinkron otomatis.':'Aplikasi belum terhubung ke Google Sheet. Masukkan URL Web App untuk mengaktifkan pencadangan.')+'</div></div>'+
-      '<p class="hint">Seluruh transaksi tersimpan di perangkat dan tetap dapat diakses tanpa internet. Hubungkan ke Google Sheet untuk mencadangkan data dan menyelaraskannya antar perangkat. Masukkan URL Web App yang diakhiri /exec.</p>'+
-      '<label class="fl">URL Web App Apps Script</label><input class="field" id="inUrl" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(url)+'">'+
+      '<div class="statcard '+(on?'on':'off')+'"><span class="sc-ic">'+(on?'&#9729;':'&#9888;')+'</span><div>'+(on?'Aplikasi sudah terhubung ke layanan pencadangan. Pencadangan, pemulihan, dan penghapusan data akan diselaraskan otomatis.':'Aplikasi belum terhubung ke layanan pencadangan. Masukkan alamat layanan untuk mengaktifkan pencadangan.')+'</div></div>'+
+      '<p class="hint">Seluruh transaksi tersimpan di perangkat dan tetap dapat diakses tanpa internet. Hubungkan ke layanan pencadangan untuk menyimpan salinan data dan menyelaraskannya antar perangkat. Masukkan alamat layanan yang diakhiri /exec.</p>'+
+      '<label class="fl">Alamat layanan pencadangan</label><input class="field" id="inUrl" placeholder="https://.../exec" value="'+esc(url)+'">'+
       '<button class="save pem" onclick="simpanUrl()">Simpan &amp; sambungkan</button>'+
       '<button class="btn-line" onclick="ujiKoneksi()">Uji koneksi</button>'+
       '<div class="ok-msg" id="setMsg"></div>'+
       '<div class="divider"></div>'+
       '<div class="grp-label" style="margin-top:0">Panduan</div>'+
-      '<p class="hint" style="margin-bottom:8px">Belum punya Google Sheet sendiri? Ikuti langkah berikut untuk menyiapkannya dari awal.</p>'+
+      '<p class="hint" style="margin-bottom:8px">Belum punya layanan pencadangan sendiri? Ikuti langkah berikut untuk menyiapkannya dari awal.</p>'+
       '<button class="guide-toggle" onclick="toggleGuide()">'+(showGuide?'&#9650; Sembunyikan panduan':'&#9660; Lihat panduan lengkap')+'</button>'+
       (showGuide?panduanSheet():'')+
     '</div>';
@@ -1812,16 +2046,16 @@ function gstep(n,judul,isi){ return '<div class="gstep"><div class="gnum">'+n+'<
 function panduanSheet(){
   var kode=esc(document.getElementById('gasCode').textContent.trim());
   return '<div class="guide">'+
-    gstep(1,'Siapkan akun Google','Jika belum memilikinya, buat akun Google secara gratis di <b>accounts.google.com</b>. Akun yang sama otomatis memberi Anda akses ke Google Drive dan Google Sheet.')+
-    gstep(2,'Buat Google Sheet baru','Buka <b>drive.google.com</b>, klik <b>Baru</b>, lalu pilih <b>Google Spreadsheet</b>. Beri nama, misalnya KeuanganKu. Lembar tidak perlu diisi apa pun, kolomnya akan dibuat otomatis oleh kode.')+
-    gstep(3,'Buka editor Apps Script','Di dalam Sheet, klik menu <b>Ekstensi</b>, lalu <b>Apps Script</b>. Sebuah tab editor kode akan terbuka.')+
-    gstep(4,'Tempel kode di bawah','Hapus seluruh kode contoh yang ada di editor, lalu tempel kode berikut. Gunakan tombol Salin kode, kemudian tekan ikon simpan (atau Ctrl+S).'+
+    gstep(1,'Siapkan akun','Jika belum memilikinya, buat akun secara gratis terlebih dahulu.')+
+    gstep(2,'Siapkan lembar data baru','Buat sebuah lembar data baru untuk menyimpan catatan Anda. Beri nama, misalnya KeuanganKu. Lembar tidak perlu diisi apa pun, kolomnya akan dibuat otomatis oleh kode.')+
+    gstep(3,'Buka editor skrip','Buka menu editor skrip yang tersedia pada lembar data tersebut. Sebuah tab editor kode akan terbuka.')+
+    gstep(4,'Tempel kode di bawah','Hapus seluruh kode contoh yang ada di editor, lalu tempel kode berikut. Gunakan tombol Salin kode, kemudian simpan.'+
       '<div class="codebox"><button class="copy-btn" onclick="salinKode()">Salin kode</button><pre>'+kode+'</pre></div>')+
-    gstep(5,'Terbitkan sebagai Web App','Klik <b>Deploy</b> di kanan atas, lalu <b>New deployment</b>. Pada pilihan jenis, pilih <b>Web app</b>. Isi <b>Execute as</b> dengan <b>Me</b>, dan <b>Who has access</b> dengan <b>Anyone</b>. Klik <b>Deploy</b>.')+
-    gstep(6,'Berikan izin akses','Saat diminta, pilih akun Google Anda lalu setujui izin yang diminta. Jika muncul peringatan keamanan, buka <b>Advanced</b>, lalu lanjutkan ke aplikasi Anda. Ini wajar karena skrip dibuat oleh Anda sendiri.')+
-    gstep(7,'Salin URL Web App','Setelah berhasil, Google menampilkan tautan <b>Web app</b> yang diakhiri <b>/exec</b>. Salin tautan tersebut.')+
-    gstep(8,'Hubungkan ke aplikasi','Kembali ke halaman ini, tempel URL tadi pada kolom di atas, tekan <b>Simpan &amp; sambungkan</b>, lalu <b>Uji koneksi</b> untuk memastikan berhasil.')+
-    '<div class="gnote">Jika suatu saat kode diperbarui, buka <b>Deploy</b>, lalu <b>Manage deployments</b>, klik ikon pensil, dan pilih <b>New version</b> agar perubahan diterapkan.</div>'+
+    gstep(5,'Terbitkan sebagai layanan web','Terbitkan skrip sebagai layanan web. Atur akses eksekusi sesuai akun Anda, dan izinkan akses agar aplikasi dapat terhubung. Terbitkan.')+
+    gstep(6,'Berikan izin akses','Saat diminta, pilih akun Anda lalu setujui izin yang diminta. Jika muncul peringatan keamanan, lanjutkan ke aplikasi Anda. Ini wajar karena skrip dibuat oleh Anda sendiri.')+
+    gstep(7,'Salin alamat layanan','Setelah berhasil diterbitkan, sistem menampilkan sebuah tautan layanan yang diakhiri <b>/exec</b>. Salin tautan tersebut.')+
+    gstep(8,'Hubungkan ke aplikasi','Kembali ke halaman ini, tempel alamat tadi pada kolom di atas, tekan <b>Simpan &amp; sambungkan</b>, lalu <b>Uji koneksi</b> untuk memastikan berhasil.')+
+    '<div class="gnote">Jika suatu saat kode diperbarui, terbitkan kembali sebagai versi baru agar perubahan diterapkan.</div>'+
   '</div>';
 }
 function salinKode(){
@@ -1840,18 +2074,18 @@ function renderProfAbout(){
   S().innerHTML=
     '<div class="fhead"><button class="bk" onclick="backProf()">&#8592;</button><div class="ti">Tentang aplikasi</div></div>'+
     '<div class="set">'+
-      '<div class="prof-hero" style="padding-top:4px"><div class="pava pava-i" style="background:var(--biru);color:#fff">Rp</div><div class="pn">KeuanganKu</div><div class="pe">Pencatat keuangan pribadi</div></div>'+
+      '<div class="prof-hero" style="padding-top:4px"><div class="pava-logo">'+logoMark(74)+'</div><div class="pn">KeuanganKu</div><div class="pe">Pencatat keuangan pribadi</div></div>'+
       '<div class="menu" style="margin-bottom:14px">'+
         '<div class="about-line"><span>Versi</span><b>1.0</b></div>'+
         '<div class="about-line"><span>Penyimpanan</span><b>Di perangkat (offline)</b></div>'+
-        '<div class="about-line"><span>Cadangan</span><b>Google Sheet</b></div>'+
+        '<div class="about-line"><span>Cadangan</span><b>Layanan pencadangan pribadi</b></div>'+
         '<div class="about-line"><span>Login</span><b>Akun Google</b></div>'+
       '</div>'+
-      '<p class="hint">KeuanganKu mencatat pemasukan dan pengeluaran, menyimpannya di perangkat agar tetap dapat digunakan tanpa internet, dan mencadangkannya ke Google Sheet milik Anda. Pemindai struk memproses teks langsung di perangkat sehingga foto tidak dikirim ke mana pun.</p>'+
+      '<p class="hint">KeuanganKu mencatat pemasukan dan pengeluaran, menyimpannya di perangkat agar tetap dapat digunakan tanpa internet, dan mencadangkannya ke layanan pribadi milik Anda. Pemindai struk memproses teks langsung di perangkat sehingga foto tidak dikirim ke mana pun.</p>'+
     '</div>';
 }
-function simpanUrl(){ var u=document.getElementById('inUrl').value.trim(); if(!u){toast('URL belum diisi');return;} setGasUrl(u); toast('Tersambung'); flushDeletes(); render(); }
-async function ujiKoneksi(){ var m=document.getElementById('setMsg'); m.style.color='var(--tx2)'; m.textContent='Menguji...'; try{ var d=await jsonp('action=list'); m.style.color='var(--hijau-tx)'; m.textContent='Berhasil. '+(d.data?d.data.length:0)+' baris di Sheet.'; }catch(e){ m.style.color='var(--merah-tx)'; m.textContent='Gagal: '+e.message; } }
+function simpanUrl(){ var u=document.getElementById('inUrl').value.trim(); if(!u){toast('Alamat belum diisi');return;} setGasUrl(u); toast('Tersambung'); flushDeletes(); render(); }
+async function ujiKoneksi(){ var m=document.getElementById('setMsg'); m.style.color='var(--tx2)'; m.textContent='Menguji...'; try{ var d=await jsonp('action=list'); m.style.color='var(--hijau-tx)'; m.textContent='Berhasil. '+(d.data?d.data.length:0)+' catatan tersimpan.'; }catch(e){ m.style.color='var(--merah-tx)'; m.textContent='Gagal: '+e.message; } }
 
 /* ====== WIRING ====== */
 function wirePeriode(){ document.querySelectorAll('.seg [data-p]').forEach(function(b){ b.onclick=function(){ periode=b.dataset.p; render(); }; }); }
@@ -1873,7 +2107,7 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
 </script>
 
 <script>
-/* PATCH: Laporan PDF & Excel dibuat di Google Apps Script (Drive), tautannya dibagikan */
+/* PATCH: Laporan PDF & Excel dibuat di server, lalu ditampilkan pratinjaunya di dalam aplikasi */
 (function(){
   var lapUrl='', lapDownloadUrl='', lapNama='';
 
@@ -1888,13 +2122,18 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
     return {awal:isoDari(now), akhir:isoDari(now)};
   }
 
-  window.tampilkanLaporanModal=function(format, url, downloadUrl, nama){
+  window.tampilkanLaporanModal=function(format, url, downloadUrl, nama, fileId){
     lapUrl=url; lapDownloadUrl=downloadUrl; lapNama=nama;
     document.getElementById('lapTitle').textContent='Laporan '+format.toUpperCase()+' siap';
-    document.getElementById('lapText').textContent=nama+' telah dibuat di Google Drive Anda. Ketuk Unduh untuk mengunduhnya.';
+    document.getElementById('lapText').textContent=nama+' siap dilihat. Ketuk Unduh untuk menyimpannya.';
+    var frame=document.getElementById('lapFrame');
+    var loading=document.getElementById('lapFrameLoading');
+    loading.style.display='flex';
+    frame.src = fileId ? ('https://drive.google.com/file/d/'+fileId+'/preview') : (lapUrl||'about:blank');
     document.getElementById('lapMask').classList.add('show');
   };
-  window.tutupLaporanModal=function(){ document.getElementById('lapMask').classList.remove('show'); };
+  window.onLapFrameLoad=function(){ var l=document.getElementById('lapFrameLoading'); if(l) l.style.display='none'; };
+  window.tutupLaporanModal=function(){ document.getElementById('lapMask').classList.remove('show'); document.getElementById('lapFrame').src='about:blank'; };
   window.unduhLaporanModal=function(){
     var target=lapDownloadUrl||lapUrl;
     if(window.AppInventor && window.AppInventor.setWebViewString){
@@ -1902,29 +2141,28 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
     } else {
       window.open(target,'_blank');
     }
-    tutupLaporanModal();
   };
 
   async function buatLaporanServer(format){
   var rows=dataExport();
   if(!rows.length && !UT.length){ toast('Tidak ada data untuk dilaporkan'); return; }
-  if(!getGasUrl()){ toast('Hubungkan Google Sheet dahulu di menu Profil'); return; }
+  if(!getGasUrl()){ toast('Hubungkan layanan pencadangan dahulu di menu Profil'); return; }
   if(!emailUser()){ toast('Masuk terlebih dahulu'); return; }
 
   var rt=rentangTanggal();
   showProgress('Membuat laporan '+format.toUpperCase());
   try{
-    setProgress(15,'Menyinkronkan transaksi ke Sheet...');
+    setProgress(15,'Menyiapkan data transaksi...');
     var items=rows.map(function(t){ return {id:t.id,tanggal:t.tanggal,tipe:t.tipe,kategori:t.kategori,nominal:t.nominal,keterangan:t.keterangan,catatan:t.catatan,createdAt:t.createdAt,user:t.user||emailUser()}; });
     try{ await kirimNoCors('sync',{items:items}); }catch(e){}
 
-    setProgress(35,'Menyinkronkan hutang & piutang...');
+    setProgress(35,'Menyiapkan data hutang & piutang...');
     var uitems=UT.map(function(u){ return {id:u.id,jenis:u.jenis,pihak:u.pihak,pokok:u.pokok,tanggal:u.tanggal,jatuhTempo:u.jatuhTempo||'',catatan:u.catatan||'',pembayaran:JSON.stringify(u.pembayaran||[]),createdAt:u.createdAt||'',user:u.user||emailUser()}; });
     try{ await kirimNoCors('syncUtang',{items:uitems}); }catch(e){}
 
     await new Promise(function(r){ setTimeout(r,2000); });
 
-    setProgress(60,'Menyusun file di server...');
+    setProgress(60,'Menyusun laporan...');
     var params='action=buatLaporan&format='+encodeURIComponent(format)+
       '&user='+encodeURIComponent(emailUser())+
       '&awal='+encodeURIComponent(rt.awal)+'&akhir='+encodeURIComponent(rt.akhir)+
@@ -1933,7 +2171,7 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
 
     hideProgress();
     if(d && d.ok && d.url){
-      tampilkanLaporanModal(format, d.url, d.downloadUrl, d.nama||('Laporan.'+format));
+      tampilkanLaporanModal(format, d.url, d.downloadUrl, d.nama||('Laporan.'+format), d.id);
     } else {
       toast('Gagal membuat laporan: '+((d&&d.error)||'tidak diketahui'));
     }
