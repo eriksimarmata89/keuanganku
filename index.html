@@ -32,7 +32,13 @@
   .greet .nm{font-size:16px; font-weight:600; margin-top:2px;}
   .ava{width:38px; height:38px; border-radius:50%; background:#E6F1FB; color:var(--biru); display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px; object-fit:cover;}
 
-  .saldo{background:var(--biru); border-radius:16px; padding:18px 20px; color:#fff; margin:0 18px; position:relative;}
+  .saldo{background:var(--biru); border-radius:16px; padding:18px 20px; color:#fff; position:relative;}
+  .saldo-carousel{display:flex; gap:12px; overflow-x:auto; scroll-snap-type:x mandatory; padding:0 18px; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
+  .saldo-carousel::-webkit-scrollbar{display:none;}
+  .saldo-slide{scroll-snap-align:start; flex:0 0 92%; min-width:0;}
+  .saldo-dots{display:flex; justify-content:center; gap:6px; margin:9px 0 2px;}
+  .saldo-dot{width:6px; height:6px; border-radius:50%; background:var(--line); transition:.2s;}
+  .saldo-dot.on{background:var(--biru); width:16px; border-radius:4px;}
   .saldo .lbl{font-size:12px; color:#B5D4F4;}
   .saldo .amt{font-size:26px; font-weight:600; margin:4px 0 14px; letter-spacing:-.3px;}
   .saldo .row{display:flex; gap:16px;}
@@ -407,8 +413,10 @@
   <div class="acts-card">
     <div class="acts-h">Tambah catatan</div>
     <button class="acts-btn" onclick="actAdd('transaksi')"><span class="acts-ic" style="background:var(--biru)">&#8693;</span><div class="acts-tx"><div class="at">Transaksi</div><div class="as">Pemasukan atau pengeluaran</div></div></button>
+    <button class="acts-btn" onclick="actAdd('pindah')"><span class="acts-ic" style="background:#7F77DD">&#8646;</span><div class="acts-tx"><div class="at">Pindah Saldo</div><div class="as">Perpindahan antar penampung saldo</div></div></button>
     <button class="acts-btn" onclick="actAdd('piutang')"><span class="acts-ic" style="background:var(--hijau)">&#8599;</span><div class="acts-tx"><div class="at">Piutang</div><div class="as">Uang Anda yang ada pada pihak lain</div></div></button>
     <button class="acts-btn" onclick="actAdd('hutang')"><span class="acts-ic" style="background:var(--merah)">&#8600;</span><div class="acts-tx"><div class="at">Hutang</div><div class="as">Kewajiban Anda kepada pihak lain</div></div></button>
+    <button class="acts-btn" onclick="actAdd('akun')"><span class="acts-ic" style="background:#BA7517">&#128176;</span><div class="acts-tx"><div class="at">Penampung Saldo</div><div class="as">Bank, kartu kredit, atau dompet digital</div></div></button>
     <button class="acts-cancel" onclick="closeSheet()">Batal</button>
   </div>
 </div>
@@ -469,9 +477,13 @@
  */
 
 var SHEET_NAME = 'Transaksi';
-var HEADERS = ['id', 'tanggal', 'tipe', 'kategori', 'nominal', 'keterangan', 'catatan', 'createdAt', 'user'];
+var HEADERS = ['id', 'tanggal', 'tipe', 'kategori', 'nominal', 'keterangan', 'catatan', 'createdAt', 'user', 'akunId'];
 var SHEET_UTANG = 'Utang';
 var HEADERS_UTANG = ['id', 'jenis', 'pihak', 'pokok', 'tanggal', 'jatuhTempo', 'catatan', 'pembayaran', 'createdAt', 'user'];
+var SHEET_AKUN = 'Akun';
+var HEADERS_AKUN = ['id', 'nama', 'jenis', 'saldoAwal', 'catatan', 'createdAt', 'user'];
+var SHEET_TRANSFER = 'Transfer';
+var HEADERS_TRANSFER = ['id', 'tanggal', 'dariAkunId', 'keAkunId', 'nominal', 'catatan', 'createdAt', 'user'];
 var FOLDER_LAPORAN = 'KeuanganKu Laporan';
 
 function doPost(e) {
@@ -487,6 +499,12 @@ function doPost(e) {
     else if (action === 'listUtang') out = listUtang(body.user);
     else if (action === 'syncUtang') out = syncUtang(body.items);
     else if (action === 'deleteUtang') out = deleteUtang(body.ids);
+    else if (action === 'listAkun') out = listAkun(body.user);
+    else if (action === 'syncAkun') out = syncAkun(body.items);
+    else if (action === 'deleteAkun') out = deleteAkun(body.ids);
+    else if (action === 'listTransfer') out = listTransfer(body.user);
+    else if (action === 'syncTransfer') out = syncTransfer(body.items);
+    else if (action === 'deleteTransfer') out = deleteTransfer(body.ids);
     else if (action === 'kirimOtp') out = kirimOtp(body.phone);
     else if (action === 'verifikasiOtp') out = verifikasiOtp(body.phone, body.code);
     else if (action === 'hapusLaporan') out = hapusLaporan(body.id);
@@ -502,6 +520,8 @@ function doGet(e) {
   var out = { ok: true, message: 'KeuanganKu API aktif' };
   if (p.action === 'list') out = listTransaksi(p.user);
   if (p.action === 'listUtang') out = listUtang(p.user);
+  if (p.action === 'listAkun') out = listAkun(p.user);
+  if (p.action === 'listTransfer') out = listTransfer(p.user);
   if (p.action === 'buatLaporan') out = buatLaporan(p.user, p.format, p.awal, p.akhir, p.nama);
   if (p.action === 'cekKuota') out = cekKuota();
   if (p.callback) {
@@ -533,7 +553,8 @@ function rowDari(item) {
     item.keterangan || '',
     item.catatan || '',
     item.createdAt || new Date().toISOString(),
-    item.user || ''
+    item.user || '',
+    item.akunId || ''
   ];
 }
 
@@ -549,7 +570,8 @@ function listTransaksi(user) {
     data.push({
       id: String(r[0]), tanggal: formatTanggal(r[1]), tipe: r[2], kategori: r[3],
       nominal: Number(r[4]) || 0, keterangan: r[5], catatan: r[6],
-      createdAt: r[7] ? String(r[7]) : '', user: u
+      createdAt: r[7] ? String(r[7]) : '', user: u,
+      akunId: r[9] != null ? String(r[9]) : ''
     });
   }
   return { ok: true, data: data };
@@ -981,6 +1003,153 @@ function cekKuota() {
   }
 }
 
+/* =======================================================================
+ * PENAMPUNG SALDO (AKUN: BANK, KARTU KREDIT, DOMPET DIGITAL)
+ * ======================================================================= */
+function sheetAkun() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SHEET_AKUN);
+  if (!sh) { sh = ss.insertSheet(SHEET_AKUN); sh.appendRow(HEADERS_AKUN); }
+  if (sh.getLastRow() === 0) sh.appendRow(HEADERS_AKUN);
+  return sh;
+}
+
+function rowAkun(item) {
+  return [
+    item.id,
+    item.nama,
+    item.jenis,
+    Number(item.saldoAwal) || 0,
+    item.catatan || '',
+    item.createdAt || new Date().toISOString(),
+    item.user || ''
+  ];
+}
+
+function listAkun(user) {
+  var sh = sheetAkun();
+  var values = sh.getDataRange().getValues();
+  var data = [];
+  for (var i = 1; i < values.length; i++) {
+    var r = values[i];
+    if (!r[0]) continue;
+    var u = r[6] != null ? String(r[6]) : '';
+    if (user && u !== String(user)) continue;
+    data.push({
+      id: String(r[0]), nama: r[1], jenis: r[2], saldoAwal: Number(r[3]) || 0,
+      catatan: r[4], createdAt: r[5] ? String(r[5]) : '', user: u
+    });
+  }
+  return { ok: true, data: data };
+}
+
+function syncAkun(items) {
+  if (!items || !items.length) return { ok: true, count: 0 };
+  var sh = sheetAkun();
+  var values = sh.getDataRange().getValues();
+  var indeks = {};
+  for (var i = 1; i < values.length; i++) {
+    if (values[i][0]) indeks[String(values[i][0])] = i + 1;
+  }
+  var barisBaru = [];
+  for (var j = 0; j < items.length; j++) {
+    var it = items[j];
+    var baris = rowAkun(it);
+    var adaDi = indeks[String(it.id)];
+    if (adaDi) sh.getRange(adaDi, 1, 1, HEADERS_AKUN.length).setValues([baris]);
+    else barisBaru.push(baris);
+  }
+  if (barisBaru.length) sh.getRange(sh.getLastRow() + 1, 1, barisBaru.length, HEADERS_AKUN.length).setValues(barisBaru);
+  return { ok: true, count: items.length };
+}
+
+function deleteAkun(ids) {
+  if (!ids || !ids.length) return { ok: true, deleted: 0 };
+  var sh = sheetAkun();
+  var values = sh.getDataRange().getValues();
+  var buang = {};
+  for (var k = 0; k < ids.length; k++) buang[String(ids[k])] = 1;
+  var n = 0;
+  for (var i = values.length - 1; i >= 1; i--) {
+    if (values[i][0] && buang[String(values[i][0])]) { sh.deleteRow(i + 1); n++; }
+  }
+  return { ok: true, deleted: n };
+}
+
+/* =======================================================================
+ * PERPINDAHAN SALDO ANTAR AKUN (TRANSFER)
+ * ======================================================================= */
+function sheetTransfer() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SHEET_TRANSFER);
+  if (!sh) { sh = ss.insertSheet(SHEET_TRANSFER); sh.appendRow(HEADERS_TRANSFER); }
+  if (sh.getLastRow() === 0) sh.appendRow(HEADERS_TRANSFER);
+  return sh;
+}
+
+function rowTransfer(item) {
+  return [
+    item.id,
+    "'" + item.tanggal,
+    item.dariAkunId,
+    item.keAkunId,
+    Number(item.nominal) || 0,
+    item.catatan || '',
+    item.createdAt || new Date().toISOString(),
+    item.user || ''
+  ];
+}
+
+function listTransfer(user) {
+  var sh = sheetTransfer();
+  var values = sh.getDataRange().getValues();
+  var data = [];
+  for (var i = 1; i < values.length; i++) {
+    var r = values[i];
+    if (!r[0]) continue;
+    var u = r[7] != null ? String(r[7]) : '';
+    if (user && u !== String(user)) continue;
+    data.push({
+      id: String(r[0]), tanggal: formatTanggal(r[1]), dariAkunId: String(r[2]), keAkunId: String(r[3]),
+      nominal: Number(r[4]) || 0, catatan: r[5], createdAt: r[6] ? String(r[6]) : '', user: u
+    });
+  }
+  return { ok: true, data: data };
+}
+
+function syncTransfer(items) {
+  if (!items || !items.length) return { ok: true, count: 0 };
+  var sh = sheetTransfer();
+  var values = sh.getDataRange().getValues();
+  var indeks = {};
+  for (var i = 1; i < values.length; i++) {
+    if (values[i][0]) indeks[String(values[i][0])] = i + 1;
+  }
+  var barisBaru = [];
+  for (var j = 0; j < items.length; j++) {
+    var it = items[j];
+    var baris = rowTransfer(it);
+    var adaDi = indeks[String(it.id)];
+    if (adaDi) sh.getRange(adaDi, 1, 1, HEADERS_TRANSFER.length).setValues([baris]);
+    else barisBaru.push(baris);
+  }
+  if (barisBaru.length) sh.getRange(sh.getLastRow() + 1, 1, barisBaru.length, HEADERS_TRANSFER.length).setValues(barisBaru);
+  return { ok: true, count: items.length };
+}
+
+function deleteTransfer(ids) {
+  if (!ids || !ids.length) return { ok: true, deleted: 0 };
+  var sh = sheetTransfer();
+  var values = sh.getDataRange().getValues();
+  var buang = {};
+  for (var k = 0; k < ids.length; k++) buang[String(ids[k])] = 1;
+  var n = 0;
+  for (var i = values.length - 1; i >= 1; i--) {
+    if (values[i][0] && buang[String(values[i][0])]) { sh.deleteRow(i + 1); n++; }
+  }
+  return { ok: true, deleted: n };
+}
+
 function ujiIzin() {
   var f = folderLaporan();
   Logger.log('Folder laporan siap: ' + f.getName());
@@ -1125,7 +1294,7 @@ var WARNA_KAT=['#185FA5','#1D9E75','#D85A30','#D4537E','#BA7517','#7F77DD','#0F6
 var DB=null;
 function openDB(){
   return new Promise(function(res,rej){
-    var req=indexedDB.open('keuanganku',3);
+    var req=indexedDB.open('keuanganku',4);
     req.onupgradeneeded=function(e){
       var db=e.target.result;
       if(!db.objectStoreNames.contains('transaksi')){
@@ -1140,6 +1309,12 @@ function openDB(){
          ke layanan pencadangan/Drive, supaya tetap ada tiap login dengan nomor yang sama. */
       if(!db.objectStoreNames.contains('avatars')){
         db.createObjectStore('avatars',{keyPath:'phone'});
+      }
+      if(!db.objectStoreNames.contains('akun')){
+        db.createObjectStore('akun',{keyPath:'id'});
+      }
+      if(!db.objectStoreNames.contains('transfer')){
+        db.createObjectStore('transfer',{keyPath:'id'});
       }
     };
     req.onsuccess=function(e){ DB=e.target.result; res(DB); };
@@ -1164,6 +1339,30 @@ function uDelete(id){ return new Promise(function(res,rej){ var r=utx('readwrite
 function uBulkPut(items){
   return new Promise(function(res,rej){
     var t=DB.transaction('utang','readwrite'), st=t.objectStore('utang');
+    items.forEach(function(it){ st.put(it); });
+    t.oncomplete=function(){res();}; t.onerror=function(){rej(t.error);};
+  });
+}
+/* ====== PENAMPUNG SALDO (AKUN) ====== */
+function akx(mode){ return DB.transaction('akun',mode).objectStore('akun'); }
+function akGetAll(){ return new Promise(function(res,rej){ var r=akx('readonly').getAll(); r.onsuccess=function(){res(r.result||[]);}; r.onerror=function(){rej(r.error);}; }); }
+function akPut(item){ return new Promise(function(res,rej){ var r=akx('readwrite').put(item); r.onsuccess=function(){res();}; r.onerror=function(){rej(r.error);}; }); }
+function akDelete(id){ return new Promise(function(res,rej){ var r=akx('readwrite').delete(id); r.onsuccess=function(){res();}; r.onerror=function(){rej(r.error);}; }); }
+function akBulkPut(items){
+  return new Promise(function(res,rej){
+    var t=DB.transaction('akun','readwrite'), st=t.objectStore('akun');
+    items.forEach(function(it){ st.put(it); });
+    t.oncomplete=function(){res();}; t.onerror=function(){rej(t.error);};
+  });
+}
+/* ====== PERPINDAHAN SALDO (TRANSFER) ====== */
+function trx(mode){ return DB.transaction('transfer',mode).objectStore('transfer'); }
+function trGetAll(){ return new Promise(function(res,rej){ var r=trx('readonly').getAll(); r.onsuccess=function(){res(r.result||[]);}; r.onerror=function(){rej(r.error);}; }); }
+function trPut(item){ return new Promise(function(res,rej){ var r=trx('readwrite').put(item); r.onsuccess=function(){res();}; r.onerror=function(){rej(r.error);}; }); }
+function trDelete(id){ return new Promise(function(res,rej){ var r=trx('readwrite').delete(id); r.onsuccess=function(){res();}; r.onerror=function(){rej(r.error);}; }); }
+function trBulkPut(items){
+  return new Promise(function(res,rej){
+    var t=DB.transaction('transfer','readwrite'), st=t.objectStore('transfer');
     items.forEach(function(it){ st.put(it); });
     t.oncomplete=function(){res();}; t.onerror=function(){rej(t.error);};
   });
@@ -1218,6 +1417,10 @@ var chart=null;
 var UT=[];
 var utFilter='semua';
 var utState=null, utDetail=null, showPay=false;
+var AK=[];
+var akunState=null, akunDetail=null;
+var TR=[];
+var transferState=null;
 
 /* ====== UTIL ====== */
 function rp(n){ return 'Rp '+(Number(n)||0).toLocaleString('id-ID'); }
@@ -1350,21 +1553,36 @@ async function kirimRentang(){
   showProgress('Mencadangkan data');
   try{
     setProgress(10,'Menyiapkan '+dalam.length+' transaksi...');
-    var items=dalam.map(function(t){ return {id:t.id,tanggal:t.tanggal,tipe:t.tipe,kategori:t.kategori,nominal:t.nominal,keterangan:t.keterangan,catatan:t.catatan,createdAt:t.createdAt,user:t.user||emailUser()}; });
-    setProgress(35,'Mengirim data...');
+    var items=dalam.map(function(t){ return {id:t.id,tanggal:t.tanggal,tipe:t.tipe,kategori:t.kategori,nominal:t.nominal,keterangan:t.keterangan,catatan:t.catatan,akunId:t.akunId||'',createdAt:t.createdAt,user:t.user||emailUser()}; });
+    setProgress(30,'Mengirim data...');
     await kirimNoCors('sync',{items:items});
     var sukses=dalam;
-    setProgress(60,'Memverifikasi data...');
+    setProgress(50,'Memverifikasi data...');
     try{ var d=await jsonp('action=list'); var ada={}; (d.data||[]).forEach(function(r){ ada[String(r.id)]=true; }); var cek=dalam.filter(function(t){return ada[String(t.id)];}); if(cek.length) sukses=cek; }catch(e){}
     sukses.forEach(function(t){ t.terkirim=true; });
     await idbBulkPut(sukses);
-    setProgress(80,'Menyelaraskan hutang & piutang...');
+    setProgress(68,'Menyelaraskan hutang & piutang...');
     try{
       var utBelum=UT.filter(function(u){ return !u.terkirim; });
       if(utBelum.length){
         var uitems=utBelum.map(function(u){ return {id:u.id,jenis:u.jenis,pihak:u.pihak,pokok:u.pokok,tanggal:u.tanggal,jatuhTempo:u.jatuhTempo||'',catatan:u.catatan||'',pembayaran:JSON.stringify(u.pembayaran||[]),createdAt:u.createdAt||'',user:u.user||emailUser()}; });
         await kirimNoCors('syncUtang',{items:uitems});
         utBelum.forEach(function(u){ u.terkirim=true; }); await uBulkPut(utBelum);
+      }
+    }catch(e){}
+    setProgress(80,'Menyelaraskan penampung saldo...');
+    try{
+      var akBelum=AK.filter(function(a){ return !a.terkirim; });
+      if(akBelum.length){
+        var akitems=akBelum.map(function(a){ return {id:a.id,nama:a.nama,jenis:a.jenis,saldoAwal:a.saldoAwal,catatan:a.catatan||'',createdAt:a.createdAt||'',user:a.user||emailUser()}; });
+        await kirimNoCors('syncAkun',{items:akitems});
+        akBelum.forEach(function(a){ a.terkirim=true; }); await akBulkPut(akBelum);
+      }
+      var trBelum=TR.filter(function(t){ return !t.terkirim; });
+      if(trBelum.length){
+        var tritems=trBelum.map(function(t){ return {id:t.id,tanggal:t.tanggal,dariAkunId:t.dariAkunId,keAkunId:t.keAkunId,nominal:t.nominal,catatan:t.catatan||'',createdAt:t.createdAt||'',user:t.user||emailUser()}; });
+        await kirimNoCors('syncTransfer',{items:tritems});
+        trBelum.forEach(function(t){ t.terkirim=true; }); await trBulkPut(trBelum);
       }
     }catch(e){}
     setProgress(95,'Menyelesaikan...');
@@ -1382,20 +1600,34 @@ async function tarikDariSheet(){
   if(!await confirmModal('Pulihkan semua data cadangan ke perangkat ini?')) return;
   showProgress('Memulihkan data');
   try{
-    setProgress(15,'Mengambil transaksi...');
+    setProgress(12,'Mengambil transaksi...');
     var d=await jsonp('action=list');
     var q=getDelQueue(), qset={}; q.forEach(function(id){ qset[String(id)]=1; });
     var dari=(d.data||[]).filter(function(r){ return r.user===emailUser() && !qset[String(r.id)]; }).map(function(r){ r.terkirim=true; return r; });
-    setProgress(45,'Menyimpan '+dari.length+' transaksi...');
+    setProgress(35,'Menyimpan '+dari.length+' transaksi...');
     if(dari.length) await idbBulkPut(dari);
     var all=await idbGetAll(); TX=all.filter(function(t){ return t.user===emailUser(); }); sortTX();
-    setProgress(70,'Mengambil hutang & piutang...');
+    setProgress(55,'Mengambil hutang & piutang...');
     try{
       var du=await jsonp('action=listUtang');
       var dariU=(du.data||[]).filter(function(r){ return r.user===emailUser(); }).map(function(r){ try{ r.pembayaran=JSON.parse(r.pembayaran||'[]'); }catch(e){ r.pembayaran=[]; } r.terkirim=true; return r; });
-      setProgress(88,'Menyimpan hutang & piutang...');
+      setProgress(70,'Menyimpan hutang & piutang...');
       if(dariU.length) await uBulkPut(dariU);
       await muatUtang();
+    }catch(e){}
+    setProgress(82,'Mengambil penampung saldo...');
+    try{
+      var da=await jsonp('action=listAkun');
+      var dariA=(da.data||[]).filter(function(r){ return r.user===emailUser(); }).map(function(r){ r.terkirim=true; return r; });
+      if(dariA.length) await akBulkPut(dariA);
+      await muatAkun();
+    }catch(e){}
+    setProgress(92,'Mengambil perpindahan saldo...');
+    try{
+      var dt=await jsonp('action=listTransfer');
+      var dariT=(dt.data||[]).filter(function(r){ return r.user===emailUser(); }).map(function(r){ r.terkirim=true; return r; });
+      if(dariT.length) await trBulkPut(dariT);
+      await muatTransfer();
     }catch(e){}
     setProgress(100,'Selesai');
     await new Promise(function(r){setTimeout(r,350);});
@@ -1422,6 +1654,10 @@ function render(){
   else if(view==='utang'){ renderUtang(); }
   else if(view==='utangAdd'){ renderUtangAdd(); }
   else if(view==='utangDetail'){ renderUtangDetail(); }
+  else if(view==='akunAdd'){ renderAkunAdd(); }
+  else if(view==='akunList'){ renderAkunList(); }
+  else if(view==='akunDetail'){ renderAkunDetail(); }
+  else if(view==='transferAdd'){ renderTransferAdd(); }
   S().classList.toggle('has-appbar', !!document.querySelector('.appbar'));
 }
 
@@ -1447,12 +1683,12 @@ async function masukManual(){
   setUser({phone:hp, name:n, picture:fotoTersimpan||''}); afterLogin();
 }
 async function afterLogin(){
-  try{ var all=await claimOrphans(); TX=all.filter(function(t){ return t.user===emailUser(); }); sortTX(); await muatUtang(); }catch(e){}
+  try{ var all=await claimOrphans(); TX=all.filter(function(t){ return t.user===emailUser(); }); sortTX(); await muatUtang(); await muatAkun(); await muatTransfer(); }catch(e){}
   updatePip(); flushDeletes(); view='home'; setNav(); render();
 }
 async function logout(){
   if(!await confirmModal('Keluar dari akun ini?')) return;
-  clearUser(); TX=[]; UT=[]; view='home'; setNav(); render();
+  clearUser(); TX=[]; UT=[]; AK=[]; TR=[]; view='home'; setNav(); render();
 }
 
 function periodeSeg(){
@@ -1468,15 +1704,12 @@ function renderHome(){
   var terakhir=px.slice(0,homeLimit||px.length);
   var piutangSisa=UT.filter(function(u){return u.jenis==='piutang';}).reduce(function(s,u){return s+utSisa(u);},0);
   var hutangSisa=UT.filter(function(u){return u.jenis==='hutang';}).reduce(function(s,u){return s+utSisa(u);},0);
+  var slides=[totalSlideHTML(masuk-keluar,pM,pK)].concat(AK.map(akunSlideHTML));
   S().innerHTML=
     appBar()+
     '<div class="topbar"><div class="greet"><div><div class="hi">Halo,</div><div class="nm">'+esc((USER&&USER.name)||'')+'</div></div></div></div>'+
-    '<div class="saldo"><button class="saldo-eye" onclick="toggleHide()" aria-label="Tampilkan atau sembunyikan nominal">'+eyeIcon(15)+'</button>'+
-    '<div class="lbl">Total saldo</div><div class="amt">'+fmtRp(masuk-keluar)+'</div>'+
-    '<div class="row"><div><div class="mini">&#9660; Pemasukan</div><div class="val">'+fmtRp(pM)+'</div></div>'+
-    '<div><div class="mini">&#9650; Pengeluaran</div><div class="val">'+fmtRp(pK)+'</div></div></div>'+
-    '<div style="border-top:1px solid rgba(255,255,255,.22);margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">'+
-      '<span class="mini">Sisa saldo periode ini</span><span class="val" style="font-size:16px">'+fmtRp(pM-pK,true)+'</span></div></div>'+
+    '<div class="saldo-carousel" id="saldoCarousel">'+slides.map(function(s){return '<div class="saldo-slide">'+s+'</div>';}).join('')+'</div>'+
+    (slides.length>1?('<div class="saldo-dots" id="saldoDots">'+slides.map(function(_,i){return '<span class="saldo-dot'+(i===0?' on':'')+'"></span>';}).join('')+'</div>'):'')+
     '<div class="uring" onclick="goView(\'utang\')">'+
       '<div class="ur"><div class="url">Piutang berjalan</div><div class="urv pos">'+fmtRp(piutangSisa)+'</div></div>'+
       '<div class="ursep"></div>'+
@@ -1488,6 +1721,34 @@ function renderHome(){
     limitChips(homeLimit,'setHomeLimit')+
     '<div class="list">'+(terakhir.length?terakhir.map(txRow).join(''):'<div class="empty">Belum ada transaksi untuk periode ini.<br>Ketuk tombol + untuk menambahkan.</div>')+'</div>';
   wirePeriode();
+  wireSaldoCarousel();
+}
+function totalSlideHTML(saldoTotal,pM,pK){
+  return '<div class="saldo"><button class="saldo-eye" onclick="toggleHide()" aria-label="Tampilkan atau sembunyikan nominal">'+eyeIcon(15)+'</button>'+
+    '<div class="lbl">Total saldo</div><div class="amt">'+fmtRp(saldoTotal)+'</div>'+
+    '<div class="row"><div><div class="mini">&#9660; Pemasukan</div><div class="val">'+fmtRp(pM)+'</div></div>'+
+    '<div><div class="mini">&#9650; Pengeluaran</div><div class="val">'+fmtRp(pK)+'</div></div></div>'+
+    '<div style="border-top:1px solid rgba(255,255,255,.22);margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">'+
+      '<span class="mini">Sisa saldo periode ini</span><span class="val" style="font-size:16px">'+fmtRp(pM-pK,true)+'</span></div></div>';
+}
+function akunSlideHTML(a){
+  var p=akunPeriode(a.id);
+  return '<div class="saldo" onclick="bukaAkun(\''+a.id+'\')" style="cursor:pointer">'+
+    '<div class="lbl">'+akunIkon(a.jenis)+' '+esc(a.nama)+'</div><div class="amt">'+fmtRp(saldoAkunSaatIni(a.id))+'</div>'+
+    '<div class="row"><div><div class="mini">&#9660; Pemasukan</div><div class="val">'+fmtRp(p.masuk)+'</div></div>'+
+    '<div><div class="mini">&#9650; Pengeluaran</div><div class="val">'+fmtRp(p.keluar)+'</div></div></div>'+
+    '<div style="border-top:1px solid rgba(255,255,255,.22);margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">'+
+      '<span class="mini">Sisa saldo periode ini</span><span class="val" style="font-size:16px">'+fmtRp(p.masuk-p.keluar,true)+'</span></div></div>';
+}
+function wireSaldoCarousel(){
+  var car=document.getElementById('saldoCarousel');
+  if(!car) return;
+  car.addEventListener('scroll', function(){
+    var slide=car.firstElementChild; if(!slide) return;
+    var w=slide.getBoundingClientRect().width+12;
+    var idx=Math.round(car.scrollLeft/w);
+    document.querySelectorAll('.saldo-dot').forEach(function(d,i){ d.classList.toggle('on', i===idx); });
+  }, {passive:true});
 }
 
 function txRow(t){
@@ -1503,15 +1764,24 @@ function txRow(t){
 
 /* ====== TAMBAH (MANUAL) ====== */
 var addState=blankAdd();
-function blankAdd(){ return {tipe:'pengeluaran',metode:'manual',nominal:'',keterangan:'',kategori:'Belanja',tanggal:todayISO(),catatan:''}; }
+function blankAdd(){ return {tipe:'pengeluaran',metode:'manual',nominal:'',keterangan:'',kategori:'Belanja',tanggal:todayISO(),catatan:'',akunId:(AK[0]?AK[0].id:'')}; }
 
 function renderAdd(){
+  if(!AK.length){
+    S().innerHTML=
+      '<div class="fhead"><button class="bk" onclick="goView(\'home\')">&#8592;</button><div class="ti">Tambah transaksi</div></div>'+
+      '<div class="form"><div class="empty">Anda belum memiliki penampung saldo (bank, dompet digital, atau kartu kredit). Tambahkan dahulu supaya transaksi dapat dicatatkan ke penampung yang tepat.</div>'+
+      '<button class="save pem" onclick="akunState=blankAkun();goView(\'akunAdd\')">+ Tambah penampung saldo</button></div>';
+    return;
+  }
   var a=addState, peng=a.tipe==='pengeluaran';
+  if(!a.akunId) a.akunId=AK[0].id;
   S().innerHTML=
     '<div class="fhead"><button class="bk" onclick="goView(\'home\')">&#8592;</button><div class="ti">Tambah transaksi</div></div>'+
     '<div class="form"><div class="tipe2">'+
       '<button class="peng '+(peng?'on':'')+'" onclick="setTipe(\'pengeluaran\')">Pengeluaran</button>'+
       '<button class="pem '+(!peng?'on':'')+'" onclick="setTipe(\'pemasukan\')">Pemasukan</button></div>'+
+    '<label class="fl">Penampung saldo</label><select class="field" onchange="addState.akunId=this.value">'+akunOptionsHTML(a.akunId)+'</select>'+
     (peng?'<div class="metode"><button class="'+(a.metode==='manual'?'on':'')+'" onclick="setMetode(\'manual\')">&#9998; Ketik manual</button>'+
       '<button class="'+(a.metode==='struk'?'on':'')+'" onclick="setMetode(\'struk\')">&#128247; Foto struk</button></div>':'')+
     (peng&&a.metode==='struk'?strukPicker():'')+
@@ -1605,8 +1875,9 @@ function setMetode(m){ addState.metode=m; renderAdd(); }
 function onNominal(el){ var d=el.value.replace(/\D/g,''); addState.nominal=d; el.value=d?(+d).toLocaleString('id-ID'):''; }
 function onSimpan(){
   var a=addState;
+  if(!a.akunId){ toast('Pilih penampung saldo terlebih dahulu'); return; }
   if(!a.nominal||+a.nominal<=0){ toast('Nominal belum diisi'); return; }
-  simpanTx({tanggal:a.tanggal,tipe:a.tipe,kategori:a.kategori,nominal:+a.nominal,keterangan:a.keterangan.trim(),catatan:a.catatan.trim(),createdAt:new Date().toISOString()});
+  simpanTx({tanggal:a.tanggal,tipe:a.tipe,kategori:a.kategori,nominal:+a.nominal,keterangan:a.keterangan.trim(),catatan:a.catatan.trim(),akunId:a.akunId,createdAt:new Date().toISOString()});
   addState=blankAdd();
 }
 /* ====== PEMINDAI STRUK: KETUK PER KATA, BANYAK TRANSAKSI ======
@@ -1660,7 +1931,7 @@ setInterval(function(){
     }
   }catch(e){}
 }, 600);
-function blankStruk(){ return {fotoData:null,img:null,cw:900,ch:0,kata:[],kataRole:{},draftIdx:[],ketAnchor:null,ocrDone:false,draft:{keterangan:'',nominal:''},toko:'',catatan:'',tanggal:todayISO(),pending:[],editPend:null,activeRole:null,busy:false}; }
+function blankStruk(){ return {fotoData:null,img:null,cw:900,ch:0,kata:[],kataRole:{},draftIdx:[],ketAnchor:null,ocrDone:false,draft:{keterangan:'',nominal:''},toko:'',catatan:'',tanggal:todayISO(),akunId:(AK[0]?AK[0].id:''),pending:[],editPend:null,activeRole:null,busy:false}; }
 var strukState=blankStruk();
 var ocrWorker=null;
 async function getWorker(){
@@ -1752,6 +2023,7 @@ function renderStruk(){
       '<div class="slot"><span>Keterangan</span><b>'+(st.draft.keterangan?esc(st.draft.keterangan):'<i>ketuk kata</i>')+'</b></div>'+
       '<div class="slot"><span>Nominal</span><b>'+(st.draft.nominal?rp(+st.draft.nominal):'<i>ketuk kata angka</i>')+'</b></div></div>'+
     '<label class="fl">Nama toko (opsional, berlaku untuk semua)</label><input class="field" value="'+esc(st.toko)+'" oninput="strukState.toko=this.value" placeholder="ketuk di foto atau ketik">'+
+    '<label class="fl">Penampung saldo</label><select class="field" onchange="strukState.akunId=this.value">'+akunOptionsHTML(st.akunId)+'</select>'+
     '<div class="duo"><div><label class="fl">Catatan (opsional)</label><input class="field" value="'+esc(st.catatan)+'" oninput="strukState.catatan=this.value" placeholder="opsional"></div>'+
       '<div><label class="fl">Tanggal</label><input class="field" type="date" value="'+st.tanggal+'" onchange="strukState.tanggal=this.value"></div></div>'+
     '<div class="dl" style="margin:4px 2px 6px">Daftar transaksi ('+st.pending.length+')'+(st.pending.length?' &middot; ketuk dua kali nama/nominal untuk ubah':'')+'</div>'+
@@ -1831,11 +2103,12 @@ function hapusPending(i){ strukState.pending.splice(i,1); renderStruk(); }
 async function simpanSemua(){
   var st=strukState;
   if(!st.pending.length){ toast('Belum ada transaksi'); return; }
+  if(!st.akunId){ toast('Pilih penampung saldo terlebih dahulu'); return; }
   var cat=[st.toko?('Toko: '+st.toko):'', st.catatan].filter(Boolean).join(' | ');
   for(var i=0;i<st.pending.length;i++){
     var p=st.pending[i];
     var catItem=[cat, p.diskon?('Diskon '+rp(p.diskon)):''].filter(Boolean).join(' | ');
-    var item={ id:uid(), tanggal:st.tanggal, tipe:'pengeluaran', kategori:p.kategori, nominal:+p.nominal, keterangan:p.keterangan, catatan:catItem, createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
+    var item={ id:uid(), tanggal:st.tanggal, tipe:'pengeluaran', kategori:p.kategori, nominal:+p.nominal, keterangan:p.keterangan, catatan:catItem, akunId:st.akunId, createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
     TX.unshift(item); await idbPut(item);
   }
   sortTX(); updatePip();
@@ -2009,6 +2282,153 @@ function renderUtangDetail(){
     '</div>';
 }
 function togglePay(){ showPay=!showPay; render(); }
+
+/* ====== PENAMPUNG SALDO (AKUN: BANK / DOMPET DIGITAL / KARTU KREDIT) ====== */
+var JENIS_AKUN=[['bank','Bank'],['ewallet','Dompet Digital'],['kartu','Kartu Kredit'],['lainnya','Lainnya']];
+function akunIkon(j){ return j==='bank'?'\uD83C\uDFE6': j==='ewallet'?'\uD83D\uDCF1': j==='kartu'?'\uD83D\uDCB3':'\uD83D\uDCB0'; }
+function akunLabelJenis(j){ for(var i=0;i<JENIS_AKUN.length;i++){ if(JENIS_AKUN[i][0]===j) return JENIS_AKUN[i][1]; } return 'Lainnya'; }
+function cariAkun(id){ for(var i=0;i<AK.length;i++){ if(AK[i].id===id) return AK[i]; } return null; }
+async function muatAkun(){
+  try{ var all=await akGetAll(); AK=all.filter(function(a){ return a.user===emailUser(); }); AK.sort(function(a,b){ return (a.createdAt||'').localeCompare(b.createdAt||''); }); }
+  catch(e){ AK=[]; }
+}
+async function muatTransfer(){
+  try{ var all=await trGetAll(); TR=all.filter(function(t){ return t.user===emailUser(); }); TR.sort(function(a,b){ return (b.tanggal+(b.createdAt||'')).localeCompare(a.tanggal+(a.createdAt||'')); }); }
+  catch(e){ TR=[]; }
+}
+/* Saldo akun saat ini (sepanjang waktu): saldo awal + pemasukan - pengeluaran + transfer masuk - transfer keluar. */
+function saldoAkunSaatIni(akunId){
+  var a=cariAkun(akunId); if(!a) return 0;
+  var masuk=TX.filter(function(t){return t.akunId===akunId && t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
+  var keluar=TX.filter(function(t){return t.akunId===akunId && t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
+  var trMasuk=TR.filter(function(t){return t.keAkunId===akunId;}).reduce(function(s,t){return s+(+t.nominal);},0);
+  var trKeluar=TR.filter(function(t){return t.dariAkunId===akunId;}).reduce(function(s,t){return s+(+t.nominal);},0);
+  return (+a.saldoAwal||0)+masuk-keluar+trMasuk-trKeluar;
+}
+function akunPeriode(akunId){
+  var px=TX.filter(function(t){return t.akunId===akunId && dalamPeriode(t.tanggal);});
+  var pM=px.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
+  var pK=px.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
+  return {masuk:pM, keluar:pK};
+}
+function blankAkun(){ return {jenis:'bank', nama:'', saldoAwal:'', catatan:''}; }
+async function simpanAkun(){
+  var a=akunState;
+  if(!a.nama||!a.nama.trim()){ toast('Nama penampung saldo belum diisi'); return; }
+  var item={ id:uid(), nama:a.nama.trim(), jenis:a.jenis, saldoAwal:+a.saldoAwal||0, catatan:(a.catatan||'').trim(), createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
+  AK.push(item); await akPut(item);
+  akunState=null; toast('Penampung saldo tersimpan'); goView('akunList');
+}
+async function hapusAkun(id){
+  if(!await confirmModal('Hapus penampung saldo ini? Transaksi yang sudah tercatat tidak ikut terhapus, hanya tidak lagi terhubung ke penampung ini.', {danger:true})) return;
+  AK=AK.filter(function(a){ return a.id!==id; });
+  await akDelete(id);
+  if(getGasUrl()){ try{ kirimNoCors('deleteAkun',{ids:[id], user:emailUser()}); }catch(e){} }
+  akunDetail=null; toast('Penampung saldo dihapus'); goView('akunList');
+}
+function renderAkunAdd(){
+  var a=akunState||blankAkun(); akunState=a;
+  S().innerHTML=
+    '<div class="fhead"><button class="bk" onclick="goView(\'akunList\')">&#8592;</button><div class="ti">Tambah penampung saldo</div></div>'+
+    '<div class="form">'+
+    '<label class="fl">Jenis</label><div class="chips" style="padding:0 0 14px">'+JENIS_AKUN.map(function(j){ return '<button class="chip '+(a.jenis===j[0]?'on':'')+'" onclick="akunSetJenis(\''+j[0]+'\')">'+akunIkon(j[0])+' '+j[1]+'</button>'; }).join('')+'</div>'+
+    '<label class="fl">Nama</label><input class="field" placeholder="mis. BCA, OVO, Kartu Kredit BNI" value="'+esc(a.nama)+'" oninput="akunState.nama=this.value">'+
+    '<label class="fl">Saldo awal (opsional)</label><div class="nominal-wrap"><span class="rp">Rp</span><input inputmode="numeric" placeholder="0" value="'+(a.saldoAwal?(+a.saldoAwal).toLocaleString('id-ID'):'')+'" oninput="akunOnSaldo(this)"></div>'+
+    '<label class="fl">Catatan (opsional)</label><input class="field" placeholder="Tambah catatan" value="'+esc(a.catatan)+'" oninput="akunState.catatan=this.value">'+
+    '<button class="save pem" onclick="simpanAkun()">Simpan penampung saldo</button>'+
+    '</div>';
+}
+function akunSetJenis(j){ akunState.jenis=j; renderAkunAdd(); }
+function akunOnSaldo(el){ var d=el.value.replace(/\D/g,''); akunState.saldoAwal=d; el.value=d?(+d).toLocaleString('id-ID'):''; }
+function renderAkunList(){
+  var totalSaldo=AK.reduce(function(s,a){ return s+saldoAkunSaatIni(a.id); },0);
+  S().innerHTML=
+    '<div class="fhead"><button class="bk" onclick="goView(\'settings\')">&#8592;</button><div class="ti">Penampung Saldo</div></div>'+
+    '<div class="set" style="padding-top:0">'+
+    '<div class="rep-cards"><div class="rep-card" style="flex:1"><div class="l">Total semua penampung</div><div class="v">'+fmtRp(totalSaldo)+'</div></div></div>'+
+    '<button class="btn-line" onclick="akunState=blankAkun();goView(\'akunAdd\')">+ Tambah penampung saldo</button>'+
+    '<div class="list" style="padding-top:10px">'+
+      (AK.length? AK.map(akunRow).join('') : '<div class="empty">Belum ada penampung saldo.<br>Tambahkan bank, dompet digital, atau kartu kredit Anda.</div>')+
+    '</div></div>';
+}
+function akunRow(a){
+  return '<button class="uitem" onclick="bukaAkun(\''+a.id+'\')">'+
+    '<div class="uic p" style="background:#E6F1FB;color:var(--biru)">'+akunIkon(a.jenis)+'</div>'+
+    '<div class="umid"><div class="unm">'+esc(a.nama)+'</div><div class="usub">'+akunLabelJenis(a.jenis)+'</div></div>'+
+    '<div class="uamt" style="color:var(--tx)">'+fmtRp(saldoAkunSaatIni(a.id))+'</div>'+
+    '</button>';
+}
+function bukaAkun(id){ akunDetail=id; goView('akunDetail'); }
+function renderAkunDetail(){
+  var a=cariAkun(akunDetail);
+  if(!a){ goView('akunList'); return; }
+  var saldo=saldoAkunSaatIni(a.id);
+  var riwayat=TX.filter(function(t){return t.akunId===a.id;}).slice().sort(function(x,y){return (y.tanggal+(y.createdAt||'')).localeCompare(x.tanggal+(x.createdAt||''));});
+  var trMasuk=TR.filter(function(t){return t.keAkunId===a.id;});
+  var trKeluar=TR.filter(function(t){return t.dariAkunId===a.id;});
+  S().innerHTML=
+    '<div class="fhead"><button class="bk" onclick="goView(\'akunList\')">&#8592;</button><div class="ti">'+esc(a.nama)+'</div></div>'+
+    '<div class="set">'+
+    '<div class="udetail p"><div class="udlbl">'+akunIkon(a.jenis)+' '+akunLabelJenis(a.jenis)+'</div><div class="udname">'+esc(a.nama)+'</div>'+
+    '<div class="udsisa">'+fmtRp(saldo)+'</div><div class="udcap">saldo saat ini</div></div>'+
+    (a.catatan?('<div class="panel" style="margin:12px 0 0"><div style="font-size:13px;color:var(--tx2);line-height:1.5">'+esc(a.catatan)+'</div></div>'):'')+
+    '<div class="sec-head" style="padding:18px 0 4px"><div class="t">Riwayat transaksi</div></div>'+
+    '<div class="list">'+(riwayat.length? riwayat.slice(0,25).map(txRow).join('') : '<div class="empty" style="padding:20px 0">Belum ada transaksi di penampung ini.</div>')+'</div>'+
+    ((trMasuk.length||trKeluar.length)?('<div class="sec-head" style="padding:14px 0 4px"><div class="t">Riwayat perpindahan saldo</div></div><div class="list">'+
+      trMasuk.map(function(t){return transferRow(t,true);}).concat(trKeluar.map(function(t){return transferRow(t,false);})).join('')+'</div>'):'')+
+    '<button class="btn-danger" onclick="hapusAkun(\''+a.id+'\')">Hapus penampung saldo</button>'+
+    '</div>';
+}
+function transferRow(t, masuk){
+  var lawan=cariAkun(masuk?t.dariAkunId:t.keAkunId);
+  return '<div class="item"><div class="ic" style="background:'+(masuk?'var(--hijau-bg)':'var(--merah-bg)')+'">'+(masuk?'&#8601;':'&#8599;')+'</div>'+
+    '<div class="mid"><div class="nm">'+(masuk?'Dari ':'Ke ')+esc(lawan?lawan.nama:'(dihapus)')+'</div><div class="dt">'+labelTanggal(t.tanggal)+(t.catatan?(' &middot; '+esc(t.catatan)):'')+'</div></div>'+
+    '<div class="amt '+(masuk?'pos':'neg')+'">'+(masuk?'+ ':'- ')+fmtRp(t.nominal)+'</div>'+
+    '<button class="delbtn" onclick="hapusTransfer(\''+t.id+'\')">&times;</button></div>';
+}
+
+/* ====== PERPINDAHAN SALDO (TRANSFER ANTAR AKUN) ====== */
+function blankTransfer(){ return {dariAkunId:(AK[0]?AK[0].id:''), keAkunId:(AK[1]?AK[1].id:(AK[0]?AK[0].id:'')), nominal:'', tanggal:todayISO(), catatan:''}; }
+function akunOptionsHTML(selectedId){
+  return AK.map(function(a){ return '<option value="'+a.id+'" '+(selectedId===a.id?'selected':'')+'>'+akunIkon(a.jenis)+' '+esc(a.nama)+'</option>'; }).join('');
+}
+async function simpanTransfer(){
+  var t=transferState;
+  if(!t.dariAkunId||!t.keAkunId){ toast('Pilih akun asal dan tujuan'); return; }
+  if(t.dariAkunId===t.keAkunId){ toast('Akun asal dan tujuan tidak boleh sama'); return; }
+  if(!t.nominal||+t.nominal<=0){ toast('Nominal belum diisi'); return; }
+  var item={ id:uid(), tanggal:t.tanggal, dariAkunId:t.dariAkunId, keAkunId:t.keAkunId, nominal:+t.nominal, catatan:(t.catatan||'').trim(), createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
+  TR.unshift(item); await trPut(item);
+  transferState=null; toast('Perpindahan saldo tersimpan'); goView('home');
+}
+async function hapusTransfer(id){
+  if(!await confirmModal('Hapus catatan perpindahan saldo ini?', {danger:true})) return;
+  TR=TR.filter(function(t){ return t.id!==id; });
+  await trDelete(id);
+  if(getGasUrl()){ try{ kirimNoCors('deleteTransfer',{ids:[id], user:emailUser()}); }catch(e){} }
+  render();
+}
+function renderTransferAdd(){
+  if(AK.length<2){
+    S().innerHTML=
+      '<div class="fhead"><button class="bk" onclick="goView(\'home\')">&#8592;</button><div class="ti">Pindah saldo</div></div>'+
+      '<div class="form"><div class="empty">Anda perlu minimal 2 penampung saldo untuk dapat memindahkan saldo antar akun.</div>'+
+      '<button class="save pem" onclick="akunState=blankAkun();goView(\'akunAdd\')">+ Tambah penampung saldo</button></div>';
+    return;
+  }
+  var t=transferState||blankTransfer(); transferState=t;
+  S().innerHTML=
+    '<div class="fhead"><button class="bk" onclick="goView(\'home\')">&#8592;</button><div class="ti">Pindah saldo</div></div>'+
+    '<div class="form">'+
+    '<label class="fl">Dari penampung</label><select class="field" onchange="transferState.dariAkunId=this.value">'+akunOptionsHTML(t.dariAkunId)+'</select>'+
+    '<label class="fl">Ke penampung</label><select class="field" onchange="transferState.keAkunId=this.value">'+akunOptionsHTML(t.keAkunId)+'</select>'+
+    '<label class="fl">Nominal</label><div class="nominal-wrap"><span class="rp">Rp</span><input inputmode="numeric" placeholder="0" value="'+(t.nominal?(+t.nominal).toLocaleString('id-ID'):'')+'" oninput="transferOnNominal(this)"></div>'+
+    '<label class="fl">Tanggal</label><input class="field" type="date" value="'+t.tanggal+'" onchange="transferState.tanggal=this.value">'+
+    '<label class="fl">Catatan (opsional)</label><input class="field" placeholder="Tambah catatan" value="'+esc(t.catatan)+'" oninput="transferState.catatan=this.value">'+
+    '<button class="save pem" onclick="simpanTransfer()">Simpan perpindahan</button>'+
+    '</div>';
+}
+function transferOnNominal(el){ var d=el.value.replace(/\D/g,''); transferState.nominal=d; el.value=d?(+d).toLocaleString('id-ID'):''; }
 
 /* ====== LAPORAN ====== */
 function renderReport(){
@@ -2237,6 +2657,7 @@ function renderSettings(){
       '<div style="font-size:11px;color:var(--tx3);margin:0 2px 4px">Otomatis mengikuti pengaturan tema perangkat Anda.</div>'+
       '<div class="grp-label">Data &amp; Pencadangan</div>'+
       '<div class="menu">'+
+        menuRow('&#128176;','Penampung Saldo',AK.length+' penampung tercatat',"goView('akunList')")+
         menuRow('&#9729;','Koneksi Pencadangan',sheetSub,"openProf('sheet')")+
       '</div>'+
       '<div class="grp-label">Tentang</div>'+
@@ -2347,13 +2768,19 @@ document.querySelectorAll('.nav [data-nav]').forEach(function(b){ b.onclick=func
 document.getElementById('fab').onclick=function(){ openFabMenu(); };
 function openFabMenu(){ document.getElementById('acts').classList.add('show'); }
 function closeSheet(){ document.getElementById('acts').classList.remove('show'); }
-function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd(); goView('add'); } else { utState=blankUt(kind); goView('utangAdd'); } }
+function actAdd(kind){
+  closeSheet();
+  if(kind==='transaksi'){ addState=blankAdd(); goView('add'); }
+  else if(kind==='pindah'){ transferState=blankTransfer(); goView('transferAdd'); }
+  else if(kind==='akun'){ akunState=blankAkun(); goView('akunAdd'); }
+  else { utState=blankUt(kind); goView('utangAdd'); }
+}
 
 /* ====== MULAI ====== */
 (async function(){
   if(window.matchMedia){ try{ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){ if(THEME==='auto') applyTheme(); }); }catch(e){} }
   USER=getUser();
-  try{ await openDB(); var all=USER?await claimOrphans():await idbGetAll(); TX=USER?all.filter(function(t){ return t.user===emailUser(); }):[]; sortTX(); await muatUtang(); }catch(e){ toast('Gagal membuka penyimpanan: '+e.message); }
+  try{ await openDB(); var all=USER?await claimOrphans():await idbGetAll(); TX=USER?all.filter(function(t){ return t.user===emailUser(); }):[]; sortTX(); await muatUtang(); await muatAkun(); await muatTransfer(); }catch(e){ toast('Gagal membuka penyimpanan: '+e.message); }
   updatePip();
   if(USER) flushDeletes();
   render();
