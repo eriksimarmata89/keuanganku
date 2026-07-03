@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#185FA5">
 <title>KeuanganKu</title>
@@ -22,7 +22,7 @@
   body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; background:#e9e9e6; color:var(--tx);}
   #app{max-width:480px; margin:0 auto; min-height:100vh; background:var(--page); position:relative; display:flex; flex-direction:column;}
   .scroll{flex:1; overflow-y:auto; padding-bottom:90px;}
-  .scroll.has-appbar{padding-top:66px;}
+  .scroll.has-appbar{padding-top:calc(66px + env(safe-area-inset-top,0px));}
   h1,h2,h3,p{margin:0;}
   button{font-family:inherit; cursor:pointer;}
 
@@ -30,7 +30,7 @@
   .greet{display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;}
   .greet .hi{font-size:13px; color:var(--tx2);}
   .greet .nm{font-size:16px; font-weight:600; margin-top:2px;}
-  .ava{width:38px; height:38px; border-radius:50%; background:#E6F1FB; color:var(--biru); display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px;}
+  .ava{width:38px; height:38px; border-radius:50%; background:#E6F1FB; color:var(--biru); display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px; object-fit:cover;}
 
   .saldo{background:var(--biru); border-radius:16px; padding:18px 20px; color:#fff; margin:0 18px; position:relative;}
   .saldo .lbl{font-size:12px; color:#B5D4F4;}
@@ -70,7 +70,7 @@
   .fab{width:50px; height:50px; border-radius:50%; background:var(--biru); color:#fff; border:none; font-size:28px; margin-top:-24px; box-shadow:0 4px 12px rgba(24,95,165,.4); display:flex; align-items:center; justify-content:center; line-height:1;}
 
   .form{padding:8px 18px 24px;}
-  .fhead{display:flex; align-items:center; gap:12px; padding:18px 18px 14px;}
+  .fhead{display:flex; align-items:center; gap:12px; padding:calc(18px + env(safe-area-inset-top,0px)) 18px 14px;}
   .fhead .bk{background:none; border:none; font-size:22px; color:var(--tx); line-height:1; padding:0;}
   .fhead .ti{font-size:16px; font-weight:600;}
   .tipe2{display:flex; gap:10px; margin-bottom:18px;}
@@ -173,7 +173,7 @@
   .toast{position:fixed; bottom:96px; left:50%; transform:translateX(-50%); background:#2C2C2A; color:#fff; padding:10px 18px; border-radius:24px; font-size:13px; z-index:50; opacity:0; transition:opacity .25s; pointer-events:none; max-width:90%; text-align:center;}
   .toast.show{opacity:1;}
   .delbtn{background:none; border:none; color:var(--tx3); font-size:16px; padding:4px 0 4px 8px;}
-  .login-wrap{padding:46px 24px 24px;}
+  .login-wrap{padding:calc(46px + env(safe-area-inset-top,0px)) 24px 24px;}
   .login-wrap .logo-mark{display:flex; justify-content:center; margin-bottom:10px;}
   .login-wrap .logo{font-size:26px; font-weight:700; color:var(--biru); text-align:center;}
   .login-wrap .logo-sub{font-size:13px; color:var(--tx2); text-align:center; margin:6px 0 24px;}
@@ -229,7 +229,7 @@
   .gnote{background:var(--kuning-bg); color:var(--kuning-tx); font-size:12px; line-height:1.5; border-radius:10px; padding:11px 13px; margin:6px 0 4px;}
 
   /* ====== HEADER APLIKASI ====== */
-  .appbar{position:fixed; top:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; z-index:20; display:flex; align-items:center; justify-content:space-between; padding:12px 18px 10px; background:var(--page); box-sizing:border-box;}
+  .appbar{position:fixed; top:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; z-index:20; display:flex; align-items:center; justify-content:space-between; padding:calc(env(safe-area-inset-top,0px) + 12px) 18px 10px; background:var(--page); box-sizing:border-box;}
   .appbar .brand{display:flex; align-items:center; gap:9px;}
   .appbar .brand .mk{width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
   .appbar .brand .bt{font-size:16px; font-weight:700; letter-spacing:-.2px;}
@@ -1069,7 +1069,7 @@ var WARNA_KAT=['#185FA5','#1D9E75','#D85A30','#D4537E','#BA7517','#7F77DD','#0F6
 var DB=null;
 function openDB(){
   return new Promise(function(res,rej){
-    var req=indexedDB.open('keuanganku',2);
+    var req=indexedDB.open('keuanganku',3);
     req.onupgradeneeded=function(e){
       var db=e.target.result;
       if(!db.objectStoreNames.contains('transaksi')){
@@ -1079,6 +1079,11 @@ function openDB(){
       }
       if(!db.objectStoreNames.contains('utang')){
         db.createObjectStore('utang',{keyPath:'id'});
+      }
+      /* Foto profil disimpan lokal saja per nomor WhatsApp, tidak pernah dikirim
+         ke layanan pencadangan/Drive, supaya tetap ada tiap login dengan nomor yang sama. */
+      if(!db.objectStoreNames.contains('avatars')){
+        db.createObjectStore('avatars',{keyPath:'phone'});
       }
     };
     req.onsuccess=function(e){ DB=e.target.result; res(DB); };
@@ -1105,6 +1110,38 @@ function uBulkPut(items){
     var t=DB.transaction('utang','readwrite'), st=t.objectStore('utang');
     items.forEach(function(it){ st.put(it); });
     t.oncomplete=function(){res();}; t.onerror=function(){rej(t.error);};
+  });
+}
+/* ====== FOTO PROFIL PER NOMOR (lokal, tidak ikut dicadangkan) ====== */
+function avx(mode){ return DB.transaction('avatars',mode).objectStore('avatars'); }
+function avatarGet(phone){
+  return new Promise(function(res){
+    if(!phone||!DB){ res(null); return; }
+    try{
+      var r=avx('readonly').get(phone);
+      r.onsuccess=function(){ res(r.result||null); };
+      r.onerror=function(){ res(null); };
+    }catch(e){ res(null); }
+  });
+}
+function avatarPut(phone, picture){
+  return new Promise(function(res){
+    if(!phone||!DB){ res(); return; }
+    try{
+      var r=avx('readwrite').put({phone:phone, picture:picture, updatedAt:new Date().toISOString()});
+      r.onsuccess=function(){ res(); };
+      r.onerror=function(){ res(); };
+    }catch(e){ res(); }
+  });
+}
+function avatarDelete(phone){
+  return new Promise(function(res){
+    if(!phone||!DB){ res(); return; }
+    try{
+      var r=avx('readwrite').delete(phone);
+      r.onsuccess=function(){ res(); };
+      r.onerror=function(){ res(); };
+    }catch(e){ res(); }
   });
 }
 
@@ -1343,13 +1380,15 @@ function renderLogin(){
   S().innerHTML=html;
 }
 function onLoginPhone(el){ el.value=el.value.replace(/[^\d+]/g,''); }
-function masukManual(){
+async function masukManual(){
   var n=(document.getElementById('loginNama').value||'').trim();
   var raw=(document.getElementById('loginPhone').value||'').trim();
   var hp=normalisasiHP(raw);
   if(!n){ toast('Nama belum diisi'); return; }
   if(!validHP(hp)){ toast('Nomor WhatsApp tidak valid'); return; }
-  setUser({phone:hp, name:n, picture:''}); afterLogin();
+  var fotoTersimpan=null;
+  try{ var rec=await avatarGet(hp); fotoTersimpan=rec?rec.picture:null; }catch(e){}
+  setUser({phone:hp, name:n, picture:fotoTersimpan||''}); afterLogin();
 }
 async function afterLogin(){
   try{ var all=await claimOrphans(); TX=all.filter(function(t){ return t.user===emailUser(); }); sortTX(); await muatUtang(); }catch(e){}
@@ -1484,11 +1523,12 @@ function simpanAvatarDariFoto(dataUrl){
   img.onerror=function(){ simpanAvatar(dataUrl); };
   img.src=dataUrl;
 }
-function simpanAvatar(dataUrl){
+async function simpanAvatar(dataUrl){
   if(!USER) return;
   try{
     var u=Object.assign({}, USER, {picture:dataUrl});
     setUser(u); USER=u;
+    await avatarPut(USER.phone, dataUrl);
     toast('Foto profil diperbarui');
   }catch(e){
     toast('Gagal menyimpan foto, mungkin ukurannya terlalu besar');
@@ -1501,6 +1541,7 @@ async function hapusAvatar(){
   if(!await confirmModal('Hapus foto profil ini?', {danger:true})) return;
   var u=Object.assign({}, USER, {picture:''});
   setUser(u); USER=u;
+  try{ await avatarDelete(USER.phone); }catch(e){}
   toast('Foto profil dihapus'); render();
 }
 function setTipe(t){ addState.tipe=t; addState.kategori=(t==='pengeluaran'?KAT_PENGELUARAN:KAT_PEMASUKAN)[0]; if(t==='pemasukan')addState.metode='manual'; renderAdd(); }
