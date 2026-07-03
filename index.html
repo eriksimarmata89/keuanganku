@@ -405,6 +405,18 @@
   </div>
 </div>
 
+<div class="pmask" id="lapMask">
+  <div class="pgcard" style="text-align:left">
+    <div class="cmicon info" style="margin-bottom:12px">&#128196;</div>
+    <div class="cmtitle" id="lapTitle">Laporan siap</div>
+    <div class="cmtext" id="lapText"></div>
+    <div style="display:flex;gap:10px;margin-top:6px">
+      <button class="cmbtn cancel" onclick="tutupLaporanModal()">Tutup</button>
+      <button class="cmbtn ok" onclick="unduhLaporanModal()">Unduh</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -1863,6 +1875,7 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
 <script>
 /* PATCH: Laporan PDF & Excel dibuat di Google Apps Script (Drive), tautannya dibagikan */
 (function(){
+  var lapUrl='', lapDownloadUrl='', lapNama='';
 
   function isoDari(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
@@ -1875,14 +1888,22 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
     return {awal:isoDari(now), akhir:isoDari(now)};
   }
 
-  function bagikanTautan(format, url){
-    var pesan='Laporan Keuangan ('+format.toUpperCase()+') - KeuanganKu\n'+url;
+  window.tampilkanLaporanModal=function(format, url, downloadUrl, nama){
+    lapUrl=url; lapDownloadUrl=downloadUrl; lapNama=nama;
+    document.getElementById('lapTitle').textContent='Laporan '+format.toUpperCase()+' siap';
+    document.getElementById('lapText').textContent=nama+' telah dibuat di Google Drive Anda. Ketuk Unduh untuk mengunduhnya.';
+    document.getElementById('lapMask').classList.add('show');
+  };
+  window.tutupLaporanModal=function(){ document.getElementById('lapMask').classList.remove('show'); };
+  window.unduhLaporanModal=function(){
+    var target=lapDownloadUrl||lapUrl;
     if(window.AppInventor && window.AppInventor.setWebViewString){
-      window.AppInventor.setWebViewString('BAGIKAN|'+pesan);
+      window.AppInventor.setWebViewString('BUKA_LINK|'+target);
     } else {
-      try{ window.open(url,'_blank'); }catch(e){ toast('Tautan: '+url); }
+      window.open(target,'_blank');
     }
-  }
+    tutupLaporanModal();
+  };
 
   async function buatLaporanServer(format){
     var rows=dataExport();
@@ -1905,13 +1926,10 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
         '&nama='+encodeURIComponent((USER&&USER.name)||'');
       var d=await jsonp(params);
 
+      hideProgress();
       if(d && d.ok && d.url){
-        setProgress(100,'Selesai');
-        await new Promise(function(r){ setTimeout(r,300); });
-        hideProgress();
-        bagikanTautan(format, d.url);
+        tampilkanLaporanModal(format, d.url, d.downloadUrl, d.nama||('Laporan.'+format));
       } else {
-        hideProgress();
         toast('Gagal membuat laporan: '+((d&&d.error)||'tidak diketahui'));
       }
     }catch(e){
@@ -1920,9 +1938,8 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
     }
   }
 
-  window.unduhHTML=function(){ buatLaporanServer('pdf'); };   // tombol berlabel "PDF"
-  window.unduhCSV =function(){ buatLaporanServer('xlsx'); };  // tombol berlabel "Excel"
-
+  window.unduhHTML=function(){ buatLaporanServer('pdf'); };
+  window.unduhCSV =function(){ buatLaporanServer('xlsx'); };
 })();
 </script>
   
