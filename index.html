@@ -503,6 +503,7 @@ function doGet(e) {
   if (p.action === 'list') out = listTransaksi(p.user);
   if (p.action === 'listUtang') out = listUtang(p.user);
   if (p.action === 'buatLaporan') out = buatLaporan(p.user, p.format, p.awal, p.akhir, p.nama);
+  if (p.action === 'cekKuota') out = cekKuota();
   if (p.callback) {
     return ContentService.createTextOutput(p.callback + '(' + JSON.stringify(out) + ')')
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
@@ -948,6 +949,33 @@ function hapusLaporan(fileId) {
     if (!fileId) return { ok: false, error: 'ID file tidak ada' };
     DriveApp.getFileById(fileId).setTrashed(true);
     return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+/* Cek sisa penyimpanan Google Drive milik pemilik lembar data (dipakai saat
+   Simpan & Sambungkan, supaya Kakak tahu kapasitas Drive masih cukup untuk
+   menampung file laporan sementara). */
+function cekKuota() {
+  try {
+    var token = ScriptApp.getOAuthToken();
+    var resp = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/about?fields=storageQuota', {
+      headers: { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+    var data = JSON.parse(resp.getContentText() || '{}');
+    var q = data.storageQuota || {};
+    var takTerbatas = (q.limit == null);
+    var limit = takTerbatas ? null : Number(q.limit);
+    var usage = Number(q.usage || 0);
+    return {
+      ok: true,
+      takTerbatas: takTerbatas,
+      limit: limit,
+      usage: usage,
+      sisa: takTerbatas ? null : Math.max(0, limit - usage)
+    };
   } catch (err) {
     return { ok: false, error: String(err) };
   }
@@ -2212,7 +2240,7 @@ function renderProfSheet(){
       '<p class="hint">Seluruh transaksi tersimpan di perangkat dan tetap dapat diakses tanpa internet. Hubungkan ke layanan pencadangan untuk menyimpan salinan data dan menyelaraskannya antar perangkat. Masukkan alamat layanan yang diakhiri /exec.</p>'+
       '<label class="fl">Alamat layanan pencadangan</label><input class="field" id="inUrl" placeholder="https://.../exec" value="'+esc(url)+'">'+
       '<button class="save pem" onclick="simpanUrl()">Simpan &amp; sambungkan</button>'+
-      '<button class="btn-line" onclick="ujiKoneksi()">Uji koneksi</button>'+
+      '<div style="font-size:11px;color:var(--tx3);margin:8px 2px 0">Koneksi otomatis diuji dan sisa penyimpanan Drive Anda ditampilkan setelah tersambung.</div>'+
       '<div class="ok-msg" id="setMsg"></div>'+
       '<div class="divider"></div>'+
       '<div class="grp-label" style="margin-top:0">Panduan</div>'+
@@ -2234,7 +2262,7 @@ function panduanSheet(){
     gstep(5,'Terbitkan sebagai layanan web','Terbitkan skrip sebagai layanan web. Atur akses eksekusi sesuai akun Anda, dan izinkan akses agar aplikasi dapat terhubung. Terbitkan.')+
     gstep(6,'Berikan izin akses','Saat diminta, pilih akun Anda lalu setujui izin yang diminta. Jika muncul peringatan keamanan, lanjutkan ke aplikasi Anda. Ini wajar karena skrip dibuat oleh Anda sendiri.')+
     gstep(7,'Salin alamat layanan','Setelah berhasil diterbitkan, sistem menampilkan sebuah tautan layanan yang diakhiri <b>/exec</b>. Salin tautan tersebut.')+
-    gstep(8,'Hubungkan ke aplikasi','Kembali ke halaman ini, tempel alamat tadi pada kolom di atas, tekan <b>Simpan &amp; sambungkan</b>, lalu <b>Uji koneksi</b> untuk memastikan berhasil.')+
+    gstep(8,'Hubungkan ke aplikasi','Kembali ke halaman ini, tempel alamat tadi pada kolom di atas, lalu tekan <b>Simpan &amp; sambungkan</b>. Aplikasi akan otomatis menguji koneksinya dan menampilkan sisa penyimpanan Drive Anda pada langkah ini juga.')+
     '<div class="gnote">Jika suatu saat kode diperbarui, terbitkan kembali sebagai versi baru agar perubahan diterapkan.</div>'+
   '</div>';
 }
@@ -2264,8 +2292,38 @@ function renderProfAbout(){
       '<p class="hint">KeuanganKu mencatat pemasukan dan pengeluaran, menyimpannya di perangkat agar tetap dapat digunakan tanpa internet, dan mencadangkannya ke layanan pribadi milik Anda. Pemindai struk memproses teks langsung di perangkat sehingga foto tidak dikirim ke mana pun.</p>'+
     '</div>';
 }
-function simpanUrl(){ var u=document.getElementById('inUrl').value.trim(); if(!u){toast('Alamat belum diisi');return;} setGasUrl(u); toast('Tersambung'); flushDeletes(); render(); }
-async function ujiKoneksi(){ var m=document.getElementById('setMsg'); m.style.color='var(--tx2)'; m.textContent='Menguji...'; try{ var d=await jsonp('action=list'); m.style.color='var(--hijau-tx)'; m.textContent='Berhasil. '+(d.data?d.data.length:0)+' catatan tersimpan.'; }catch(e){ m.style.color='var(--merah-tx)'; m.textContent='Gagal: '+e.message; } }
+function formatBytes(n){
+  n=Number(n)||0;
+  var unit=['B','KB','MB','GB','TB'], i=0;
+  while(n>=1024 && i<unit.length-1){ n/=1024; i++; }
+  return (i===0?n:n.toFixed(1))+' '+unit[i];
+}
+async function simpanUrl(){
+  var u=(document.getElementById('inUrl').value||'').trim();
+  if(!u){ toast('Alamat belum diisi'); return; }
+  setGasUrl(u);
+  render();
+  var m=document.getElementById('setMsg');
+  if(m){ m.style.color='var(--tx2)'; m.textContent='Menguji koneksi...'; }
+  try{
+    var d=await jsonp('action=list');
+    var pesan='Berhasil tersambung. '+(d.data?d.data.length:0)+' catatan tersimpan.';
+    try{
+      var k=await jsonp('action=cekKuota');
+      if(k && k.ok){
+        pesan += k.takTerbatas
+          ? ' Sisa penyimpanan Drive: tidak terbatas.'
+          : ' Sisa penyimpanan Drive: '+formatBytes(k.sisa)+' dari '+formatBytes(k.limit)+'.';
+      }
+    }catch(e){}
+    var m2=document.getElementById('setMsg');
+    if(m2){ m2.style.color='var(--hijau-tx)'; m2.textContent=pesan; }
+    flushDeletes();
+  }catch(e){
+    var m3=document.getElementById('setMsg');
+    if(m3){ m3.style.color='var(--merah-tx)'; m3.textContent='Tersimpan, tapi gagal menguji koneksi: '+e.message; }
+  }
+}
 
 /* ====== WIRING ====== */
 function wirePeriode(){ document.querySelectorAll('.seg [data-p]').forEach(function(b){ b.onclick=function(){ periode=b.dataset.p; render(); }; }); }
