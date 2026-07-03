@@ -1906,37 +1906,42 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
   };
 
   async function buatLaporanServer(format){
-    var rows=dataExport();
-    if(!rows.length){ toast('Tidak ada transaksi pada rentang ini'); return; }
-    if(!getGasUrl()){ toast('Hubungkan Google Sheet dahulu di menu Profil'); return; }
-    if(!emailUser()){ toast('Masuk terlebih dahulu'); return; }
+  var rows=dataExport();
+  if(!rows.length && !UT.length){ toast('Tidak ada data untuk dilaporkan'); return; }
+  if(!getGasUrl()){ toast('Hubungkan Google Sheet dahulu di menu Profil'); return; }
+  if(!emailUser()){ toast('Masuk terlebih dahulu'); return; }
 
-    var rt=rentangTanggal();
-    showProgress('Membuat laporan '+format.toUpperCase());
-    try{
-      setProgress(20,'Menyinkronkan data ke Sheet...');
-      var items=rows.map(function(t){ return {id:t.id,tanggal:t.tanggal,tipe:t.tipe,kategori:t.kategori,nominal:t.nominal,keterangan:t.keterangan,catatan:t.catatan,createdAt:t.createdAt,user:t.user||emailUser()}; });
-      try{ await kirimNoCors('sync',{items:items}); }catch(e){}
-      await new Promise(function(r){ setTimeout(r,2000); });
+  var rt=rentangTanggal();
+  showProgress('Membuat laporan '+format.toUpperCase());
+  try{
+    setProgress(15,'Menyinkronkan transaksi ke Sheet...');
+    var items=rows.map(function(t){ return {id:t.id,tanggal:t.tanggal,tipe:t.tipe,kategori:t.kategori,nominal:t.nominal,keterangan:t.keterangan,catatan:t.catatan,createdAt:t.createdAt,user:t.user||emailUser()}; });
+    try{ await kirimNoCors('sync',{items:items}); }catch(e){}
 
-      setProgress(55,'Menyusun file di server...');
-      var params='action=buatLaporan&format='+encodeURIComponent(format)+
-        '&user='+encodeURIComponent(emailUser())+
-        '&awal='+encodeURIComponent(rt.awal)+'&akhir='+encodeURIComponent(rt.akhir)+
-        '&nama='+encodeURIComponent((USER&&USER.name)||'');
-      var d=await jsonp(params);
+    setProgress(35,'Menyinkronkan hutang & piutang...');
+    var uitems=UT.map(function(u){ return {id:u.id,jenis:u.jenis,pihak:u.pihak,pokok:u.pokok,tanggal:u.tanggal,jatuhTempo:u.jatuhTempo||'',catatan:u.catatan||'',pembayaran:JSON.stringify(u.pembayaran||[]),createdAt:u.createdAt||'',user:u.user||emailUser()}; });
+    try{ await kirimNoCors('syncUtang',{items:uitems}); }catch(e){}
 
-      hideProgress();
-      if(d && d.ok && d.url){
-        tampilkanLaporanModal(format, d.url, d.downloadUrl, d.nama||('Laporan.'+format));
-      } else {
-        toast('Gagal membuat laporan: '+((d&&d.error)||'tidak diketahui'));
-      }
-    }catch(e){
-      hideProgress();
-      toast('Gagal membuat laporan: '+e.message);
+    await new Promise(function(r){ setTimeout(r,2000); });
+
+    setProgress(60,'Menyusun file di server...');
+    var params='action=buatLaporan&format='+encodeURIComponent(format)+
+      '&user='+encodeURIComponent(emailUser())+
+      '&awal='+encodeURIComponent(rt.awal)+'&akhir='+encodeURIComponent(rt.akhir)+
+      '&nama='+encodeURIComponent((USER&&USER.name)||'');
+    var d=await jsonp(params);
+
+    hideProgress();
+    if(d && d.ok && d.url){
+      tampilkanLaporanModal(format, d.url, d.downloadUrl, d.nama||('Laporan.'+format));
+    } else {
+      toast('Gagal membuat laporan: '+((d&&d.error)||'tidak diketahui'));
     }
+  }catch(e){
+    hideProgress();
+    toast('Gagal membuat laporan: '+e.message);
   }
+}
 
   window.unduhHTML=function(){ buatLaporanServer('pdf'); };
   window.unduhCSV =function(){ buatLaporanServer('xlsx'); };
