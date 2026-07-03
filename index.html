@@ -33,10 +33,9 @@
   .ava{width:38px; height:38px; border-radius:50%; background:#E6F1FB; color:var(--biru); display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px; object-fit:cover;}
 
   .saldo{background:var(--biru); border-radius:16px; padding:18px 20px; color:#fff; position:relative;}
-  .saldo-carousel{display:flex; gap:12px; overflow-x:auto; scroll-snap-type:x mandatory; padding:0 18px; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
+  .saldo-carousel{display:flex; gap:12px; overflow-x:auto; scroll-snap-type:x mandatory; padding:0 18px; box-sizing:border-box; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
   .saldo-carousel::-webkit-scrollbar{display:none;}
-  .saldo-slide{scroll-snap-align:start; flex:0 0 calc(100% - 34px); min-width:0;}
-  .saldo-slide.full{flex:0 0 100%;}
+  .saldo-slide{scroll-snap-align:start; flex:none; width:100%; box-sizing:border-box;}
   .saldo-dots{display:flex; justify-content:center; gap:6px; margin:9px 0 2px;}
   .saldo-dot{width:6px; height:6px; border-radius:50%; background:var(--line); transition:.2s;}
   .saldo-dot.on{background:var(--biru); width:16px; border-radius:4px;}
@@ -1712,7 +1711,7 @@ function renderHome(){
   S().innerHTML=
     appBar()+
     '<div class="topbar"><div class="greet"><div><div class="hi">Halo,</div><div class="nm">'+esc((USER&&USER.name)||'')+'</div></div></div></div>'+
-    '<div class="saldo-carousel" id="saldoCarousel">'+slides.map(function(s){return '<div class="saldo-slide'+(slides.length===1?' full':'')+'">'+s+'</div>';}).join('')+'</div>'+
+    '<div class="saldo-carousel" id="saldoCarousel">'+slides.map(function(s){return '<div class="saldo-slide">'+s+'</div>';}).join('')+'</div>'+
     (slides.length>1?('<div class="saldo-dots" id="saldoDots">'+slides.map(function(_,i){return '<span class="saldo-dot'+(i===0?' on':'')+'"></span>';}).join('')+'</div>'):'')+
     '<div class="uring" onclick="goView(\'utang\')">'+
       '<div class="ur"><div class="url">Piutang berjalan</div><div class="urv pos">'+fmtRp(piutangSisa)+'</div></div>'+
@@ -1747,6 +1746,7 @@ function akunSlideHTML(a){
 function wireSaldoCarousel(){
   var car=document.getElementById('saldoCarousel');
   if(!car) return;
+  car.scrollLeft=0;
   car.addEventListener('scroll', function(){
     var slide=car.firstElementChild; if(!slide) return;
     var w=slide.getBoundingClientRect().width+12;
