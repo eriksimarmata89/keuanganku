@@ -1875,12 +1875,12 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
     return {awal:isoDari(now), akhir:isoDari(now)};
   }
 
-  function bagikanFile(nama, mime, base64){
-    var pesan = 'FILEBASE64|'+nama+'|'+mime+'|'+base64;
+  function bagikanTautan(format, url){
+    var pesan='Laporan Keuangan ('+format.toUpperCase()+') - KeuanganKu\n'+url;
     if(window.AppInventor && window.AppInventor.setWebViewString){
-      window.AppInventor.setWebViewString(pesan);
+      window.AppInventor.setWebViewString('BAGIKAN|'+pesan);
     } else {
-      toast('Fitur berbagi file hanya tersedia di aplikasi');
+      try{ window.open(url,'_blank'); }catch(e){ toast('Tautan: '+url); }
     }
   }
 
@@ -1905,11 +1905,11 @@ function actAdd(kind){ closeSheet(); if(kind==='transaksi'){ addState=blankAdd()
         '&nama='+encodeURIComponent((USER&&USER.name)||'');
       var d=await jsonp(params);
 
-     if(d && d.ok && d.url){
+      if(d && d.ok && d.url){
         setProgress(100,'Selesai');
         await new Promise(function(r){ setTimeout(r,300); });
         hideProgress();
-        bagikanFile(d.nama, d.mime, d.base64);   // <-- ganti dari bagikanTautan(format, d.url)
+        bagikanTautan(format, d.url);
       } else {
         hideProgress();
         toast('Gagal membuat laporan: '+((d&&d.error)||'tidak diketahui'));
