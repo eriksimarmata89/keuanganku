@@ -1889,6 +1889,10 @@ function renderAdd(){
       '<button class="peng '+(peng?'on':'')+'" onclick="setTipe(\'pengeluaran\')">Pengeluaran</button>'+
       '<button class="pem '+(!peng?'on':'')+'" onclick="setTipe(\'pemasukan\')">Pemasukan</button></div>'+
     '<label class="fl">Penampung saldo</label><select class="field" onchange="addState.akunId=this.value;renderAdd()">'+akunOptionsHTML(a.akunId)+'</select>'+
+    (akunTerpilih?('<div style="font-size:11px;margin:-8px 2px 14px;color:'+(akunTerpilih.jenis==='kartu'?'var(--kuning-tx)':(saldoAkunSaatIni(akunTerpilih.id)>0?'var(--tx2)':'var(--merah-tx)'))+'">'+
+      (akunTerpilih.jenis==='kartu'
+        ? 'Kartu kredit: pengeluaran boleh melebihi saldo dan akan menjadi tagihan berjalan.'
+        : 'Saldo tersedia: '+rp(saldoAkunSaatIni(akunTerpilih.id)))+'</div>'):'')+
     (isKK?('<label class="cklabel"><input type="checkbox" '+(a.jadiHutang?'checked':'')+' onchange="addState.jadiHutang=this.checked"> Catat juga sebagai hutang (tagihan '+esc(akunTerpilih.nama)+' yang perlu dibayar nanti)</label>'):'')+
     (peng?'<div class="metode"><button class="'+(a.metode==='manual'?'on':'')+'" onclick="setMetode(\'manual\')">&#9998; Ketik manual</button>'+
       '<button class="'+(a.metode==='struk'?'on':'')+'" onclick="setMetode(\'struk\')">&#128247; Foto struk</button></div>':'')+
@@ -1985,6 +1989,10 @@ function onSimpan(){
   var a=addState;
   if(!a.akunId){ toast('Pilih penampung saldo terlebih dahulu'); return; }
   if(!a.nominal||+a.nominal<=0){ toast('Nominal belum diisi'); return; }
+  if(a.tipe==='pengeluaran'){
+    var cek=bolehKeluar(a.akunId, +a.nominal);
+    if(!cek.ok){ toast(cek.alasan); return; }
+  }
   var akunTerpilih=cariAkun(a.akunId);
   var buatHutang=a.tipe==='pengeluaran' && a.jadiHutang && akunTerpilih && akunTerpilih.jenis==='kartu';
   simpanTx({tanggal:a.tanggal,tipe:a.tipe,kategori:a.kategori,nominal:+a.nominal,keterangan:a.keterangan.trim(),catatan:a.catatan.trim(),akunId:a.akunId,createdAt:new Date().toISOString()});
@@ -2226,6 +2234,9 @@ async function simpanSemua(){
   if(!st.akunId){ toast('Pilih penampung saldo terlebih dahulu'); return; }
   var akunTerpilih=cariAkun(st.akunId);
   var buatHutang=st.jadiHutang && akunTerpilih && akunTerpilih.jenis==='kartu';
+  var totalPengeluaran=st.pending.reduce(function(s,p){ return s+(+p.nominal); },0);
+  var cek=bolehKeluar(st.akunId, totalPengeluaran);
+  if(!cek.ok){ toast(cek.alasan); return; }
   var cat=[st.toko?('Toko: '+st.toko):'', st.catatan].filter(Boolean).join(' | ');
   var totalNominal=0;
   for(var i=0;i<st.pending.length;i++){
@@ -2437,6 +2448,19 @@ function saldoAkunSaatIni(akunId){
   var trKeluar=TR.filter(function(t){return String(t.dariAkunId)===aid;}).reduce(function(s,t){return s+(+t.nominal);},0);
   return (+a.saldoAwal||0)+masuk-keluar+trMasuk-trKeluar;
 }
+/* Cek apakah pengeluaran/perpindahan keluar sebesar `nominal` boleh dilakukan dari
+   penampung ini. Untuk kartu kredit, selalu boleh (saldo minus = tagihan berjalan).
+   Untuk penampung lain, tidak boleh melebihi saldo tersedia. */
+function bolehKeluar(akunId, nominal){
+  var a=cariAkun(akunId);
+  if(!a) return {ok:false, alasan:'Penampung saldo tidak ditemukan'};
+  if(a.jenis==='kartu') return {ok:true};
+  var sisa=saldoAkunSaatIni(akunId);
+  if((+nominal) > sisa){
+    return {ok:false, alasan:'Saldo '+esc(a.nama)+' tidak cukup. Tersedia '+rp(sisa)+'.'};
+  }
+  return {ok:true};
+}
 function akunPeriode(akunId){
   var aid=String(akunId);
   var px=TX.filter(function(t){return String(t.akunId)===aid && dalamPeriode(t.tanggal);});
@@ -2592,6 +2616,8 @@ async function simpanTransfer(){
   if(!t.dariAkunId||!t.keAkunId){ toast('Pilih akun asal dan tujuan'); return; }
   if(t.dariAkunId===t.keAkunId){ toast('Akun asal dan tujuan tidak boleh sama'); return; }
   if(!t.nominal||+t.nominal<=0){ toast('Nominal belum diisi'); return; }
+  var cek=bolehKeluar(t.dariAkunId, +t.nominal);
+  if(!cek.ok){ toast(cek.alasan); return; }
   var item={ id:uid(), tanggal:t.tanggal, dariAkunId:t.dariAkunId, keAkunId:t.keAkunId, nominal:+t.nominal, catatan:(t.catatan||'').trim(), createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
   TR.unshift(item); await trPut(item);
   transferState=null; toast('Perpindahan saldo tersimpan'); goView('home');
