@@ -2876,7 +2876,7 @@ function renderSinkron(){
     '<div class="panel"><div class="big-stat"><div class="bs"><div class="n">'+dalam.length+'</div><div class="k">transaksi pada rentang</div></div>'+
       '<div class="bs warn"><div class="n">'+belum+'</div><div class="k">belum tercadang</div></div></div>'+
       '<button class="save pem" id="btnKirim" style="margin-top:14px" '+(tersambung&&dalam.length?'':'disabled')+' onclick="kirimRentang()">Cadangkan '+dalam.length+' transaksi</button>'+
-      '<div style="font-size:11px;color:var(--tx3);text-align:center;margin-top:8px">Pencadangan ulang aman. Catatan yang sama tidak akan tergandakan.</div></div>'+
+      '<div style="font-size:11px;color:var(--tx3);text-align:center;margin-top:8px">Pencadangan sepenuhnya ada dibawah kendali Anda.</div></div>'+
     '<div class="divider"></div>'+
     '<div class="set"><div class="t" style="font-weight:600;font-size:14px;margin:0 2px 6px">Pemulihan data</div>'+
       '<p class="hint">Memulihkan seluruh transaksi dari cadangan ke perangkat ini, misalnya setelah berganti perangkat atau memasang ulang aplikasi. Data digabungkan sehingga tidak tergandakan.</p>'+
@@ -2933,10 +2933,10 @@ function renderProfSheet(){
     '<div class="fhead"><button class="bk" onclick="backProf()">&#8592;</button><div class="ti">Koneksi Pencadangan</div></div>'+
     '<div class="set">'+
       '<div class="statcard '+(on?'on':'off')+'"><span class="sc-ic">'+(on?'&#9729;':'&#9888;')+'</span><div>'+(on?'Aplikasi sudah terhubung ke Google Drive Anda (lewat Google Sheet &amp; Apps Script). Pencadangan, pemulihan, dan penghapusan data akan diselaraskan otomatis ke sana.':'Aplikasi belum terhubung ke Google Drive. Hubungkan Google Sheet Anda sendiri sebagai tempat pencadangan untuk mengaktifkan fitur ini.')+'</div></div>'+
-      '<p class="hint">Seluruh transaksi tersimpan di perangkat dan tetap dapat diakses tanpa internet. Pencadangan pada aplikasi ini memakai <b>Google Drive</b> milik Anda sendiri &mdash; data disimpan di dalam <b>Google Sheet</b> pribadi yang dijalankan lewat <b>Google Apps Script</b>, sehingga sepenuhnya berada dalam kendali akun Google Anda. Masukkan alamat Web App Apps Script yang diakhiri /exec.</p>'+
+      '<p class="hint">Seluruh transaksi tersimpan di perangkat ini dan tetap dapat diakses tanpa internet. Pencadangan pada aplikasi ini memakai <b>Google Drive</b> milik Anda sendiri, data disimpan di dalam <b>Google Drive</b> pribadi yang dijalankan lewat <b>Google Apps Script</b>, sehingga sepenuhnya berada dalam kendali akun Google Anda. Masukkan alamat Web App Apps Script yang diakhiri /exec.</p>'+
       '<label class="fl">Alamat Web App Google Apps Script</label><input class="field" id="inUrl" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(url)+'">'+
       '<button class="save pem" onclick="simpanUrl()">Simpan &amp; sambungkan</button>'+
-      '<div style="font-size:11px;color:var(--tx3);margin:8px 2px 0">Koneksi ke Google Sheet otomatis diuji dan sisa penyimpanan Google Drive Anda ditampilkan setelah tersambung.</div>'+
+      '<div style="font-size:11px;color:var(--tx3);margin:8px 2px 0">Koneksi ke Google Sheet otomatis diuji ketika penyambungan dan sisa penyimpanan Google Drive Anda ditampilkan setelah tersambung.</div>'+
       '<div class="ok-msg" id="setMsg"></div>'+
       '<div class="divider"></div>'+
       '<div class="grp-label" style="margin-top:0">Panduan</div>'+
