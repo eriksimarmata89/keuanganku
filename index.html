@@ -996,7 +996,7 @@ function buatFileDariSheet(rows, utangRows, transferRows, akunMap, namaFile, fol
 }
 
 /* =======================================================================
- * VERIFIKASI NOMOR WHATSAPP (OTP VIA FONNTE)
+ * VERIFIKASI NOMOR TELEPON (OTP VIA FONNTE)
  * Sebelum dipakai: daftar gratis di fonnte.com, hubungkan satu nomor WA
  * lewat scan QR di menu Device, salin Token-nya, lalu simpan sebagai
  * Script Property bernama FONNTE_TOKEN (Project Settings > Script Properties).
@@ -1277,7 +1277,7 @@ function ujiIzin() {
 })();
   
 var LS_URL='kk_gas_url';
-/* Alamat pencadangan disimpan terpisah per nomor WhatsApp yang sedang login,
+/* Alamat pencadangan disimpan terpisah per nomor Telepon yang sedang login,
    supaya kalau logout lalu login dengan nomor lain, alamatnya menyesuaikan
    nomor itu sendiri (kosong kalau nomor tersebut belum pernah mengatur). */
 function gasUrlKey(){ var p=(typeof emailUser==='function'?emailUser():''); return p ? (LS_URL+'_'+p) : LS_URL; }
@@ -1355,9 +1355,9 @@ function getUser(){ try{ return JSON.parse(localStorage.getItem(LS_USER)||'null'
 function setUser(u){ USER=u; localStorage.setItem(LS_USER, JSON.stringify(u)); }
 function clearUser(){ USER=null; localStorage.removeItem(LS_USER); }
 /* Nama fungsi dipertahankan "emailUser" agar seluruh pemanggilnya di bawah tidak perlu diubah,
-   namun sekarang mengembalikan NOMOR WHATSAPP pengguna (format 62xxxxxxxxxx), bukan email. */
+   namun sekarang mengembalikan NOMOR TELEPON pengguna (format 62xxxxxxxxxx), bukan email. */
 function emailUser(){ return (USER&&USER.phone)||''; }
-/* Ubah nomor menjadi format 62xxxxxxxxxx (tanpa spasi/strip/plus), siap dipakai untuk tautan WhatsApp. */
+/* Ubah nomor menjadi format 62xxxxxxxxxx (tanpa spasi/strip/plus), siap dipakai untuk tautan Telepon. */
 function normalisasiHP(v){
   var d=String(v||'').replace(/\D/g,'');
   if(!d) return '';
@@ -1405,7 +1405,7 @@ function openDB(){
       if(!db.objectStoreNames.contains('utang')){
         db.createObjectStore('utang',{keyPath:'id'});
       }
-      /* Foto profil disimpan lokal saja per nomor WhatsApp, tidak pernah dikirim
+      /* Foto profil disimpan lokal saja per nomor Telepon, tidak pernah dikirim
          ke layanan pencadangan/Drive, supaya tetap ada tiap login dengan nomor yang sama. */
       if(!db.objectStoreNames.contains('avatars')){
         db.createObjectStore('avatars',{keyPath:'phone'});
@@ -1761,12 +1761,12 @@ function render(){
   S().classList.toggle('has-appbar', !!document.querySelector('.appbar'));
 }
 
-/* ====== LOGIN / AKUN (NOMOR WHATSAPP) ====== */
+/* ====== LOGIN / AKUN (NOMOR TELEPON) ====== */
 function renderLogin(){
   var html='<div class="login-wrap"><div class="logo-mark">'+logoMark(64)+'</div><div class="logo">KeuanganKu</div>'+
-    '<div class="logo-sub">Masuk atau daftar menggunakan nomor WhatsApp Anda. Data tersimpan di perangkat ini dan tercatat atas nama nomor tersebut.</div>'+
+    '<div class="logo-sub">Masuk atau daftar menggunakan nomor Telepon Anda. Data tersimpan di perangkat ini dan tercatat atas nama nomor tersebut.</div>'+
     '<label class="fl">Nama</label><input class="field" id="loginNama" placeholder="Nama Anda">'+
-    '<label class="fl">Nomor WhatsApp</label><input class="field" id="loginPhone" type="tel" inputmode="numeric" placeholder="08xxxxxxxxxx" oninput="onLoginPhone(this)">'+
+    '<label class="fl">Nomor Telepon</label><input class="field" id="loginPhone" type="tel" inputmode="numeric" placeholder="08xxxxxxxxxx" oninput="onLoginPhone(this)">'+
     '<button class="save pem" onclick="masukManual()">Masuk</button>'+
     '</div>';
   S().innerHTML=html;
@@ -1777,7 +1777,7 @@ async function masukManual(){
   var raw=(document.getElementById('loginPhone').value||'').trim();
   var hp=normalisasiHP(raw);
   if(!n){ toast('Nama belum diisi'); return; }
-  if(!validHP(hp)){ toast('Nomor WhatsApp tidak valid'); return; }
+  if(!validHP(hp)){ toast('Nomor Telepon tidak valid'); return; }
   var fotoTersimpan=null;
   try{ var rec=await avatarGet(hp); fotoTersimpan=rec?rec.picture:null; }catch(e){}
   setUser({phone:hp, name:n, picture:fotoTersimpan||''}); afterLogin();
@@ -2579,7 +2579,7 @@ function renderAkunList(){
   S().innerHTML=
     '<div class="fhead"><button class="bk" onclick="goView(\'settings\')">&#8592;</button><div class="ti">Penampung Saldo</div></div>'+
     '<div class="set" style="padding-top:0">'+
-    '<div class="rep-cards"><div class="rep-card" style="flex:1"><div class="l">Total semua penampung</div><div class="v">'+fmtRp(totalSaldo)+'</div></div></div>'+
+    '<div class="rep-cards"><div class="rep-card" style="flex:1"><div class="l">Total semua saldo</div><div class="v">'+fmtRp(totalSaldo)+'</div></div></div>'+
     '<button class="btn-line" onclick="akunState=blankAkun();goView(\'akunAdd\')">+ Tambah penampung saldo</button>'+
     '<div class="list" style="padding-top:10px">'+
       (AK.length? AK.map(akunRow).join('') : '<div class="empty">Belum ada penampung saldo.<br>Tambahkan bank, dompet digital, atau kartu kredit Anda.</div>')+
@@ -2933,7 +2933,6 @@ function renderSettings(){
       '<div class="prof-hero"><div class="ava-edit-wrap">'+avaBesar(u)+'<button class="ava-edit-btn" onclick="openAvatarSheet()" aria-label="Ubah foto profil"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg></button></div><div class="pn">'+esc(u.name||'')+'</div><div class="pe">'+esc(formatHPTampil(u.phone))+'</div></div>'+
       '<div class="grp-label">Tampilan</div>'+
       '<div class="seg" style="margin:0 0 4px">'+themeBtn('terang','\u2600 Terang')+themeBtn('gelap','\u263E Gelap')+themeBtn('auto','\u25D1 Otomatis')+'</div>'+
-      '<div style="font-size:11px;color:var(--tx3);margin:0 2px 4px">Otomatis mengikuti pengaturan tema perangkat Anda.</div>'+
       '<div class="grp-label">Data &amp; Pencadangan</div>'+
       '<div class="menu">'+
         menuRow('&#128176;','Penampung Saldo',AK.length+' penampung tercatat',"goView('akunList')")+
@@ -2952,10 +2951,10 @@ function renderProfSheet(){
     '<div class="fhead"><button class="bk" onclick="backProf()">&#8592;</button><div class="ti">Koneksi Pencadangan</div></div>'+
     '<div class="set">'+
       '<div class="statcard '+(on?'on':'off')+'"><span class="sc-ic">'+(on?'&#9729;':'&#9888;')+'</span><div>'+(on?'Aplikasi sudah terhubung ke Google Drive Anda (lewat Google Sheet &amp; Apps Script). Pencadangan, pemulihan, dan penghapusan data akan diselaraskan otomatis ke sana.':'Aplikasi belum terhubung ke Google Drive. Hubungkan Google Sheet Anda sendiri sebagai tempat pencadangan untuk mengaktifkan fitur ini.')+'</div></div>'+
-      '<p class="hint">Seluruh transaksi tersimpan di perangkat dan tetap dapat diakses tanpa internet. Pencadangan pada aplikasi ini memakai <b>Google Drive</b> milik Anda sendiri &mdash; data disimpan di dalam <b>Google Sheet</b> pribadi yang dijalankan lewat <b>Google Apps Script</b>, sehingga sepenuhnya berada dalam kendali akun Google Anda. Masukkan alamat Web App Apps Script yang diakhiri /exec.</p>'+
+      '<p class="hint">Seluruh transaksi tersimpan di perangkat dan tetap dapat diakses tanpa internet. Pencadangan pada aplikasi ini memakai <b>Google Drive</b> milik Anda sendiri, data disimpan di dalam <b>Google Sheet</b> pribadi yang dijalankan lewat <b>Google Apps Script</b>, sehingga data sepenuhnya berada di bawah kendali Anda. Masukkan alamat Web App Apps Script yang diakhiri dengan .../exec.</p>'+
       '<label class="fl">Alamat Web App Google Apps Script</label><input class="field" id="inUrl" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(url)+'">'+
       '<button class="save pem" onclick="simpanUrl()">Simpan &amp; sambungkan</button>'+
-      '<div style="font-size:11px;color:var(--tx3);margin:8px 2px 0">Koneksi ke Google Sheet otomatis diuji dan sisa penyimpanan Google Drive Anda ditampilkan setelah tersambung.</div>'+
+      '<div style="font-size:11px;color:var(--tx3);margin:8px 2px 0">Koneksi ke Google Sheet otomatis diuji ketika disambungkan dan sisa penyimpanan Google Drive Anda akan ditampilkan setelah tersambung.</div>'+
       '<div class="ok-msg" id="setMsg"></div>'+
       '<div class="divider"></div>'+
       '<div class="grp-label" style="margin-top:0">Panduan</div>'+
@@ -3002,8 +3001,8 @@ function renderProfAbout(){
       '<div class="menu" style="margin-bottom:14px">'+
         '<div class="about-line"><span>Versi</span><b>1.0</b></div>'+
         '<div class="about-line"><span>Penyimpanan</span><b>Di perangkat (offline)</b></div>'+
-        '<div class="about-line"><span>Cadangan</span><b>Layanan pencadangan pribadi</b></div>'+
-        '<div class="about-line"><span>Login</span><b>Nomor WhatsApp</b></div>'+
+        '<div class="about-line"><span>Cadangan</span><b>Layanan pencadangan pribadi (Google Drive)</b></div>'+
+        '<div class="about-line"><span>Login</span><b>Nomor Telepon</b></div>'+
       '</div>'+
       '<p class="hint">KeuanganKu mencatat pemasukan dan pengeluaran, menyimpannya di perangkat agar tetap dapat digunakan tanpa internet, dan mencadangkannya ke layanan pribadi milik Anda. Pemindai struk memproses teks langsung di perangkat sehingga foto tidak dikirim ke mana pun.</p>'+
     '</div>';
