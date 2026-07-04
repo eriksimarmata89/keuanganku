@@ -714,10 +714,12 @@ function buatLaporan(user, format, awal, akhir, namaPemilik) {
 
     var rows = ambilRowLaporan(user, awal, akhir);
     var utangRows = ambilRowUtangLaporan(user);
-    if (!rows.length && !utangRows.length) return { ok: false, error: 'Tidak ada data pada rentang ini' };
+    var transferRows = ambilRowTransferLaporan(user, awal, akhir);
+    var akunMap = petaNamaAkun(user);
+    if (!rows.length && !utangRows.length && !transferRows.length) return { ok: false, error: 'Tidak ada data pada rentang ini' };
 
     var namaFile = 'Laporan-KeuanganKu-' + (awal || '') + '-sd-' + (akhir || '');
-    var file = buatFileDariSheet(rows, utangRows, namaFile, folderLaporan(), namaPemilik, awal, akhir, format);
+    var file = buatFileDariSheet(rows, utangRows, transferRows, akunMap, namaFile, folderLaporan(), namaPemilik, awal, akhir, format);
 
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     return {
@@ -730,6 +732,50 @@ function buatLaporan(user, format, awal, akhir, namaPemilik) {
   } catch (err) {
     return { ok: false, error: String(err) };
   }
+}
+
+/* Peta id penampung -> nama, untuk menampilkan nama penampung di laporan. */
+function petaNamaAkun(user) {
+  var peta = {};
+  try {
+    var sh = sheetAkun();
+    var values = sh.getDataRange().getValues();
+    for (var i = 1; i < values.length; i++) {
+      var r = values[i];
+      if (!r[0]) continue;
+      var u = r[6] != null ? String(r[6]) : '';
+      if (user && u !== String(user)) continue;
+      peta[String(r[0])] = r[1] || '';
+    }
+  } catch (e) {}
+  return peta;
+}
+
+/* Perpindahan saldo pada rentang laporan. */
+function ambilRowTransferLaporan(user, awal, akhir) {
+  var rows = [];
+  try {
+    var sh = sheetTransfer();
+    var values = sh.getDataRange().getValues();
+    for (var i = 1; i < values.length; i++) {
+      var r = values[i];
+      if (!r[0]) continue;
+      var u = r[7] != null ? String(r[7]) : '';
+      if (user && u !== String(user)) continue;
+      var tgl = formatTanggal(r[1]);
+      if (awal && tgl < awal) continue;
+      if (akhir && tgl > akhir) continue;
+      rows.push({
+        tanggal: tgl,
+        dariAkunId: String(r[2]),
+        keAkunId: String(r[3]),
+        nominal: Number(r[4]) || 0,
+        catatan: r[5] || ''
+      });
+    }
+  } catch (e) {}
+  rows.sort(function (a, b) { return a.tanggal < b.tanggal ? -1 : (a.tanggal > b.tanggal ? 1 : 0); });
+  return rows;
 }
 
 function ambilRowUtangLaporan(user) {
@@ -789,7 +835,8 @@ function ambilRowLaporan(user, awal, akhir) {
       kategori: r[3],
       nominal: Number(r[4]) || 0,
       keterangan: r[5] || '',
-      catatan: r[6] || ''
+      catatan: r[6] || '',
+      akunId: r[9] != null ? String(r[9]) : ''
     });
   }
   rows.sort(function (a, b) { return a.tanggal < b.tanggal ? -1 : (a.tanggal > b.tanggal ? 1 : 0); });
@@ -804,7 +851,9 @@ function hitungTotal(rows) {
   return { masuk: masuk, keluar: keluar, selisih: masuk - keluar };
 }
 
-function buatFileDariSheet(rows, utangRows, namaFile, folder, pemilik, awal, akhir, format) {
+function buatFileDariSheet(rows, utangRows, transferRows, akunMap, namaFile, folder, pemilik, awal, akhir, format) {
+  akunMap = akunMap || {};
+  function namaAkun(id){ return (id && akunMap[String(id)]) ? akunMap[String(id)] : '-'; }
   var ss = SpreadsheetApp.create('tmp_laporan_' + Date.now());
   var id = ss.getId();
   try {
@@ -817,7 +866,7 @@ function buatFileDariSheet(rows, utangRows, namaFile, folder, pemilik, awal, akh
     sh.getRange(4, 1).setValue('Dicetak: ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm'));
 
     var headRow = 6;
-    var header = ['Tanggal', 'Jenis', 'Kategori', 'Keterangan', 'Catatan', 'Nominal'];
+    var header = ['Tanggal', 'Jenis', 'Penampung', 'Kategori', 'Keterangan', 'Catatan', 'Nominal'];
     sh.getRange(headRow, 1, 1, header.length).setValues([header])
       .setFontWeight('bold').setBackground('#185FA5').setFontColor('#FFFFFF');
 
@@ -825,6 +874,7 @@ function buatFileDariSheet(rows, utangRows, namaFile, folder, pemilik, awal, akh
       return [
         r.tanggal,
         r.tipe === 'pemasukan' ? 'Pemasukan' : 'Pengeluaran',
+        namaAkun(r.akunId),
         r.kategori,
         r.keterangan,
         r.catatan,
@@ -835,14 +885,14 @@ function buatFileDariSheet(rows, utangRows, namaFile, folder, pemilik, awal, akh
 
     var t = hitungTotal(rows);
     var tot = headRow + 1 + data.length + 1;
-    sh.getRange(tot, 5).setValue('Total pemasukan');
-    sh.getRange(tot, 6).setValue(t.masuk);
-    sh.getRange(tot + 1, 5).setValue('Total pengeluaran');
-    sh.getRange(tot + 1, 6).setValue(t.keluar);
-    sh.getRange(tot + 2, 5).setValue('Selisih').setFontWeight('bold');
-    sh.getRange(tot + 2, 6).setValue(t.selisih).setFontWeight('bold');
+    sh.getRange(tot, 6).setValue('Total pemasukan');
+    sh.getRange(tot, 7).setValue(t.masuk);
+    sh.getRange(tot + 1, 6).setValue('Total pengeluaran');
+    sh.getRange(tot + 1, 7).setValue(t.keluar);
+    sh.getRange(tot + 2, 6).setValue('Selisih').setFontWeight('bold');
+    sh.getRange(tot + 2, 7).setValue(t.selisih).setFontWeight('bold');
 
-    sh.getRange(headRow, 6, (sh.getLastRow() - headRow + 1), 1).setNumberFormat('#,##0');
+    sh.getRange(headRow, 7, (sh.getLastRow() - headRow + 1), 1).setNumberFormat('#,##0');
     sh.autoResizeColumns(1, header.length);
 
     var sh2 = ss.insertSheet('Hutang & Piutang');
@@ -875,6 +925,32 @@ function buatFileDariSheet(rows, utangRows, namaFile, folder, pemilik, awal, akh
       sh2.getRange(headRow2, 6, sh2.getLastRow() - headRow2 + 1, 2).setNumberFormat('#,##0');
     }
     sh2.autoResizeColumns(1, header2.length);
+
+    // Sheet Perpindahan Saldo
+    var sh3 = ss.insertSheet('Perpindahan Saldo');
+    sh3.getRange(1, 1).setValue('Perpindahan Saldo - KeuanganKu').setFontWeight('bold').setFontSize(14);
+    sh3.getRange(2, 1).setValue('Pemilik: ' + (pemilik || '-'));
+    sh3.getRange(3, 1).setValue('Rentang: ' + (awal || '-') + ' s/d ' + (akhir || '-'));
+
+    var headRow3 = 5;
+    var header3 = ['Tanggal', 'Dari Penampung', 'Ke Penampung', 'Nominal', 'Catatan'];
+    sh3.getRange(headRow3, 1, 1, header3.length).setValues([header3])
+      .setFontWeight('bold').setBackground('#185FA5').setFontColor('#FFFFFF');
+
+    var data3 = (transferRows || []).map(function (r) {
+      return [r.tanggal, namaAkun(r.dariAkunId), namaAkun(r.keAkunId), r.nominal, r.catatan];
+    });
+    if (data3.length) sh3.getRange(headRow3 + 1, 1, data3.length, header3.length).setValues(data3);
+
+    var totalTransfer = (transferRows || []).reduce(function (s, r) { return s + (Number(r.nominal) || 0); }, 0);
+    var tot3 = headRow3 + 1 + data3.length + 1;
+    sh3.getRange(tot3, 3).setValue('Total perpindahan');
+    sh3.getRange(tot3, 4).setValue(totalTransfer);
+
+    if (sh3.getLastRow() >= headRow3) {
+      sh3.getRange(headRow3, 4, sh3.getLastRow() - headRow3 + 1, 1).setNumberFormat('#,##0');
+    }
+    sh3.autoResizeColumns(1, header3.length);
 
     SpreadsheetApp.flush();
 
@@ -1707,7 +1783,9 @@ function renderHome(){
   var pM=AK.reduce(function(s,a){ return s+akunPeriode(a.id).masuk; },0);
   var pK=AK.reduce(function(s,a){ return s+akunPeriode(a.id).keluar; },0);
   var px=TX.filter(function(t){return dalamPeriode(t.tanggal);});
-  var terakhir=px.slice(0,homeLimit||px.length);
+  var pTr=TR.filter(function(t){return dalamPeriode(t.tanggal);});
+  var gab=daftarGabungan(px,pTr);
+  var terakhir=gab.slice(0,homeLimit||gab.length);
   var piutangSisa=UT.filter(function(u){return u.jenis==='piutang';}).reduce(function(s,u){return s+utSisa(u);},0);
   var hutangSisa=UT.filter(function(u){return u.jenis==='hutang';}).reduce(function(s,u){return s+utSisa(u);},0);
   var slides=[totalSlideHTML(totalSaldo,pM,pK)].concat(AK.map(akunSlideHTML));
@@ -1723,9 +1801,9 @@ function renderHome(){
       '<div class="urarr">&#8250;</div>'+
     '</div>'+
     periodeSeg()+
-    '<div class="sec-head"><div class="t">Transaksi '+periode+'</div><div style="font-size:11px;color:var(--tx3)">'+px.length+' transaksi</div></div>'+
+    '<div class="sec-head"><div class="t">Transaksi '+periode+'</div><div style="font-size:11px;color:var(--tx3)">'+gab.length+' catatan</div></div>'+
     limitChips(homeLimit,'setHomeLimit')+
-    '<div class="list">'+(terakhir.length?terakhir.map(txRow).join(''):'<div class="empty">Belum ada transaksi untuk periode ini.<br>Ketuk tombol + untuk menambahkan.</div>')+'</div>';
+    '<div class="list">'+(terakhir.length?terakhir.map(barisGabungan).join(''):'<div class="empty">Belum ada catatan untuk periode ini.<br>Ketuk tombol + untuk menambahkan.</div>')+'</div>';
   wirePeriode();
   wireSaldoCarousel();
 }
@@ -1738,7 +1816,7 @@ function totalSlideHTML(saldoTotal,pM,pK){
       '<span class="mini">Sisa saldo periode ini</span><span class="val" style="font-size:16px">'+fmtRp(pM-pK,true)+'</span></div></div>';
 }
 function akunSlideHTML(a){
-  var p=akunPeriode(a.id);
+  var p=akunPeriodeGabung(a.id);
   return '<div class="saldo" onclick="bukaAkun(\''+a.id+'\')" style="cursor:pointer">'+
     '<div class="lbl">'+akunIconHTML(a,15)+' '+esc(a.nama)+'</div><div class="amt">'+fmtRp(saldoAkunSaatIni(a.id))+'</div>'+
     '<div class="row"><div><div class="mini">&#9660; Pemasukan</div><div class="val">'+fmtRp(p.masuk)+'</div></div>'+
@@ -1768,6 +1846,26 @@ function txRow(t){
     '<div class="amt '+(pos?'pos':'neg')+'">'+(pos?'+ ':'- ')+fmtRp(t.nominal)+'</div>'+
     '<button class="delbtn" onclick="hapusTx(\''+t.id+'\')">&times;</button></div>';
 }
+/* Baris perpindahan saldo untuk daftar gabungan (Beranda / Laporan / Kirim). */
+function transferListRow(t){
+  var dari=cariAkun(t.dariAkunId), ke=cariAkun(t.keAkunId);
+  var status=t.terkirim?'<span class="sdot kirim" title="Tercadang"></span>':'<span class="sdot belum" title="Belum tercadang"></span>';
+  return '<div class="item"><div class="ic" style="background:#EDE9FB;color:#7F77DD">&#8646;</div>'+
+    '<div class="mid"><div class="nm">Pindah saldo</div>'+
+    '<div class="dt">'+status+labelTanggal(t.tanggal)+' &middot; '+esc(dari?dari.nama:'?')+' &rarr; '+esc(ke?ke.nama:'?')+'</div></div>'+
+    '<div class="amt" style="color:#7F77DD">'+fmtRp(t.nominal)+'</div>'+
+    '<button class="delbtn" onclick="hapusTransfer(\''+t.id+'\')">&times;</button></div>';
+}
+/* Gabungkan transaksi (TX) dan perpindahan saldo (TR) jadi satu daftar terurut,
+   dipakai di Beranda, Laporan, dan Kirim. */
+function daftarGabungan(txArr, trArr){
+  var items=[];
+  (txArr||[]).forEach(function(t){ items.push({k:'tx', t:t.tanggal, c:t.createdAt||'', d:t}); });
+  (trArr||[]).forEach(function(t){ items.push({k:'tr', t:t.tanggal, c:t.createdAt||'', d:t}); });
+  items.sort(function(a,b){ return (b.t+(b.c||'')).localeCompare(a.t+(a.c||'')); });
+  return items;
+}
+function barisGabungan(it){ return it.k==='tx'?txRow(it.d):transferListRow(it.d); }
 
 /* ====== TAMBAH (MANUAL) ====== */
 var addState=blankAdd();
@@ -2344,6 +2442,19 @@ function akunPeriode(akunId){
   var pK=px.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
   return {masuk:pM, keluar:pK};
 }
+/* Perpindahan saldo pada periode berjalan untuk satu penampung:
+   masuk = transfer yang diterima, keluar = transfer yang dikirim. */
+function akunTransferPeriode(akunId){
+  var masuk=TR.filter(function(t){return t.keAkunId===akunId && dalamPeriode(t.tanggal);}).reduce(function(s,t){return s+(+t.nominal);},0);
+  var keluar=TR.filter(function(t){return t.dariAkunId===akunId && dalamPeriode(t.tanggal);}).reduce(function(s,t){return s+(+t.nominal);},0);
+  return {masuk:masuk, keluar:keluar};
+}
+/* Untuk kartu per-penampung: pemasukan & pengeluaran termasuk perpindahan saldo,
+   karena dari sudut pandang satu penampung, transfer masuk = uang datang, transfer keluar = uang pergi. */
+function akunPeriodeGabung(akunId){
+  var p=akunPeriode(akunId), tp=akunTransferPeriode(akunId);
+  return {masuk:p.masuk+tp.masuk, keluar:p.keluar+tp.keluar};
+}
 function blankAkun(){ return {jenis:'bank', nama:'', saldoAwal:'', catatan:'', logo:''}; }
 async function simpanAkun(){
   var a=akunState;
@@ -2513,6 +2624,7 @@ function renderReport(){
   var perKat={}; px.filter(function(t){return t.tipe==='pengeluaran';}).forEach(function(t){ perKat[t.kategori]=(perKat[t.kategori]||0)+(+t.nominal); });
   var kats=Object.keys(perKat).map(function(k){return [k,perKat[k]];}).sort(function(a,b){return b[1]-a[1];});
   var tot=keluar||1;
+  var repGab=daftarGabungan(px, TR.filter(function(t){return dalamPeriode(t.tanggal);}));
   var nExp=TX.filter(function(t){return inRange(t.tanggal,expRange,expAwal,expAkhir);}).length;
   S().innerHTML=
     appBar()+periodeSeg()+
@@ -2530,9 +2642,9 @@ function renderReport(){
       '<div style="display:flex;gap:12px"><button class="btn-line" style="margin-top:0;flex:1" '+(nExp?'':'disabled')+' onclick="unduhHTML()">&#128196; PDF</button>'+
       '<button class="btn-line" style="margin-top:0;flex:1" '+(nExp?'':'disabled')+' onclick="unduhCSV()">&#128202; Excel</button></div>'+
       '<div style="font-size:11px;color:var(--tx3);margin-top:10px">Pembuatan laporan pertama memerlukan internet, setelahnya laporan dapat dilihat kembali dari tautannya.</div></div>'+
-    '<div class="sec-head" style="padding-top:10px"><div class="t">Daftar transaksi</div><div style="font-size:11px;color:var(--tx3)">'+px.length+' transaksi</div></div>'+
+    '<div class="sec-head" style="padding-top:10px"><div class="t">Daftar transaksi</div><div style="font-size:11px;color:var(--tx3)">'+repGab.length+' catatan</div></div>'+
     limitChips(repLimit,'setRepLimit')+
-    '<div class="list" style="padding-top:6px;padding-bottom:10px">'+(px.length?px.slice(0,repLimit||px.length).map(txRow).join(''):'<div class="empty">Belum ada transaksi pada periode ini.</div>')+'</div>';
+    '<div class="list" style="padding-top:6px;padding-bottom:10px">'+(repGab.length?repGab.slice(0,repLimit||repGab.length).map(barisGabungan).join(''):'<div class="empty">Belum ada catatan pada periode ini.</div>')+'</div>';
   wirePeriode();
   if(kats.length) gambarDonut(kats);
 }
@@ -2679,7 +2791,9 @@ function kirimTeksKeApk(namaFile, teks){
 function renderSinkron(){
   var tersambung=!!getGasUrl();
   var dalam=TX.filter(function(t){return dalamRentang(t.tanggal);});
-  var belum=dalam.filter(function(t){return !t.terkirim;}).length;
+  var dalamTr=TR.filter(function(t){return dalamRentang(t.tanggal);});
+  var gab=daftarGabungan(dalam, dalamTr);
+  var belum=dalam.filter(function(t){return !t.terkirim;}).length + dalamTr.filter(function(t){return !t.terkirim;}).length;
   var chips=[['hari','Hari ini'],['minggu','Minggu ini'],['bulan','Bulan ini'],['tahun','Tahun ini'],['semua','Semua'],['kustom','Kustom']];
   S().innerHTML=
     appBar()+
@@ -2696,9 +2810,9 @@ function renderSinkron(){
     '<div class="set"><div class="t" style="font-weight:600;font-size:14px;margin:0 2px 6px">Pemulihan data</div>'+
       '<p class="hint">Memulihkan seluruh transaksi dari cadangan ke perangkat ini, misalnya setelah berganti perangkat atau memasang ulang aplikasi. Data digabungkan sehingga tidak tergandakan.</p>'+
       '<button class="btn-line" id="btnTarik" '+(tersambung?'':'disabled')+' onclick="tarikDariSheet()">Pulihkan data cadangan</button></div>'+
-    '<div class="sec-head" style="padding-top:6px"><div class="t">Transaksi pada rentang ('+dalam.length+')</div></div>'+
+    '<div class="sec-head" style="padding-top:6px"><div class="t">Catatan pada rentang ('+gab.length+')</div></div>'+
     limitChips(syncLimit,'setSyncLimit')+
-    '<div class="list" style="padding-top:6px;padding-bottom:10px">'+(dalam.length?dalam.slice(0,syncLimit||dalam.length).map(txRow).join(''):'<div class="empty">Tidak ada transaksi pada rentang ini.</div>')+'</div>';
+    '<div class="list" style="padding-top:6px;padding-bottom:10px">'+(gab.length?gab.slice(0,syncLimit||gab.length).map(barisGabungan).join(''):'<div class="empty">Tidak ada catatan pada rentang ini.</div>')+'</div>';
 }
 function setRange(r){ syncRange=r; render(); }
 function setRepLimit(n){ repLimit=n; render(); }
