@@ -17,10 +17,11 @@
     --page:#F4F4F2; --card:#FFFFFF; --line:#E7E7E2;
     --tx:#2C2C2A; --tx2:#6B6B66; --tx3:#9A9A93;
     --radius:12px;
+    --maxw:520px;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; background:#e9e9e6; color:var(--tx);}
-  #app{max-width:480px; margin:0 auto; min-height:100vh; background:var(--page); position:relative; display:flex; flex-direction:column;}
+  #app{max-width:var(--maxw); margin:0 auto; min-height:100vh; background:var(--page); position:relative; display:flex; flex-direction:column;}
   .scroll{flex:1; overflow-y:auto; padding-bottom:90px;}
   .scroll.has-appbar{padding-top:calc(66px + env(safe-area-inset-top,0px));}
   h1,h2,h3,p{margin:0;}
@@ -68,7 +69,7 @@
   .sdot{width:7px; height:7px; border-radius:50%; display:inline-block;}
   .sdot.belum{background:#E0A11B;} .sdot.kirim{background:var(--hijau);}
 
-  .nav{position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; background:#fff; border-top:.5px solid var(--line); display:flex; justify-content:space-around; align-items:center; padding:8px 0 14px;}
+  .nav{position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:var(--maxw); background:#fff; border-top:.5px solid var(--line); display:flex; justify-content:space-around; align-items:center; padding:8px 0 14px;}
   .nav button{background:none; border:none; color:var(--biru); opacity:.45; display:flex; flex-direction:column; align-items:center; gap:2px; font-size:10px; padding:4px 8px; position:relative;}
   .nav button.on{color:var(--biru); opacity:1;}
   .nav .ico{font-size:21px; line-height:1;}
@@ -237,7 +238,7 @@
   .gnote{background:var(--kuning-bg); color:var(--kuning-tx); font-size:12px; line-height:1.5; border-radius:10px; padding:11px 13px; margin:6px 0 4px;}
 
   /* ====== HEADER APLIKASI ====== */
-  .appbar{position:fixed; top:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; z-index:20; display:flex; align-items:center; justify-content:space-between; padding:calc(env(safe-area-inset-top,0px) + 12px) 18px 10px; background:var(--page); box-sizing:border-box;}
+  .appbar{position:fixed; top:0; left:50%; transform:translateX(-50%); width:100%; max-width:var(--maxw); z-index:20; display:flex; align-items:center; justify-content:space-between; padding:calc(env(safe-area-inset-top,0px) + 12px) 18px 10px; background:var(--page); box-sizing:border-box;}
   .appbar .brand{display:flex; align-items:center; gap:9px;}
   .appbar .brand .mk{width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
   .appbar .brand .bt{font-size:16px; font-weight:700; letter-spacing:-.2px;}
@@ -285,7 +286,7 @@
   .acts{position:fixed; inset:0; z-index:60; display:none;}
   .acts.show{display:block;}
   .acts-mask{position:absolute; inset:0; background:rgba(0,0,0,.42);}
-  .acts-card{position:absolute; left:50%; bottom:0; transform:translateX(-50%); width:100%; max-width:480px; background:var(--card); border-radius:18px 18px 0 0; padding:10px 16px 20px;}
+  .acts-card{position:absolute; left:50%; bottom:0; transform:translateX(-50%); width:100%; max-width:var(--maxw); background:var(--card); border-radius:18px 18px 0 0; padding:10px 16px 20px;}
   .acts-h{font-size:11px; color:var(--tx3); font-weight:600; text-transform:uppercase; letter-spacing:.5px; padding:8px 4px 6px;}
   .acts-btn{display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:none; border:none; padding:11px 4px; border-bottom:.5px solid var(--line);}
   .acts-btn:active{opacity:.7;}
@@ -333,6 +334,24 @@
   .lapframe{width:100%; height:100%; min-height:280px; display:block; background:#fff; border:none;}
   .lapframe-loading{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; font-size:12px; color:var(--tx2); background:var(--page);}
   .lapbtns{display:flex; gap:10px;}
+
+  /* ====== PENYESUAIAN TABLET / LAYAR LEBAR ====== */
+  @media (min-width:700px){
+    :root{ --maxw:680px; }
+    body{ background:#dedede; }
+    /* Carousel: tampilkan 2 kartu berdampingan bila muat */
+    .saldo-slide{ width:calc((100% - 12px)/2); }
+    .saldo-slide.solo{ width:100%; }
+    /* Form dan beberapa area beri sedikit napas lebih */
+    .form,.set{ padding-left:22px; padding-right:22px; }
+    .list{ padding-left:22px; padding-right:22px; }
+    /* Item lebih tinggi sedikit supaya sentuhan nyaman di tablet */
+    .item{ padding:13px 0; }
+    .nav button .ico{ font-size:23px; }
+  }
+  @media (min-width:900px){
+    :root{ --maxw:760px; }
+  }
 
   /* ====== TEMA GELAP ====== */
   [data-theme="dark"]{
@@ -977,7 +996,7 @@ function buatFileDariSheet(rows, utangRows, transferRows, akunMap, namaFile, fol
 }
 
 /* =======================================================================
- * VERIFIKASI Nomor Telepon (OTP VIA FONNTE)
+ * VERIFIKASI NOMOR WHATSAPP (OTP VIA FONNTE)
  * Sebelum dipakai: daftar gratis di fonnte.com, hubungkan satu nomor WA
  * lewat scan QR di menu Device, salin Token-nya, lalu simpan sebagai
  * Script Property bernama FONNTE_TOKEN (Project Settings > Script Properties).
@@ -1258,7 +1277,7 @@ function ujiIzin() {
 })();
   
 var LS_URL='kk_gas_url';
-/* Alamat pencadangan disimpan terpisah per Nomor Telepon yang sedang login,
+/* Alamat pencadangan disimpan terpisah per nomor WhatsApp yang sedang login,
    supaya kalau logout lalu login dengan nomor lain, alamatnya menyesuaikan
    nomor itu sendiri (kosong kalau nomor tersebut belum pernah mengatur). */
 function gasUrlKey(){ var p=(typeof emailUser==='function'?emailUser():''); return p ? (LS_URL+'_'+p) : LS_URL; }
@@ -1336,7 +1355,7 @@ function getUser(){ try{ return JSON.parse(localStorage.getItem(LS_USER)||'null'
 function setUser(u){ USER=u; localStorage.setItem(LS_USER, JSON.stringify(u)); }
 function clearUser(){ USER=null; localStorage.removeItem(LS_USER); }
 /* Nama fungsi dipertahankan "emailUser" agar seluruh pemanggilnya di bawah tidak perlu diubah,
-   namun sekarang mengembalikan Nomor Telepon pengguna (format 62xxxxxxxxxx), bukan email. */
+   namun sekarang mengembalikan NOMOR WHATSAPP pengguna (format 62xxxxxxxxxx), bukan email. */
 function emailUser(){ return (USER&&USER.phone)||''; }
 /* Ubah nomor menjadi format 62xxxxxxxxxx (tanpa spasi/strip/plus), siap dipakai untuk tautan WhatsApp. */
 function normalisasiHP(v){
@@ -1386,7 +1405,7 @@ function openDB(){
       if(!db.objectStoreNames.contains('utang')){
         db.createObjectStore('utang',{keyPath:'id'});
       }
-      /* Foto profil disimpan lokal saja per Nomor Telepon, tidak pernah dikirim
+      /* Foto profil disimpan lokal saja per nomor WhatsApp, tidak pernah dikirim
          ke layanan pencadangan/Drive, supaya tetap ada tiap login dengan nomor yang sama. */
       if(!db.objectStoreNames.contains('avatars')){
         db.createObjectStore('avatars',{keyPath:'phone'});
@@ -1742,12 +1761,12 @@ function render(){
   S().classList.toggle('has-appbar', !!document.querySelector('.appbar'));
 }
 
-/* ====== LOGIN / AKUN (Nomor Telepon) ====== */
+/* ====== LOGIN / AKUN (NOMOR WHATSAPP) ====== */
 function renderLogin(){
   var html='<div class="login-wrap"><div class="logo-mark">'+logoMark(64)+'</div><div class="logo">KeuanganKu</div>'+
-    '<div class="logo-sub">Masuk atau daftar menggunakan nomor Telepon Anda. Data tersimpan di perangkat ini dan tercatat atas nama nomor tersebut.</div>'+
+    '<div class="logo-sub">Masuk atau daftar menggunakan nomor WhatsApp Anda. Data tersimpan di perangkat ini dan tercatat atas nama nomor tersebut.</div>'+
     '<label class="fl">Nama</label><input class="field" id="loginNama" placeholder="Nama Anda">'+
-    '<label class="fl">Nomor Telepon</label><input class="field" id="loginPhone" type="tel" inputmode="numeric" placeholder="08xxxxxxxxxx" oninput="onLoginPhone(this)">'+
+    '<label class="fl">Nomor WhatsApp</label><input class="field" id="loginPhone" type="tel" inputmode="numeric" placeholder="08xxxxxxxxxx" oninput="onLoginPhone(this)">'+
     '<button class="save pem" onclick="masukManual()">Masuk</button>'+
     '</div>';
   S().innerHTML=html;
@@ -1758,7 +1777,7 @@ async function masukManual(){
   var raw=(document.getElementById('loginPhone').value||'').trim();
   var hp=normalisasiHP(raw);
   if(!n){ toast('Nama belum diisi'); return; }
-  if(!validHP(hp)){ toast('Nomor telepon tidak valid'); return; }
+  if(!validHP(hp)){ toast('Nomor WhatsApp tidak valid'); return; }
   var fotoTersimpan=null;
   try{ var rec=await avatarGet(hp); fotoTersimpan=rec?rec.picture:null; }catch(e){}
   setUser({phone:hp, name:n, picture:fotoTersimpan||''}); afterLogin();
@@ -1794,7 +1813,7 @@ function renderHome(){
   S().innerHTML=
     appBar()+
     '<div class="topbar"><div class="greet"><div><div class="hi">Halo,</div><div class="nm">'+esc((USER&&USER.name)||'')+'</div></div></div></div>'+
-    '<div class="saldo-carousel" id="saldoCarousel">'+slides.map(function(s){return '<div class="saldo-slide">'+s+'</div>';}).join('')+'</div>'+
+    '<div class="saldo-carousel" id="saldoCarousel">'+slides.map(function(s){return '<div class="saldo-slide'+(slides.length===1?' solo':'')+'">'+s+'</div>';}).join('')+'</div>'+
     (slides.length>1?('<div class="saldo-dots" id="saldoDots">'+slides.map(function(_,i){return '<span class="saldo-dot'+(i===0?' on':'')+'"></span>';}).join('')+'</div>'):'')+
     '<div class="uring" onclick="goView(\'utang\')">'+
       '<div class="ur"><div class="url">Piutang berjalan</div><div class="urv pos">'+fmtRp(piutangSisa)+'</div></div>'+
@@ -2876,7 +2895,7 @@ function renderSinkron(){
     '<div class="panel"><div class="big-stat"><div class="bs"><div class="n">'+dalam.length+'</div><div class="k">transaksi pada rentang</div></div>'+
       '<div class="bs warn"><div class="n">'+belum+'</div><div class="k">belum tercadang</div></div></div>'+
       '<button class="save pem" id="btnKirim" style="margin-top:14px" '+(tersambung&&dalam.length?'':'disabled')+' onclick="kirimRentang()">Cadangkan '+dalam.length+' transaksi</button>'+
-      '<div style="font-size:11px;color:var(--tx3);text-align:center;margin-top:8px">Pencadangan sepenuhnya ada dibawah kendali Anda.</div></div>'+
+      '<div style="font-size:11px;color:var(--tx3);text-align:center;margin-top:8px">Pencadangan ulang aman. Catatan yang sama tidak akan tergandakan.</div></div>'+
     '<div class="divider"></div>'+
     '<div class="set"><div class="t" style="font-weight:600;font-size:14px;margin:0 2px 6px">Pemulihan data</div>'+
       '<p class="hint">Memulihkan seluruh transaksi dari cadangan ke perangkat ini, misalnya setelah berganti perangkat atau memasang ulang aplikasi. Data digabungkan sehingga tidak tergandakan.</p>'+
@@ -2933,10 +2952,10 @@ function renderProfSheet(){
     '<div class="fhead"><button class="bk" onclick="backProf()">&#8592;</button><div class="ti">Koneksi Pencadangan</div></div>'+
     '<div class="set">'+
       '<div class="statcard '+(on?'on':'off')+'"><span class="sc-ic">'+(on?'&#9729;':'&#9888;')+'</span><div>'+(on?'Aplikasi sudah terhubung ke Google Drive Anda (lewat Google Sheet &amp; Apps Script). Pencadangan, pemulihan, dan penghapusan data akan diselaraskan otomatis ke sana.':'Aplikasi belum terhubung ke Google Drive. Hubungkan Google Sheet Anda sendiri sebagai tempat pencadangan untuk mengaktifkan fitur ini.')+'</div></div>'+
-      '<p class="hint">Seluruh transaksi tersimpan di perangkat ini dan tetap dapat diakses tanpa internet. Pencadangan pada aplikasi ini memakai <b>Google Drive</b> milik Anda sendiri, data disimpan di dalam <b>Google Drive</b> pribadi yang dijalankan lewat <b>Google Apps Script</b>, sehingga sepenuhnya berada dalam kendali akun Google Anda. Masukkan alamat Web App Apps Script yang diakhiri /exec.</p>'+
+      '<p class="hint">Seluruh transaksi tersimpan di perangkat dan tetap dapat diakses tanpa internet. Pencadangan pada aplikasi ini memakai <b>Google Drive</b> milik Anda sendiri &mdash; data disimpan di dalam <b>Google Sheet</b> pribadi yang dijalankan lewat <b>Google Apps Script</b>, sehingga sepenuhnya berada dalam kendali akun Google Anda. Masukkan alamat Web App Apps Script yang diakhiri /exec.</p>'+
       '<label class="fl">Alamat Web App Google Apps Script</label><input class="field" id="inUrl" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(url)+'">'+
       '<button class="save pem" onclick="simpanUrl()">Simpan &amp; sambungkan</button>'+
-      '<div style="font-size:11px;color:var(--tx3);margin:8px 2px 0">Koneksi ke Google Sheet otomatis diuji ketika penyambungan dan sisa penyimpanan Google Drive Anda ditampilkan setelah tersambung.</div>'+
+      '<div style="font-size:11px;color:var(--tx3);margin:8px 2px 0">Koneksi ke Google Sheet otomatis diuji dan sisa penyimpanan Google Drive Anda ditampilkan setelah tersambung.</div>'+
       '<div class="ok-msg" id="setMsg"></div>'+
       '<div class="divider"></div>'+
       '<div class="grp-label" style="margin-top:0">Panduan</div>'+
@@ -2983,8 +3002,8 @@ function renderProfAbout(){
       '<div class="menu" style="margin-bottom:14px">'+
         '<div class="about-line"><span>Versi</span><b>1.0</b></div>'+
         '<div class="about-line"><span>Penyimpanan</span><b>Di perangkat (offline)</b></div>'+
-        '<div class="about-line"><span>Cadangan</span><b>Layanan pencadangan pribadi (Google Drive)</b></div>'+
-        '<div class="about-line"><span>Login</span><b>Nomor Telepon</b></div>'+
+        '<div class="about-line"><span>Cadangan</span><b>Layanan pencadangan pribadi</b></div>'+
+        '<div class="about-line"><span>Login</span><b>Nomor WhatsApp</b></div>'+
       '</div>'+
       '<p class="hint">KeuanganKu mencatat pemasukan dan pengeluaran, menyimpannya di perangkat agar tetap dapat digunakan tanpa internet, dan mencadangkannya ke layanan pribadi milik Anda. Pemindai struk memproses teks langsung di perangkat sehingga foto tidak dikirim ke mana pun.</p>'+
     '</div>';
