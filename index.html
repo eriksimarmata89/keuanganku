@@ -1699,15 +1699,18 @@ function periodeSeg(){
 }
 
 function renderHome(){
-  var masuk=TX.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
-  var keluar=TX.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
+  /* Total saldo = jumlah uang yang benar-benar tersedia sekarang,
+     yaitu total isi seluruh penampung saldo (saldo awal + pemasukan - pengeluaran
+     + perpindahan masuk - perpindahan keluar). Pemasukan/pengeluaran/sisa periode ini
+     juga dijumlahkan dari tiap penampung yang punya transaksi pada periode berjalan. */
+  var totalSaldo=AK.reduce(function(s,a){ return s+saldoAkunSaatIni(a.id); },0);
+  var pM=AK.reduce(function(s,a){ return s+akunPeriode(a.id).masuk; },0);
+  var pK=AK.reduce(function(s,a){ return s+akunPeriode(a.id).keluar; },0);
   var px=TX.filter(function(t){return dalamPeriode(t.tanggal);});
-  var pM=px.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
-  var pK=px.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
   var terakhir=px.slice(0,homeLimit||px.length);
   var piutangSisa=UT.filter(function(u){return u.jenis==='piutang';}).reduce(function(s,u){return s+utSisa(u);},0);
   var hutangSisa=UT.filter(function(u){return u.jenis==='hutang';}).reduce(function(s,u){return s+utSisa(u);},0);
-  var slides=[totalSlideHTML(masuk-keluar,pM,pK)].concat(AK.map(akunSlideHTML));
+  var slides=[totalSlideHTML(totalSaldo,pM,pK)].concat(AK.map(akunSlideHTML));
   S().innerHTML=
     appBar()+
     '<div class="topbar"><div class="greet"><div><div class="hi">Halo,</div><div class="nm">'+esc((USER&&USER.name)||'')+'</div></div></div></div>'+
@@ -2318,20 +2321,9 @@ function akunIconHTML(a, size){
 }
 function akunLabelJenis(j){ for(var i=0;i<JENIS_AKUN.length;i++){ if(JENIS_AKUN[i][0]===j) return JENIS_AKUN[i][1]; } return 'Lainnya'; }
 function cariAkun(id){ for(var i=0;i<AK.length;i++){ if(AK[i].id===id) return AK[i]; } return null; }
-/* Pastikan selalu ada penampung "Tunai" default, supaya pengeluaran kas seperti
-   beli rokok bisa langsung dicatat tanpa harus membuat akun dulu. */
-async function pastikanAkunTunai(){
-  if(!emailUser()) return;
-  var adaTunai=AK.some(function(a){ return a.jenis==='tunai'; });
-  if(adaTunai) return;
-  var item={ id:uid(), nama:'Tunai', jenis:'tunai', saldoAwal:0, catatan:'', logo:'', createdAt:'0000-01-01T00:00:00.000Z', terkirim:false, user:emailUser() };
-  AK.unshift(item);
-  try{ await akPut(item); }catch(e){}
-}
 async function muatAkun(){
   try{ var all=await akGetAll(); AK=all.filter(function(a){ return a.user===emailUser(); }); AK.sort(function(a,b){ return (a.createdAt||'').localeCompare(b.createdAt||''); }); }
   catch(e){ AK=[]; }
-  await pastikanAkunTunai();
 }
 async function muatTransfer(){
   try{ var all=await trGetAll(); TR=all.filter(function(t){ return t.user===emailUser(); }); TR.sort(function(a,b){ return (b.tanggal+(b.createdAt||'')).localeCompare(a.tanggal+(a.createdAt||'')); }); }
