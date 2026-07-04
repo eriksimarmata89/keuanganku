@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#185FA5">
+<title>KeuanganKu</title>
+<style>
+  :root{
+    --biru:#185FA5;
+    --page:#F4F4F2; --card:#FFFFFF; --line:#E7E7E2;
+    --bone:#E4E4DF; --bone2:#EFEFEA;
+    --tx:#2C2C2A; --tx2:#6B6B66;
+    --maxw:520px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --page:#14161A; --card:#1E2127; --line:#2C2F36;
+      --bone:#262A31; --bone2:#2E333B;
+      --tx:#ECECEA; --tx2:#A6A6A0;
+    }
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; background:var(--page); color:var(--tx);}
+  #app{max-width:var(--maxw); margin:0 auto; min-height:100vh; padding-bottom:70px;}
+
+  /* Tulang skeleton + animasi shimmer */
+  .b{position:relative; overflow:hidden; background:var(--bone); border-radius:8px;}
+  .b::after{content:''; position:absolute; inset:0;
+    background:linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent);
+    transform:translateX(-100%); animation:shim 1.4s infinite;}
+  @media (prefers-color-scheme: dark){
+    .b::after{background:linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent);}
+  }
+  @keyframes shim{100%{transform:translateX(100%);}}
+
+  /* Appbar: logo & nama asli supaya merek langsung terlihat */
+  .appbar{display:flex; align-items:center; gap:9px; padding:calc(env(safe-area-inset-top,0px) + 14px) 18px 10px;}
+  .appbar .bt{font-size:16px; font-weight:700; letter-spacing:-.2px;}
+  .appbar .ava{width:38px; height:38px; border-radius:50%; margin-left:auto;}
+
+  .topbar{padding:14px 18px 0;}
+  .l-hi{width:52px; height:11px; margin-bottom:7px;}
+  .l-nm{width:140px; height:14px;}
+
+  /* Kartu saldo biru */
+  .saldo{background:var(--biru); border-radius:16px; padding:18px 20px; margin:16px 18px 0;}
+  .saldo .s{background:rgba(255,255,255,.28);}
+  .saldo .s::after{background:linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);}
+  .s-lbl{width:70px; height:10px; margin-bottom:9px;}
+  .s-amt{width:170px; height:24px; margin-bottom:16px;}
+  .s-row{display:flex; gap:16px;}
+  .s-col{flex:1;}
+  .s-mini{width:76px; height:9px; margin-bottom:6px;}
+  .s-val{width:100px; height:13px;}
+  .s-foot{border-top:1px solid rgba(255,255,255,.22); margin-top:14px; padding-top:11px; display:flex; justify-content:space-between; align-items:center;}
+  .s-f1{width:120px; height:10px;}
+  .s-f2{width:90px; height:14px;}
+
+  .dots{display:flex; justify-content:center; gap:6px; margin:10px 0 2px;}
+  .dot{width:6px; height:6px; border-radius:50%; background:var(--line);}
+  .dot:first-child{width:16px; border-radius:4px; background:var(--bone);}
+
+  /* Kartu hutang/piutang */
+  .uring{display:flex; align-items:center; background:var(--card); border-radius:14px; margin:12px 18px 0; padding:14px 16px;}
+  .ur{flex:1;}
+  .ur-l{width:82px; height:10px; margin-bottom:7px;}
+  .ur-v{width:110px; height:14px;}
+  .ursep{width:1px; align-self:stretch; background:var(--line); margin:0 14px;}
+
+  /* Segmented control */
+  .seg{display:flex; gap:6px; background:var(--bone2); border-radius:10px; padding:3px; margin:14px 18px;}
+  .seg .b{flex:1; height:30px; border-radius:8px;}
+  .seg .b:first-child{background:var(--card);}
+  .seg .b:first-child::after{display:none;}
+  .seg .b:not(:first-child){background:transparent;}
+  .seg .b:not(:first-child)::after{display:none;}
+
+  .sec{display:flex; justify-content:space-between; align-items:center; padding:6px 18px 10px;}
+  .sec-t{width:130px; height:12px;}
+  .sec-n{width:56px; height:10px;}
+
+  /* Baris daftar transaksi */
+  .list{padding:0 18px;}
+  .item{display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:.5px solid var(--line);}
+  .item:last-child{border-bottom:none;}
+  .ic{width:38px; height:38px; border-radius:10px; flex-shrink:0;}
+  .mid{flex:1;}
+  .m1{height:12px; margin-bottom:7px;}
+  .m2{height:9px; width:60%;}
+  .amt{width:74px; height:12px;}
+  .item:nth-child(1) .m1{width:75%;} .item:nth-child(2) .m1{width:55%;}
+  .item:nth-child(3) .m1{width:68%;} .item:nth-child(4) .m1{width:48%;}
+  .item:nth-child(5) .m1{width:62%;} .item:nth-child(6) .m1{width:70%;}
+
+  /* Nav bawah */
+  .nav{position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:var(--maxw); background:var(--card); border-top:.5px solid var(--line); display:flex; justify-content:space-around; align-items:center; padding:10px 0 16px;}
+  .nv{width:34px; height:26px; border-radius:8px;}
+  .fab{width:50px; height:50px; border-radius:50%; background:var(--biru); margin-top:-24px; opacity:.55;}
+
+  /* Kartu tanpa koneksi */
+  .off{display:none; margin:20vh 24px 0; background:var(--card); border-radius:16px; padding:24px 20px; text-align:center;}
+  .off .oi{font-size:34px; margin-bottom:10px;}
+  .off .ot{font-size:15px; font-weight:700; margin-bottom:6px;}
+  .off .od{font-size:13px; color:var(--tx2); line-height:1.5; margin-bottom:16px;}
+  .off button{font-family:inherit; border:none; border-radius:10px; padding:12px 26px; font-size:14px; font-weight:600; color:#fff; background:var(--biru); cursor:pointer;}
+  body.offline #skel{display:none;}
+  body.offline .off{display:block;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="skel">
+    <div class="appbar">
+      <svg width="30" height="30" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+        <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#3D8BD4"/><stop offset="100%" stop-color="#0C447C"/>
+        </linearGradient></defs>
+        <rect width="40" height="40" rx="11" fill="url(#g)"/>
+        <text x="20" y="27.5" font-family="Arial" font-size="18" font-weight="800" fill="#fff" text-anchor="middle">Rp</text>
+      </svg>
+      <div class="bt">KeuanganKu</div>
+      <div class="ava b"></div>
+    </div>
+    <div class="topbar"><div class="l-hi b"></div><div class="l-nm b"></div></div>
+    <div class="saldo">
+      <div class="s-lbl b s"></div>
+      <div class="s-amt b s"></div>
+      <div class="s-row">
+        <div class="s-col"><div class="s-mini b s"></div><div class="s-val b s"></div></div>
+        <div class="s-col"><div class="s-mini b s"></div><div class="s-val b s"></div></div>
+      </div>
+      <div class="s-foot"><div class="s-f1 b s"></div><div class="s-f2 b s"></div></div>
+    </div>
+    <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="uring">
+      <div class="ur"><div class="ur-l b"></div><div class="ur-v b"></div></div>
+      <div class="ursep"></div>
+      <div class="ur"><div class="ur-l b"></div><div class="ur-v b"></div></div>
+    </div>
+    <div class="seg"><div class="b"></div><div class="b"></div><div class="b"></div></div>
+    <div class="sec"><div class="sec-t b"></div><div class="sec-n b"></div></div>
+    <div class="list">
+      <div class="item"><div class="ic b"></div><div class="mid"><div class="m1 b"></div><div class="m2 b"></div></div><div class="amt b"></div></div>
+      <div class="item"><div class="ic b"></div><div class="mid"><div class="m1 b"></div><div class="m2 b"></div></div><div class="amt b"></div></div>
+      <div class="item"><div class="ic b"></div><div class="mid"><div class="m1 b"></div><div class="m2 b"></div></div><div class="amt b"></div></div>
+      <div class="item"><div class="ic b"></div><div class="mid"><div class="m1 b"></div><div class="m2 b"></div></div><div class="amt b"></div></div>
+      <div class="item"><div class="ic b"></div><div class="mid"><div class="m1 b"></div><div class="m2 b"></div></div><div class="amt b"></div></div>
+      <div class="item"><div class="ic b"></div><div class="mid"><div class="m1 b"></div><div class="m2 b"></div></div><div class="amt b"></div></div>
+    </div>
+  </div>
+
+  <div class="off">
+    <div class="oi">&#128268;</div>
+    <div class="ot">Tidak ada koneksi</div>
+    <div class="od">KeuanganKu memerlukan internet untuk pemuatan pertama. Periksa koneksi Anda, lalu coba lagi.</div>
+    <button onclick="cobaLagi()">Coba lagi</button>
+  </div>
+
+  <div class="nav">
+    <div class="nv b"></div><div class="nv b"></div>
+    <div class="fab"></div>
+    <div class="nv b"></div><div class="nv b"></div>
+  </div>
+</div>
+
+<script>
+/* Alamat aplikasi asli. Ubah di sini bila alamatnya berganti. */
+var URL_APLIKASI = 'https://eriksimarmata89.github.io/keuanganku/?v=3';
+
+function pergi(){
+  /* location.replace supaya skeleton tidak masuk riwayat "kembali".
+     Selama halaman asli diunduh, skeleton tetap tampil di layar. */
+  location.replace(URL_APLIKASI);
+}
+function cobaLagi(){
+  if(navigator.onLine === false){ return; }
+  document.body.classList.remove('offline');
+  setTimeout(pergi, 250);
+}
+window.addEventListener('online', function(){ cobaLagi(); });
+
+if(navigator.onLine === false){
+  document.body.classList.add('offline');
+} else {
+  /* Jeda singkat supaya shimmer sempat tergambar sebelum navigasi dimulai. */
+  setTimeout(pergi, 350);
+}
+</script>
+</body>
+</html>
