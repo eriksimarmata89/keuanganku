@@ -1771,6 +1771,7 @@ var addState=blankAdd();
 function blankAdd(){ return {tipe:'pengeluaran',metode:'manual',nominal:'',keterangan:'',kategori:'Belanja',tanggal:todayISO(),catatan:'',akunId:(AK[0]?AK[0].id:''),jadiHutang:false}; }
 
 function renderAdd(){
+  if(!AK.length){
       var a=addState, peng=a.tipe==='pengeluaran';
       var akunTerpilih=cariAkun(a.akunId); // boleh null kalau Tunai
       var isKK=peng && akunTerpilih && akunTerpilih.jenis==='kartu';
@@ -1778,7 +1779,7 @@ function renderAdd(){
       '<div class="fhead"><button class="bk" onclick="goView(\'home\')">&#8592;</button><div class="ti">Tambah transaksi</div></div>'+
       '<div class="form"><div class="empty">Anda belum memiliki penampung saldo (bank, dompet digital, atau kartu kredit). Tambahkan dahulu supaya transaksi dapat dicatatkan ke penampung yang tepat.</div>'+
       '<label class="fl">Penampung saldo</label><select class="field" onchange="addState.akunId=this.value;renderAdd()">'+akunOptionsHTML(a.akunId)+'</select>'+
-      (isKK?(...):'')+
+      ''+
       '<button class="save pem" onclick="akunState=blankAkun();goView(\'akunAdd\')">+ Tambah penampung saldo</button></div>';
     return;
   }
