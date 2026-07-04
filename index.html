@@ -3165,6 +3165,145 @@ function actAdd(kind){
   window.unduhCSV =function(){ buatLaporanServer('xlsx'); };
 })();
 </script>
+
+<script>
+/* PATCH: Kamera versi web dengan lensa otomatis.
+   HP/tablet (browser): kamera belakang (environment).
+   Komputer: kamera depan (user).
+   APK Kodular tidak berubah: tetap lewat Camera1 (default kamera belakang).
+   Tempel blok ini sebelum </body>, setelah semua <script> yang sudah ada. */
+(function(){
+  function adaAPK(){ return !!(window.AppInventor && window.AppInventor.setWebViewString); }
+  function perangkatSentuh(){
+    /* iPad baru menyamar sebagai Mac, jadi cek juga jumlah titik sentuh */
+    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+      || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+  }
+
+  var _stream = null, _cb = null, _facing = 'environment';
+
+  function hentikanStream(){
+    if(_stream){ _stream.getTracks().forEach(function(t){ t.stop(); }); _stream = null; }
+  }
+
+  function pastikanUI(){
+    if(document.getElementById('kamMask')) return;
+    var div = document.createElement('div');
+    div.id = 'kamMask';
+    div.style.cssText = 'position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.8);padding:16px';
+    div.innerHTML =
+      '<div style="width:100%;max-width:440px;background:var(--card);border-radius:16px;overflow:hidden">'+
+        '<video id="kamVideo" autoplay playsinline muted style="width:100%;display:block;background:#000;max-height:62vh;object-fit:cover"></video>'+
+        '<div style="display:flex;gap:10px;padding:14px">'+
+          '<button class="cmbtn cancel" onclick="tutupKameraWeb()">Batal</button>'+
+          '<button class="cmbtn cancel" onclick="balikKameraWeb()">Balik kamera</button>'+
+          '<button class="cmbtn ok" onclick="jepretKameraWeb()">Ambil foto</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(div);
+  }
+
+  async function mulaiStream(facing){
+    _facing = facing;
+    hentikanStream();
+    try{
+      _stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: facing } },
+        audio: false
+      });
+    }catch(e){
+      /* Kamera sesuai lensa tidak ada (mis. komputer tanpa kamera belakang):
+         coba kamera apa pun yang tersedia. */
+      try{
+        _stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }catch(e2){
+        tutupKameraWeb();
+        toast('Kamera tidak tersedia atau izin ditolak');
+        fallbackInput();
+        return;
+      }
+    }
+    var v = document.getElementById('kamVideo');
+    if(v) v.srcObject = _stream;
+  }
+
+  /* Cadangan bila getUserMedia tidak didukung: pakai input file.
+     Atribut capture="environment" membuat browser HP langsung membuka
+     kamera belakang; di komputer atribut ini diabaikan dan membuka pemilih file. */
+  function fallbackInput(){
+    var inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    if(perangkatSentuh()) inp.setAttribute('capture','environment');
+    inp.onchange = function(){
+      var f = inp.files[0]; if(!f || !_cb) return;
+      var r = new FileReader();
+      r.onload = function(){ var cb = _cb; _cb = null; cb(r.result); };
+      r.readAsDataURL(f);
+    };
+    inp.click();
+  }
+
+  window.bukaKameraWeb = function(cb){
+    _cb = cb;
+    if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)){ fallbackInput(); return; }
+    pastikanUI();
+    document.getElementById('kamMask').style.display = 'flex';
+    mulaiStream(perangkatSentuh() ? 'environment' : 'user');
+  };
+  window.tutupKameraWeb = function(){
+    hentikanStream();
+    var m = document.getElementById('kamMask'); if(m) m.style.display = 'none';
+    _cb = null;
+  };
+  window.balikKameraWeb = function(){
+    mulaiStream(_facing === 'environment' ? 'user' : 'environment');
+  };
+  window.jepretKameraWeb = function(){
+    var v = document.getElementById('kamVideo');
+    if(!v || !v.videoWidth){ toast('Kamera belum siap'); return; }
+    var c = document.createElement('canvas');
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d').drawImage(v, 0, 0);
+    var data;
+    try{ data = c.toDataURL('image/jpeg', 0.9); }
+    catch(e){ toast('Gagal mengambil foto'); return; }
+    var cb = _cb; _cb = null;
+    tutupKameraWeb();
+    if(cb) cb(data);
+  };
+
+  /* Sambungkan ke alur yang sudah ada. Hanya jalur web yang diubah,
+     jalur APK tetap memakai fungsi lama (WebViewString ke Kodular). */
+  var _mintaFotoLama = window.mintaFoto;
+  window.mintaFoto = function(sumber){
+    if(adaAPK()){ _mintaFotoLama(sumber); return; }
+    if(sumber === 'kamera'){
+      bukaKameraWeb(function(d){ mulaiStrukDariDataURL(d); });
+    } else {
+      var inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = 'image/*';
+      inp.onchange = function(){
+        var f = inp.files[0]; if(!f) return;
+        var r = new FileReader();
+        r.onload = function(){ mulaiStrukDariDataURL(r.result); };
+        r.readAsDataURL(f);
+      };
+      inp.click();
+    }
+  };
+
+  var _pilihAvatarLama = window.pilihAvatar;
+  window.pilihAvatar = function(sumber){
+    if(adaAPK()){ _pilihAvatarLama(sumber); return; }
+    closeAvatarSheet();
+    if(sumber === 'kamera'){
+      bukaKameraWeb(function(d){ simpanAvatarDariFoto(d); });
+    } else {
+      document.getElementById('avatarFileInput').click();
+    }
+  };
+})();
+</script>
   
 </body>
 </html>
