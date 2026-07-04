@@ -977,7 +977,7 @@ function buatFileDariSheet(rows, utangRows, transferRows, akunMap, namaFile, fol
 }
 
 /* =======================================================================
- * VERIFIKASI NOMOR WHATSAPP (OTP VIA FONNTE)
+ * VERIFIKASI Nomor Telepon (OTP VIA FONNTE)
  * Sebelum dipakai: daftar gratis di fonnte.com, hubungkan satu nomor WA
  * lewat scan QR di menu Device, salin Token-nya, lalu simpan sebagai
  * Script Property bernama FONNTE_TOKEN (Project Settings > Script Properties).
@@ -1258,7 +1258,7 @@ function ujiIzin() {
 })();
   
 var LS_URL='kk_gas_url';
-/* Alamat pencadangan disimpan terpisah per nomor WhatsApp yang sedang login,
+/* Alamat pencadangan disimpan terpisah per Nomor Telepon yang sedang login,
    supaya kalau logout lalu login dengan nomor lain, alamatnya menyesuaikan
    nomor itu sendiri (kosong kalau nomor tersebut belum pernah mengatur). */
 function gasUrlKey(){ var p=(typeof emailUser==='function'?emailUser():''); return p ? (LS_URL+'_'+p) : LS_URL; }
@@ -1336,7 +1336,7 @@ function getUser(){ try{ return JSON.parse(localStorage.getItem(LS_USER)||'null'
 function setUser(u){ USER=u; localStorage.setItem(LS_USER, JSON.stringify(u)); }
 function clearUser(){ USER=null; localStorage.removeItem(LS_USER); }
 /* Nama fungsi dipertahankan "emailUser" agar seluruh pemanggilnya di bawah tidak perlu diubah,
-   namun sekarang mengembalikan NOMOR WHATSAPP pengguna (format 62xxxxxxxxxx), bukan email. */
+   namun sekarang mengembalikan Nomor Telepon pengguna (format 62xxxxxxxxxx), bukan email. */
 function emailUser(){ return (USER&&USER.phone)||''; }
 /* Ubah nomor menjadi format 62xxxxxxxxxx (tanpa spasi/strip/plus), siap dipakai untuk tautan WhatsApp. */
 function normalisasiHP(v){
@@ -1386,7 +1386,7 @@ function openDB(){
       if(!db.objectStoreNames.contains('utang')){
         db.createObjectStore('utang',{keyPath:'id'});
       }
-      /* Foto profil disimpan lokal saja per nomor WhatsApp, tidak pernah dikirim
+      /* Foto profil disimpan lokal saja per Nomor Telepon, tidak pernah dikirim
          ke layanan pencadangan/Drive, supaya tetap ada tiap login dengan nomor yang sama. */
       if(!db.objectStoreNames.contains('avatars')){
         db.createObjectStore('avatars',{keyPath:'phone'});
@@ -1742,12 +1742,12 @@ function render(){
   S().classList.toggle('has-appbar', !!document.querySelector('.appbar'));
 }
 
-/* ====== LOGIN / AKUN (NOMOR WHATSAPP) ====== */
+/* ====== LOGIN / AKUN (Nomor Telepon) ====== */
 function renderLogin(){
   var html='<div class="login-wrap"><div class="logo-mark">'+logoMark(64)+'</div><div class="logo">KeuanganKu</div>'+
-    '<div class="logo-sub">Masuk atau daftar menggunakan nomor WhatsApp Anda. Data tersimpan di perangkat ini dan tercatat atas nama nomor tersebut.</div>'+
+    '<div class="logo-sub">Masuk atau daftar menggunakan nomor Telepon Anda. Data tersimpan di perangkat ini dan tercatat atas nama nomor tersebut.</div>'+
     '<label class="fl">Nama</label><input class="field" id="loginNama" placeholder="Nama Anda">'+
-    '<label class="fl">Nomor WhatsApp</label><input class="field" id="loginPhone" type="tel" inputmode="numeric" placeholder="08xxxxxxxxxx" oninput="onLoginPhone(this)">'+
+    '<label class="fl">Nomor Telepon</label><input class="field" id="loginPhone" type="tel" inputmode="numeric" placeholder="08xxxxxxxxxx" oninput="onLoginPhone(this)">'+
     '<button class="save pem" onclick="masukManual()">Masuk</button>'+
     '</div>';
   S().innerHTML=html;
@@ -1758,7 +1758,7 @@ async function masukManual(){
   var raw=(document.getElementById('loginPhone').value||'').trim();
   var hp=normalisasiHP(raw);
   if(!n){ toast('Nama belum diisi'); return; }
-  if(!validHP(hp)){ toast('Nomor WhatsApp tidak valid'); return; }
+  if(!validHP(hp)){ toast('Nomor telepon tidak valid'); return; }
   var fotoTersimpan=null;
   try{ var rec=await avatarGet(hp); fotoTersimpan=rec?rec.picture:null; }catch(e){}
   setUser({phone:hp, name:n, picture:fotoTersimpan||''}); afterLogin();
@@ -2983,8 +2983,8 @@ function renderProfAbout(){
       '<div class="menu" style="margin-bottom:14px">'+
         '<div class="about-line"><span>Versi</span><b>1.0</b></div>'+
         '<div class="about-line"><span>Penyimpanan</span><b>Di perangkat (offline)</b></div>'+
-        '<div class="about-line"><span>Cadangan</span><b>Layanan pencadangan pribadi</b></div>'+
-        '<div class="about-line"><span>Login</span><b>Nomor WhatsApp</b></div>'+
+        '<div class="about-line"><span>Cadangan</span><b>Layanan pencadangan pribadi (Google Drive)</b></div>'+
+        '<div class="about-line"><span>Login</span><b>Nomor Telepon</b></div>'+
       '</div>'+
       '<p class="hint">KeuanganKu mencatat pemasukan dan pengeluaran, menyimpannya di perangkat agar tetap dapat digunakan tanpa internet, dan mencadangkannya ke layanan pribadi milik Anda. Pemindai struk memproses teks langsung di perangkat sehingga foto tidak dikirim ke mana pun.</p>'+
     '</div>';
