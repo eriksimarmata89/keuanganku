@@ -1771,10 +1771,14 @@ var addState=blankAdd();
 function blankAdd(){ return {tipe:'pengeluaran',metode:'manual',nominal:'',keterangan:'',kategori:'Belanja',tanggal:todayISO(),catatan:'',akunId:(AK[0]?AK[0].id:''),jadiHutang:false}; }
 
 function renderAdd(){
-  if(!AK.length){
-    S().innerHTML=
+      var a=addState, peng=a.tipe==='pengeluaran';
+      var akunTerpilih=cariAkun(a.akunId); // boleh null kalau Tunai
+      var isKK=peng && akunTerpilih && akunTerpilih.jenis==='kartu';
+      S().innerHTML=
       '<div class="fhead"><button class="bk" onclick="goView(\'home\')">&#8592;</button><div class="ti">Tambah transaksi</div></div>'+
       '<div class="form"><div class="empty">Anda belum memiliki penampung saldo (bank, dompet digital, atau kartu kredit). Tambahkan dahulu supaya transaksi dapat dicatatkan ke penampung yang tepat.</div>'+
+      '<label class="fl">Penampung saldo</label><select class="field" onchange="addState.akunId=this.value;renderAdd()">'+akunOptionsHTML(a.akunId)+'</select>'+
+      (isKK?(...):'')+
       '<button class="save pem" onclick="akunState=blankAkun();goView(\'akunAdd\')">+ Tambah penampung saldo</button></div>';
     return;
   }
@@ -1882,7 +1886,7 @@ function setMetode(m){ addState.metode=m; renderAdd(); }
 function onNominal(el){ var d=el.value.replace(/\D/g,''); addState.nominal=d; el.value=d?(+d).toLocaleString('id-ID'):''; }
 function onSimpan(){
   var a=addState;
-  if(!a.akunId){ toast('Pilih penampung saldo terlebih dahulu'); return; }
+  //if(!a.akunId){ toast('Pilih penampung saldo terlebih dahulu'); return; }
   if(!a.nominal||+a.nominal<=0){ toast('Nominal belum diisi'); return; }
   var akunTerpilih=cariAkun(a.akunId);
   var buatHutang=a.tipe==='pengeluaran' && a.jadiHutang && akunTerpilih && akunTerpilih.jenis==='kartu';
@@ -2462,7 +2466,8 @@ function transferRow(t, masuk){
 /* ====== PERPINDAHAN SALDO (TRANSFER ANTAR AKUN) ====== */
 function blankTransfer(){ return {dariAkunId:(AK[0]?AK[0].id:''), keAkunId:(AK[1]?AK[1].id:(AK[0]?AK[0].id:'')), nominal:'', tanggal:todayISO(), catatan:''}; }
 function akunOptionsHTML(selectedId){
-  return AK.map(function(a){ return '<option value="'+a.id+'" '+(selectedId===a.id?'selected':'')+'>'+akunIkon(a.jenis)+' '+esc(a.nama)+'</option>'; }).join('');
+  var tunai='<option value="" '+(!selectedId?'selected':'')+'>💵 Tunai / Tanpa penampung</option>';
+  return tunai + AK.map(function(a){ return '<option value="'+a.id+'" '+(selectedId===a.id?'selected':'')+'>'+akunIkon(a.jenis)+' '+esc(a.nama)+'</option>'; }).join('');
 }
 async function simpanTransfer(){
   var t=transferState;
