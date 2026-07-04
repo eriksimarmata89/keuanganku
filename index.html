@@ -2418,7 +2418,7 @@ function akunIconHTML(a, size){
   return '<span style="font-size:'+size+'px;vertical-align:middle;line-height:1">'+akunIkon(a?a.jenis:'lainnya')+'</span>';
 }
 function akunLabelJenis(j){ for(var i=0;i<JENIS_AKUN.length;i++){ if(JENIS_AKUN[i][0]===j) return JENIS_AKUN[i][1]; } return 'Lainnya'; }
-function cariAkun(id){ for(var i=0;i<AK.length;i++){ if(AK[i].id===id) return AK[i]; } return null; }
+function cariAkun(id){ var s=String(id); for(var i=0;i<AK.length;i++){ if(String(AK[i].id)===s) return AK[i]; } return null; }
 async function muatAkun(){
   try{ var all=await akGetAll(); AK=all.filter(function(a){ return a.user===emailUser(); }); AK.sort(function(a,b){ return (a.createdAt||'').localeCompare(b.createdAt||''); }); }
   catch(e){ AK=[]; }
@@ -2430,14 +2430,16 @@ async function muatTransfer(){
 /* Saldo akun saat ini (sepanjang waktu): saldo awal + pemasukan - pengeluaran + transfer masuk - transfer keluar. */
 function saldoAkunSaatIni(akunId){
   var a=cariAkun(akunId); if(!a) return 0;
-  var masuk=TX.filter(function(t){return t.akunId===akunId && t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
-  var keluar=TX.filter(function(t){return t.akunId===akunId && t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
-  var trMasuk=TR.filter(function(t){return t.keAkunId===akunId;}).reduce(function(s,t){return s+(+t.nominal);},0);
-  var trKeluar=TR.filter(function(t){return t.dariAkunId===akunId;}).reduce(function(s,t){return s+(+t.nominal);},0);
+  var aid=String(akunId);
+  var masuk=TX.filter(function(t){return String(t.akunId)===aid && t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
+  var keluar=TX.filter(function(t){return String(t.akunId)===aid && t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
+  var trMasuk=TR.filter(function(t){return String(t.keAkunId)===aid;}).reduce(function(s,t){return s+(+t.nominal);},0);
+  var trKeluar=TR.filter(function(t){return String(t.dariAkunId)===aid;}).reduce(function(s,t){return s+(+t.nominal);},0);
   return (+a.saldoAwal||0)+masuk-keluar+trMasuk-trKeluar;
 }
 function akunPeriode(akunId){
-  var px=TX.filter(function(t){return t.akunId===akunId && dalamPeriode(t.tanggal);});
+  var aid=String(akunId);
+  var px=TX.filter(function(t){return String(t.akunId)===aid && dalamPeriode(t.tanggal);});
   var pM=px.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
   var pK=px.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
   return {masuk:pM, keluar:pK};
@@ -2445,8 +2447,9 @@ function akunPeriode(akunId){
 /* Perpindahan saldo pada periode berjalan untuk satu penampung:
    masuk = transfer yang diterima, keluar = transfer yang dikirim. */
 function akunTransferPeriode(akunId){
-  var masuk=TR.filter(function(t){return t.keAkunId===akunId && dalamPeriode(t.tanggal);}).reduce(function(s,t){return s+(+t.nominal);},0);
-  var keluar=TR.filter(function(t){return t.dariAkunId===akunId && dalamPeriode(t.tanggal);}).reduce(function(s,t){return s+(+t.nominal);},0);
+  var aid=String(akunId);
+  var masuk=TR.filter(function(t){return String(t.keAkunId)===aid && dalamPeriode(t.tanggal);}).reduce(function(s,t){return s+(+t.nominal);},0);
+  var keluar=TR.filter(function(t){return String(t.dariAkunId)===aid && dalamPeriode(t.tanggal);}).reduce(function(s,t){return s+(+t.nominal);},0);
   return {masuk:masuk, keluar:keluar};
 }
 /* Untuk kartu per-penampung: pemasukan & pengeluaran termasuk perpindahan saldo,
@@ -2549,9 +2552,10 @@ function renderAkunDetail(){
   var a=cariAkun(akunDetail);
   if(!a){ goView('akunList'); return; }
   var saldo=saldoAkunSaatIni(a.id);
-  var riwayat=TX.filter(function(t){return t.akunId===a.id;}).slice().sort(function(x,y){return (y.tanggal+(y.createdAt||'')).localeCompare(x.tanggal+(x.createdAt||''));});
-  var trMasuk=TR.filter(function(t){return t.keAkunId===a.id;});
-  var trKeluar=TR.filter(function(t){return t.dariAkunId===a.id;});
+  var aid=String(a.id);
+  var riwayat=TX.filter(function(t){return String(t.akunId)===aid;}).slice().sort(function(x,y){return (y.tanggal+(y.createdAt||'')).localeCompare(x.tanggal+(x.createdAt||''));});
+  var trMasuk=TR.filter(function(t){return String(t.keAkunId)===aid;});
+  var trKeluar=TR.filter(function(t){return String(t.dariAkunId)===aid;});
   S().innerHTML=
     '<div class="fhead"><button class="bk" onclick="goView(\'akunList\')">&#8592;</button><div class="ti">'+esc(a.nama)+'</div></div>'+
     '<div class="set">'+
@@ -2576,10 +2580,15 @@ function transferRow(t, masuk){
 /* ====== PERPINDAHAN SALDO (TRANSFER ANTAR AKUN) ====== */
 function blankTransfer(){ return {dariAkunId:(AK[0]?AK[0].id:''), keAkunId:(AK[1]?AK[1].id:(AK[0]?AK[0].id:'')), nominal:'', tanggal:todayISO(), catatan:''}; }
 function akunOptionsHTML(selectedId){
-  return AK.map(function(a){ return '<option value="'+a.id+'" '+(selectedId===a.id?'selected':'')+'>'+akunIkon(a.jenis)+' '+esc(a.nama)+'</option>'; }).join('');
+  return AK.map(function(a){ return '<option value="'+a.id+'" '+(String(selectedId)===String(a.id)?'selected':'')+'>'+akunIkon(a.jenis)+' '+esc(a.nama)+'</option>'; }).join('');
 }
 async function simpanTransfer(){
   var t=transferState;
+  /* Baca langsung dari elemen select supaya nilai tetap benar walau pengguna
+     tidak mengubah pilihan (event onchange tidak terpicu untuk pilihan default). */
+  var elDari=document.getElementById('trDari'), elKe=document.getElementById('trKe');
+  if(elDari) t.dariAkunId=elDari.value;
+  if(elKe) t.keAkunId=elKe.value;
   if(!t.dariAkunId||!t.keAkunId){ toast('Pilih akun asal dan tujuan'); return; }
   if(t.dariAkunId===t.keAkunId){ toast('Akun asal dan tujuan tidak boleh sama'); return; }
   if(!t.nominal||+t.nominal<=0){ toast('Nominal belum diisi'); return; }
@@ -2606,8 +2615,8 @@ function renderTransferAdd(){
   S().innerHTML=
     '<div class="fhead"><button class="bk" onclick="goView(\'home\')">&#8592;</button><div class="ti">Pindah saldo</div></div>'+
     '<div class="form">'+
-    '<label class="fl">Dari penampung</label><select class="field" onchange="transferState.dariAkunId=this.value">'+akunOptionsHTML(t.dariAkunId)+'</select>'+
-    '<label class="fl">Ke penampung</label><select class="field" onchange="transferState.keAkunId=this.value">'+akunOptionsHTML(t.keAkunId)+'</select>'+
+    '<label class="fl">Dari penampung</label><select class="field" id="trDari" onchange="transferState.dariAkunId=this.value">'+akunOptionsHTML(t.dariAkunId)+'</select>'+
+    '<label class="fl">Ke penampung</label><select class="field" id="trKe" onchange="transferState.keAkunId=this.value">'+akunOptionsHTML(t.keAkunId)+'</select>'+
     '<label class="fl">Nominal</label><div class="nominal-wrap"><span class="rp">Rp</span><input inputmode="numeric" placeholder="0" value="'+(t.nominal?(+t.nominal).toLocaleString('id-ID'):'')+'" oninput="transferOnNominal(this)"></div>'+
     '<label class="fl">Tanggal</label><input class="field" type="date" value="'+t.tanggal+'" onchange="transferState.tanggal=this.value">'+
     '<label class="fl">Catatan (opsional)</label><input class="field" placeholder="Tambah catatan" value="'+esc(t.catatan)+'" oninput="transferState.catatan=this.value">'+
