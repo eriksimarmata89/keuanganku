@@ -3167,11 +3167,15 @@ function actAdd(kind){
 </script>
 
 <script>
-/* PATCH: Kamera versi web dengan lensa otomatis.
-   HP/tablet (browser): kamera belakang (environment).
-   Komputer: kamera depan (user).
-   APK Kodular tidak berubah: tetap lewat Camera1 (default kamera belakang).
-   Tempel blok ini sebelum </body>, setelah semua <script> yang sudah ada. */
+/* PATCH KAMERA v2: lensa otomatis di web DAN di APK.
+   Ganti seluruh patch kamera sebelumnya dengan blok ini (tempel sebelum </body>).
+
+   Cara kerja:
+   - HP/tablet: kamera belakang (environment). Komputer: kamera depan (user).
+   - Di APK: coba dulu kamera web (getUserMedia). Bila WebView menolak izin
+     (perilaku bawaan WebViewer Kodular), otomatis kembali ke Camera1 Kodular.
+   - Di browser: bila getUserMedia gagal, jatuh ke input file dengan
+     capture="environment". */
 (function(){
   function adaAPK(){ return !!(window.AppInventor && window.AppInventor.setWebViewString); }
   function perangkatSentuh(){
@@ -3180,7 +3184,7 @@ function actAdd(kind){
       || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
   }
 
-  var _stream = null, _cb = null, _facing = 'environment';
+  var _stream = null, _cb = null, _gagalCb = null, _facing = 'environment';
 
   function hentikanStream(){
     if(_stream){ _stream.getTracks().forEach(function(t){ t.stop(); }); _stream = null; }
@@ -3203,7 +3207,11 @@ function actAdd(kind){
     document.body.appendChild(div);
   }
 
-  async function mulaiStream(facing){
+  function sembunyikanUI(){
+    var m = document.getElementById('kamMask'); if(m) m.style.display = 'none';
+  }
+
+  async function mulaiStream(facing, pertamaKali){
     _facing = facing;
     hentikanStream();
     try{
@@ -3212,51 +3220,57 @@ function actAdd(kind){
         audio: false
       });
     }catch(e){
-      /* Kamera sesuai lensa tidak ada (mis. komputer tanpa kamera belakang):
-         coba kamera apa pun yang tersedia. */
+      /* Lensa yang diminta tidak ada: coba kamera apa pun dulu. */
       try{
         _stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       }catch(e2){
-        tutupKameraWeb();
-        toast('Kamera tidak tersedia atau izin ditolak');
-        fallbackInput();
+        /* Kamera web benar-benar tidak bisa dipakai (izin ditolak / tidak didukung). */
+        hentikanStream(); sembunyikanUI();
+        if(pertamaKali && _gagalCb){ var g = _gagalCb; _gagalCb = null; _cb = null; g(); }
+        else { toast('Kamera tidak tersedia atau izin ditolak'); }
         return;
       }
     }
     var v = document.getElementById('kamVideo');
     if(v) v.srcObject = _stream;
+    document.getElementById('kamMask').style.display = 'flex';
   }
 
-  /* Cadangan bila getUserMedia tidak didukung: pakai input file.
-     Atribut capture="environment" membuat browser HP langsung membuka
-     kamera belakang; di komputer atribut ini diabaikan dan membuka pemilih file. */
-  function fallbackInput(){
+  /* Cadangan untuk browser tanpa getUserMedia: input file.
+     capture="environment" membuat browser HP langsung buka kamera belakang;
+     di komputer atribut ini diabaikan dan membuka pemilih file. */
+  function fallbackInput(cb){
     var inp = document.createElement('input');
     inp.type = 'file'; inp.accept = 'image/*';
     if(perangkatSentuh()) inp.setAttribute('capture','environment');
     inp.onchange = function(){
-      var f = inp.files[0]; if(!f || !_cb) return;
+      var f = inp.files[0]; if(!f) return;
       var r = new FileReader();
-      r.onload = function(){ var cb = _cb; _cb = null; cb(r.result); };
+      r.onload = function(){ cb(r.result); };
       r.readAsDataURL(f);
     };
     inp.click();
   }
 
-  window.bukaKameraWeb = function(cb){
-    _cb = cb;
-    if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)){ fallbackInput(); return; }
+  /* bukaKameraWeb(cb, onGagal):
+     cb(dataUrl) dipanggil saat foto berhasil diambil.
+     onGagal() dipanggil bila kamera web tidak bisa dipakai sama sekali. */
+  window.bukaKameraWeb = function(cb, onGagal){
+    _cb = cb; _gagalCb = onGagal || null;
+    if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)){
+      var g = _gagalCb; _gagalCb = null; _cb = null;
+      if(g) g(); else fallbackInput(cb);
+      return;
+    }
     pastikanUI();
-    document.getElementById('kamMask').style.display = 'flex';
-    mulaiStream(perangkatSentuh() ? 'environment' : 'user');
+    mulaiStream(perangkatSentuh() ? 'environment' : 'user', true);
   };
   window.tutupKameraWeb = function(){
-    hentikanStream();
-    var m = document.getElementById('kamMask'); if(m) m.style.display = 'none';
-    _cb = null;
+    hentikanStream(); sembunyikanUI();
+    _cb = null; _gagalCb = null;
   };
   window.balikKameraWeb = function(){
-    mulaiStream(_facing === 'environment' ? 'user' : 'environment');
+    mulaiStream(_facing === 'environment' ? 'user' : 'environment', false);
   };
   window.jepretKameraWeb = function(){
     var v = document.getElementById('kamVideo');
@@ -3267,41 +3281,59 @@ function actAdd(kind){
     var data;
     try{ data = c.toDataURL('image/jpeg', 0.9); }
     catch(e){ toast('Gagal mengambil foto'); return; }
-    var cb = _cb; _cb = null;
-    tutupKameraWeb();
+    var cb = _cb; _cb = null; _gagalCb = null;
+    hentikanStream(); sembunyikanUI();
     if(cb) cb(data);
   };
 
-  /* Sambungkan ke alur yang sudah ada. Hanya jalur web yang diubah,
-     jalur APK tetap memakai fungsi lama (WebViewString ke Kodular). */
+  /* ====== Sambungkan ke alur yang sudah ada ====== */
   var _mintaFotoLama = window.mintaFoto;
   window.mintaFoto = function(sumber){
-    if(adaAPK()){ _mintaFotoLama(sumber); return; }
-    if(sumber === 'kamera'){
-      bukaKameraWeb(function(d){ mulaiStrukDariDataURL(d); });
-    } else {
-      var inp = document.createElement('input');
-      inp.type = 'file'; inp.accept = 'image/*';
-      inp.onchange = function(){
-        var f = inp.files[0]; if(!f) return;
-        var r = new FileReader();
-        r.onload = function(){ mulaiStrukDariDataURL(r.result); };
-        r.readAsDataURL(f);
-      };
-      inp.click();
+    if(sumber === 'galeri'){
+      if(adaAPK()){ _mintaFotoLama(sumber); }
+      else { fallbackGaleri(function(d){ mulaiStrukDariDataURL(d); }); }
+      return;
     }
+    /* Kamera: coba kamera web dulu (lensa otomatis).
+       Gagal di APK -> Camera1 Kodular. Gagal di browser -> input file. */
+    bukaKameraWeb(
+      function(d){ mulaiStrukDariDataURL(d); },
+      function(){
+        if(adaAPK()){ _mintaFotoLama('kamera'); }
+        else { fallbackInput(function(d){ mulaiStrukDariDataURL(d); }); }
+      }
+    );
   };
 
   var _pilihAvatarLama = window.pilihAvatar;
   window.pilihAvatar = function(sumber){
-    if(adaAPK()){ _pilihAvatarLama(sumber); return; }
     closeAvatarSheet();
-    if(sumber === 'kamera'){
-      bukaKameraWeb(function(d){ simpanAvatarDariFoto(d); });
-    } else {
-      document.getElementById('avatarFileInput').click();
+    if(sumber === 'galeri'){
+      if(adaAPK()){ _pilihAvatarLama(sumber); }
+      else { document.getElementById('avatarFileInput').click(); }
+      return;
     }
+    bukaKameraWeb(
+      function(d){ simpanAvatarDariFoto(d); },
+      function(){
+        if(adaAPK()){ _pilihAvatarLama('kamera'); }
+        else { document.getElementById('avatarFileInput').click(); }
+      }
+    );
   };
+
+  /* Pemilih file galeri untuk versi browser (pemindai struk). */
+  function fallbackGaleri(cb){
+    var inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = function(){
+      var f = inp.files[0]; if(!f) return;
+      var r = new FileReader();
+      r.onload = function(){ cb(r.result); };
+      r.readAsDataURL(f);
+    };
+    inp.click();
+  }
 })();
 </script>
   
