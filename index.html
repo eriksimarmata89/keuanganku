@@ -482,7 +482,7 @@
 var SHEET_NAME = 'Transaksi';
 var HEADERS = ['id', 'tanggal', 'tipe', 'kategori', 'nominal', 'keterangan', 'catatan', 'createdAt', 'user', 'akunId'];
 var SHEET_UTANG = 'Utang';
-var HEADERS_UTANG = ['id', 'jenis', 'pihak', 'pokok', 'tanggal', 'jatuhTempo', 'catatan', 'pembayaran', 'createdAt', 'user'];
+var HEADERS_UTANG = ['id', 'jenis', 'pihak', 'pokok', 'tanggal', 'jatuhTempo', 'catatan', 'pembayaran', 'createdAt', 'user', 'akunId'];
 var SHEET_AKUN = 'Akun';
 var HEADERS_AKUN = ['id', 'nama', 'jenis', 'saldoAwal', 'catatan', 'createdAt', 'user'];
 var SHEET_TRANSFER = 'Transfer';
@@ -642,7 +642,8 @@ function rowUtang(item) {
     item.catatan || '',
     item.pembayaran || '[]',
     item.createdAt || new Date().toISOString(),
-    item.user || ''
+    item.user || '',
+    item.akunId || ''
   ];
 }
 
@@ -659,7 +660,8 @@ function listUtang(user) {
       id: String(r[0]), jenis: r[1], pihak: r[2], pokok: Number(r[3]) || 0,
       tanggal: formatTanggal(r[4]), jatuhTempo: r[5] ? formatTanggal(r[5]) : '',
       catatan: r[6], pembayaran: r[7] ? String(r[7]) : '[]',
-      createdAt: r[8] ? String(r[8]) : '', user: u
+      createdAt: r[8] ? String(r[8]) : '', user: u,
+      akunId: r[10] != null ? String(r[10]) : ''
     });
   }
   return { ok: true, data: data };
@@ -1644,7 +1646,7 @@ async function kirimRentang(){
     try{
       var utBelum=UT.filter(function(u){ return !u.terkirim; });
       if(utBelum.length){
-        var uitems=utBelum.map(function(u){ return {id:u.id,jenis:u.jenis,pihak:u.pihak,pokok:u.pokok,tanggal:u.tanggal,jatuhTempo:u.jatuhTempo||'',catatan:u.catatan||'',pembayaran:JSON.stringify(u.pembayaran||[]),createdAt:u.createdAt||'',user:u.user||emailUser()}; });
+        var uitems=utBelum.map(function(u){ return {id:u.id,jenis:u.jenis,pihak:u.pihak,pokok:u.pokok,tanggal:u.tanggal,jatuhTempo:u.jatuhTempo||'',catatan:u.catatan||'',pembayaran:JSON.stringify(u.pembayaran||[]),createdAt:u.createdAt||'',akunId:u.akunId||'',user:u.user||emailUser()}; });
         await kirimNoCors('syncUtang',{items:uitems});
         utBelum.forEach(function(u){ u.terkirim=true; }); await uBulkPut(utBelum);
       }
@@ -1996,13 +1998,13 @@ function onSimpan(){
   var akunTerpilih=cariAkun(a.akunId);
   var buatHutang=a.tipe==='pengeluaran' && a.jadiHutang && akunTerpilih && akunTerpilih.jenis==='kartu';
   simpanTx({tanggal:a.tanggal,tipe:a.tipe,kategori:a.kategori,nominal:+a.nominal,keterangan:a.keterangan.trim(),catatan:a.catatan.trim(),akunId:a.akunId,createdAt:new Date().toISOString()});
-  if(buatHutang) catatHutangKartuKredit(+a.nominal, a.keterangan.trim(), a.tanggal, akunTerpilih.nama);
+  if(buatHutang) catatHutangKartuKredit(+a.nominal, a.keterangan.trim(), a.tanggal, akunTerpilih.nama, akunTerpilih.id);
   addState=blankAdd();
 }
 /* Buat catatan hutang otomatis untuk transaksi yang dibayar via kartu kredit,
    supaya tercatat sebagai kewajiban yang perlu dibayar saat tagihan datang. */
-async function catatHutangKartuKredit(nominal, keterangan, tanggal, namaAkun){
-  var item={ id:uid(), jenis:'hutang', pihak:'Tagihan '+namaAkun, pokok:nominal, tanggal:tanggal, jatuhTempo:'', catatan:'Otomatis dari transaksi'+(keterangan?(': '+keterangan):''), pembayaran:[], createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
+async function catatHutangKartuKredit(nominal, keterangan, tanggal, namaAkun, akunId){
+  var item={ id:uid(), jenis:'hutang', pihak:'Tagihan '+namaAkun, pokok:nominal, tanggal:tanggal, jatuhTempo:'', catatan:'Otomatis dari transaksi'+(keterangan?(': '+keterangan):''), pembayaran:[], akunId:akunId||'', createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
   UT.unshift(item); await uPut(item);
   toast('Transaksi & hutang tagihan kartu tersimpan');
 }
@@ -2248,7 +2250,7 @@ async function simpanSemua(){
   }
   sortTX(); updatePip();
   var n=st.pending.length; cleanupWorker(); strukState=blankStruk();
-  if(buatHutang) await catatHutangKartuKredit(totalNominal, st.toko||(n+' transaksi struk'), st.tanggal, akunTerpilih.nama);
+  if(buatHutang) await catatHutangKartuKredit(totalNominal, st.toko||(n+' transaksi struk'), st.tanggal, akunTerpilih.nama, akunTerpilih.id);
   toast(n+' transaksi tersimpan'); goView('home');
 }
 
@@ -2309,7 +2311,7 @@ async function cadangkanUtang(){
   showProgress('Mencadangkan data');
   try{
     setProgress(20,'Menyiapkan '+belum.length+' catatan...');
-    var uitems=belum.map(function(u){ return {id:u.id,jenis:u.jenis,pihak:u.pihak,pokok:u.pokok,tanggal:u.tanggal,jatuhTempo:u.jatuhTempo||'',catatan:u.catatan||'',pembayaran:JSON.stringify(u.pembayaran||[]),createdAt:u.createdAt||'',user:u.user||emailUser()}; });
+    var uitems=belum.map(function(u){ return {id:u.id,jenis:u.jenis,pihak:u.pihak,pokok:u.pokok,tanggal:u.tanggal,jatuhTempo:u.jatuhTempo||'',catatan:u.catatan||'',pembayaran:JSON.stringify(u.pembayaran||[]),createdAt:u.createdAt||'',akunId:u.akunId||'',user:u.user||emailUser()}; });
     setProgress(55,'Mengirim data...');
     await kirimNoCors('syncUtang',{items:uitems});
     belum.forEach(function(u){ u.terkirim=true; }); await uBulkPut(belum);
@@ -2620,7 +2622,41 @@ async function simpanTransfer(){
   if(!cek.ok){ toast(cek.alasan); return; }
   var item={ id:uid(), tanggal:t.tanggal, dariAkunId:t.dariAkunId, keAkunId:t.keAkunId, nominal:+t.nominal, catatan:(t.catatan||'').trim(), createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
   TR.unshift(item); await trPut(item);
-  transferState=null; toast('Perpindahan saldo tersimpan'); goView('home');
+  /* Jika tujuan transfer adalah kartu kredit, transfer ini dianggap pembayaran tagihan:
+     hutang berjalan kartu tersebut dikurangi (bertahap dari yang paling lama, atau lunas). */
+  var pesanTambahan='';
+  var keAkun=cariAkun(t.keAkunId);
+  if(keAkun && keAkun.jenis==='kartu'){
+    var dariAkun=cariAkun(t.dariAkunId);
+    var berkurang=await terapkanPembayaranKartu(keAkun, +t.nominal, t.tanggal, dariAkun?dariAkun.nama:'penampung lain');
+    if(berkurang>0) pesanTambahan=' Hutang tagihan '+keAkun.nama+' berkurang '+rp(berkurang)+'.';
+  }
+  transferState=null; toast('Perpindahan saldo tersimpan.'+pesanTambahan); goView('home');
+}
+/* Terapkan pembayaran ke hutang berjalan sebuah kartu kredit, dari yang paling lama.
+   Bisa sebagian atau sekaligus, tergantung nominal yang dibayar. Kembalikan total yang berkurang. */
+async function terapkanPembayaranKartu(kartu, nominal, tanggal, dariNama){
+  var kid=String(kartu.id);
+  var nama='Tagihan '+kartu.nama;
+  var daftar=UT.filter(function(u){
+    if(u.jenis!=='hutang' || utSisa(u)<=0) return false;
+    return (u.akunId && String(u.akunId)===kid) || (!u.akunId && u.pihak===nama);
+  });
+  daftar.sort(function(a,b){ return (a.tanggal+(a.createdAt||'')).localeCompare(b.tanggal+(b.createdAt||'')); });
+  var sisa=nominal, berkurang=0;
+  for(var i=0;i<daftar.length && sisa>0;i++){
+    var u=daftar[i];
+    var perlu=utSisa(u);
+    var bayar=Math.min(perlu, sisa);
+    if(bayar<=0) continue;
+    u.pembayaran=u.pembayaran||[];
+    u.pembayaran.push({ tanggal:tanggal, nominal:bayar, catatan:'Pembayaran dari '+dariNama });
+    if(!u.akunId) u.akunId=kid;
+    u.terkirim=false;
+    await uPut(u);
+    sisa-=bayar; berkurang+=bayar;
+  }
+  return berkurang;
 }
 async function hapusTransfer(id){
   if(!await confirmModal('Hapus catatan perpindahan saldo ini?', {danger:true})) return;
@@ -3082,7 +3118,7 @@ function actAdd(kind){
     try{ await kirimNoCors('sync',{items:items}); }catch(e){}
 
     setProgress(35,'Menyiapkan data hutang & piutang...');
-    var uitems=UT.map(function(u){ return {id:u.id,jenis:u.jenis,pihak:u.pihak,pokok:u.pokok,tanggal:u.tanggal,jatuhTempo:u.jatuhTempo||'',catatan:u.catatan||'',pembayaran:JSON.stringify(u.pembayaran||[]),createdAt:u.createdAt||'',user:u.user||emailUser()}; });
+    var uitems=UT.map(function(u){ return {id:u.id,jenis:u.jenis,pihak:u.pihak,pokok:u.pokok,tanggal:u.tanggal,jatuhTempo:u.jatuhTempo||'',catatan:u.catatan||'',pembayaran:JSON.stringify(u.pembayaran||[]),createdAt:u.createdAt||'',akunId:u.akunId||'',user:u.user||emailUser()}; });
     try{ await kirimNoCors('syncUtang',{items:uitems}); }catch(e){}
 
     await new Promise(function(r){ setTimeout(r,2000); });
