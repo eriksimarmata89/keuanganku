@@ -3793,6 +3793,159 @@ function actAdd(kind){
 
 })();
 </script>
+
+<script>
+/* PATCH UNDUH LOKAL: PDF dan Excel dibuat langsung di perangkat,
+   tanpa server Apps Script. Tempel sebelum </body>, PALING BAWAH
+   setelah semua patch lain.
+
+   Cara kerja:
+   - Tombol PDF/Excel di tab Laporan tetap sama, tapi kini membuat file
+     secara lokal (jsPDF untuk PDF, SheetJS untuk .xlsx asli).
+   - Di APK: file diserahkan ke Kodular lewat event OnDownloadNeeded dan
+     disimpan ke folder Download (perlu blok tambahan, lihat panduan).
+   - Di browser: file terunduh biasa.
+   - Internet hanya diperlukan sekali untuk memuat pustaka pembuatnya. */
+(function(){
+
+  /* ===== pemuat pustaka dari CDN (sekali saja) ===== */
+  var _sudah={};
+  function muatSkrip(src){
+    return new Promise(function(res,rej){
+      if(_sudah[src]){ res(); return; }
+      var s=document.createElement('script');
+      s.src=src;
+      s.onload=function(){ _sudah[src]=1; res(); };
+      s.onerror=function(){ rej(new Error('gagal memuat '+src)); };
+      document.head.appendChild(s);
+    });
+  }
+  var CDN_JSPDF='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+  var CDN_AUTOTABLE='https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+  var CDN_XLSX='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+
+  /* ===== pengunduh blob (browser dan APK) ===== */
+  function unduhBlob(blob, nama){
+    /* Beri tahu Kodular nama file yang akan datang */
+    if(window.AppInventor && window.AppInventor.setWebViewString){
+      try{ window.AppInventor.setWebViewString('SIMPAN|'+nama); }catch(e){}
+    }
+    var u=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=u; a.download=nama;
+    document.body.appendChild(a); a.click();
+    /* URL dibiarkan hidup cukup lama agar DownloadBlob sempat mengambilnya */
+    setTimeout(function(){
+      try{ document.body.removeChild(a); URL.revokeObjectURL(u); }catch(e){}
+    }, 60000);
+  }
+
+  /* ===== data ekspor ===== */
+  function ambilEksport(){
+    return TX.filter(function(t){ return inRange(t.tanggal,expRange,expAwal,expAkhir); })
+      .slice().sort(function(a,b){ return a.tanggal<b.tanggal?-1:1; });
+  }
+  function namaAkunDari(id){
+    var a=cariAkun(id); return a? a.nama : '';
+  }
+  function namaRentang(){
+    return (labelRentang()||'periode').replace(/[^0-9A-Za-z]+/g,'-').replace(/^-+|-+$/g,'');
+  }
+
+  /* ===== PDF (menggantikan unduhHTML) ===== */
+  window.unduhHTML=async function(){
+    var rows=ambilEksport();
+    if(!rows.length){ toast('Tidak ada transaksi pada rentang ini'); return; }
+    toast('Menyiapkan PDF...');
+    try{
+      await muatSkrip(CDN_JSPDF);
+      await muatSkrip(CDN_AUTOTABLE);
+    }catch(e){ toast('Perlu internet sekali untuk memuat pembuat PDF'); return; }
+
+    var masuk=rows.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
+    var keluar=rows.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
+
+    var doc=new window.jspdf.jsPDF('p','mm','a4');
+    doc.setFont('helvetica','bold'); doc.setFontSize(15);
+    doc.text('Laporan KeuanganKu', 14, 16);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110);
+    doc.text('Rentang: '+labelRentang(), 14, 22);
+    doc.text('Pemilik: '+(((USER&&USER.name)||'')+'  ('+((USER&&USER.phone)||'')+')'), 14, 27);
+    doc.setTextColor(0); doc.setFontSize(10);
+    doc.text('Pemasukan: '+rp(masuk), 14, 35);
+    doc.text('Pengeluaran: '+rp(keluar), 80, 35);
+    doc.setFont('helvetica','bold');
+    doc.text('Selisih: '+rp(masuk-keluar), 150, 35);
+    doc.setFont('helvetica','normal');
+
+    doc.autoTable({
+      startY: 41,
+      head: [['Tanggal','Tipe','Kategori','Keterangan','Penampung','Nominal (Rp)']],
+      body: rows.map(function(t){
+        return [t.tanggal,
+                t.tipe==='pemasukan'?'Masuk':'Keluar',
+                t.kategori||'',
+                t.keterangan||'',
+                namaAkunDari(t.akunId),
+                (+t.nominal).toLocaleString('id-ID')];
+      }),
+      styles:{ fontSize:8, cellPadding:1.6 },
+      headStyles:{ fillColor:[24,95,165], fontSize:8 },
+      columnStyles:{ 5:{ halign:'right' } },
+      alternateRowStyles:{ fillColor:[245,246,248] }
+    });
+
+    var y=(doc.lastAutoTable ? doc.lastAutoTable.finalY : 41)+8;
+    if(y>285){ doc.addPage(); y=16; }
+    doc.setFontSize(8); doc.setTextColor(130);
+    doc.text('Dibuat otomatis oleh KeuanganKu, '+new Date().toLocaleString('id-ID'), 14, y);
+
+    unduhBlob(doc.output('blob'), 'Laporan-KeuanganKu-'+namaRentang()+'.pdf');
+  };
+
+  /* ===== Excel .xlsx (menggantikan unduhCSV) ===== */
+  window.unduhCSV=async function(){
+    var rows=ambilEksport();
+    if(!rows.length){ toast('Tidak ada transaksi pada rentang ini'); return; }
+    toast('Menyiapkan Excel...');
+    try{ await muatSkrip(CDN_XLSX); }
+    catch(e){ toast('Perlu internet sekali untuk memuat pembuat Excel'); return; }
+
+    var masuk=rows.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
+    var keluar=rows.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
+
+    var data=[
+      ['Laporan KeuanganKu'],
+      ['Rentang', labelRentang()],
+      ['Pemilik', ((USER&&USER.name)||'')],
+      [],
+      ['Tanggal','Tipe','Kategori','Keterangan','Penampung','Nominal']
+    ];
+    rows.forEach(function(t){
+      data.push([t.tanggal,
+                 t.tipe==='pemasukan'?'Masuk':'Keluar',
+                 t.kategori||'',
+                 t.keterangan||'',
+                 namaAkunDari(t.akunId),
+                 +t.nominal]);
+    });
+    data.push([]);
+    data.push(['','','','','Total pemasukan', masuk]);
+    data.push(['','','','','Total pengeluaran', keluar]);
+    data.push(['','','','','Selisih', masuk-keluar]);
+
+    var ws=XLSX.utils.aoa_to_sheet(data);
+    ws['!cols']=[{wch:11},{wch:8},{wch:16},{wch:32},{wch:18},{wch:14}];
+    var wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Transaksi');
+    var out=XLSX.write(wb, { bookType:'xlsx', type:'array' });
+    var blob=new Blob([out], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+    unduhBlob(blob, 'Laporan-KeuanganKu-'+namaRentang()+'.xlsx');
+  };
+
+})();
+</script>
   
 </body>
 </html>
