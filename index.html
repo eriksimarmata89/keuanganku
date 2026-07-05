@@ -2895,10 +2895,10 @@ function renderSinkron(){
     '<div class="panel"><div class="big-stat"><div class="bs"><div class="n">'+dalam.length+'</div><div class="k">transaksi pada rentang</div></div>'+
       '<div class="bs warn"><div class="n">'+belum+'</div><div class="k">belum tercadang</div></div></div>'+
       '<button class="save pem" id="btnKirim" style="margin-top:14px" '+(tersambung&&dalam.length?'':'disabled')+' onclick="kirimRentang()">Cadangkan '+dalam.length+' transaksi</button>'+
-      '<div style="font-size:11px;color:var(--tx3);text-align:center;margin-top:8px">Pencadangan ulang aman. Catatan yang sama tidak akan tergandakan.</div></div>'+
+      '<div style="font-size:11px;color:var(--tx3);text-align:center;margin-top:8px">Pencadangan ulang aman. Semua data di bawah kendali anda.</div></div>'+
     '<div class="divider"></div>'+
     '<div class="set"><div class="t" style="font-weight:600;font-size:14px;margin:0 2px 6px">Pemulihan data</div>'+
-      '<p class="hint">Memulihkan seluruh transaksi dari cadangan ke perangkat ini, misalnya setelah berganti perangkat atau memasang ulang aplikasi. Data digabungkan sehingga tidak tergandakan.</p>'+
+      '<p class="hint">Memulihkan seluruh transaksi dari pencadangan ke perangkat ini, misalnya setelah berganti perangkat atau memasang ulang aplikasi. Data digabungkan dengan aman.</p>'+
       '<button class="btn-line" id="btnTarik" '+(tersambung?'':'disabled')+' onclick="tarikDariSheet()">Pulihkan data cadangan</button></div>'+
     '<div class="sec-head" style="padding-top:6px"><div class="t">Catatan pada rentang ('+gab.length+')</div></div>'+
     limitChips(syncLimit,'setSyncLimit')+
@@ -3001,10 +3001,10 @@ function renderProfAbout(){
       '<div class="menu" style="margin-bottom:14px">'+
         '<div class="about-line"><span>Versi</span><b>1.0</b></div>'+
         '<div class="about-line"><span>Penyimpanan</span><b>Di perangkat (offline)</b></div>'+
-        '<div class="about-line"><span>Cadangan</span><b>Layanan pencadangan pribadi (Google Drive)</b></div>'+
+        '<div class="about-line"><span>Cadangan</span><b>Pencadangan pribadi (Google Drive)</b></div>'+
         '<div class="about-line"><span>Login</span><b>Nomor Telepon</b></div>'+
       '</div>'+
-      '<p class="hint">KeuanganKu mencatat pemasukan dan pengeluaran, menyimpannya di perangkat agar tetap dapat digunakan tanpa internet, dan mencadangkannya ke layanan pribadi milik Anda. Pemindai struk memproses teks langsung di perangkat sehingga foto tidak dikirim ke mana pun.</p>'+
+      '<p class="hint">KeuanganKu mencatat pemasukan dan pengeluaran, menyimpannya di perangkat agar tetap dapat digunakan tanpa internet, dan mencadangkannya ke layanan pribadi milik Anda. Pemindai struk hanya memproses teks langsung di perangkat sehingga foto tidak dikirim ke mana pun.</p>'+
     '</div>';
 }
 function formatBytes(n){
