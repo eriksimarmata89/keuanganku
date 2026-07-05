@@ -187,5 +187,53 @@ if(navigator.onLine === false){
   setTimeout(pergi, 350);
 }
 </script>
+
+<script>
+/* PATCH: penanganan keyboard.
+   - Nav bawah disembunyikan saat keyboard terbuka, muncul lagi saat ditutup.
+   - Input yang sedang diketik otomatis digulirkan ke tengah layar.
+   Tempel sebelum </body>. Tidak ada perubahan blok Kodular. */
+(function(){
+  var st=document.createElement('style');
+  st.textContent='body.kb-buka .nav{display:none !important;}';
+  document.head.appendChild(st);
+
+  function setKb(buka){ document.body.classList.toggle('kb-buka', !!buka); }
+
+  var vv=window.visualViewport;
+  if(vv){
+    var dasar=vv.height;
+    vv.addEventListener('resize', function(){
+      if(vv.height>dasar) dasar=vv.height;   /* ikuti rotasi layar */
+      setKb(dasar - vv.height > 150);
+    });
+  }else{
+    var dasar2=window.innerHeight;
+    window.addEventListener('resize', function(){
+      if(window.innerHeight>dasar2) dasar2=window.innerHeight;
+      setKb(dasar2 - window.innerHeight > 150);
+    });
+  }
+
+  /* Gulirkan kolom yang difokus supaya terlihat di atas keyboard */
+  document.addEventListener('focusin', function(e){
+    var t=e.target;
+    if(t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)){
+      setTimeout(function(){
+        try{ t.scrollIntoView({block:'center', behavior:'smooth'}); }catch(err){}
+      }, 300);
+    }
+  });
+
+  /* Jaring pengaman: bila fokus hilang dan keyboard tertutup, pastikan nav kembali */
+  document.addEventListener('focusout', function(){
+    setTimeout(function(){
+      var a=document.activeElement;
+      if(!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) setKb(false);
+    }, 150);
+  });
+})();
+</script>
+  
 </body>
 </html>
