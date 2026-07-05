@@ -3505,6 +3505,83 @@ function actAdd(kind){
   });
 })();
 </script>
+
+<script>
+/* PATCH: navigasi kembali penampung saldo + privasi sisa saldo + Tentang Aplikasi.
+   Tempel sebelum </body>, setelah patch-patch sebelumnya.
+
+   Isi:
+   1. Tombol kembali di halaman Penampung Saldo mengikuti asal pengguna:
+      masuk dari carousel Beranda -> kembali ke Beranda,
+      masuk dari menu Profil -> kembali ke Profil.
+   2. Mode privasi (tombol mata) kini juga menyembunyikan "Sisa saldo periode ini",
+      dan tombol mata tersedia di setiap slide penampung saldo.
+   3. Tentang Aplikasi ditambah baris Created By dan Status Aplikasi. */
+(function(){
+
+  /* ===== 1. Arah tombol kembali Penampung Saldo ===== */
+  window._akunAsal='settings';
+
+  var _bukaAkunLama=window.bukaAkun;
+  window.bukaAkun=function(id){
+    if(view==='home'){ window._akunAsal='home'; }
+    else if(view==='settings'){ window._akunAsal='settings'; }
+    _bukaAkunLama(id);
+  };
+
+  var _goViewLama=window.goView;
+  window.goView=function(v){
+    if(v==='akunList' && view==='settings'){ window._akunAsal='settings'; }
+    _goViewLama(v);
+    if(v==='akunList'){
+      var b=document.querySelector('.fhead .bk');
+      if(b) b.setAttribute('onclick', "goView(window._akunAsal||'settings')");
+    }
+  };
+
+  /* ===== 2. Privasi menyeluruh pada kartu saldo =====
+     Salinan totalSlideHTML dan akunSlideHTML tanpa parameter paksa-tampil,
+     plus tombol mata di tiap slide penampung. */
+  window.totalSlideHTML=function(saldoTotal,pM,pK){
+    return '<div class="saldo"><button class="saldo-eye" onclick="toggleHide()" aria-label="Tampilkan atau sembunyikan nominal">'+eyeIcon(15)+'</button>'+
+      '<div class="lbl">Total saldo</div><div class="amt">'+fmtRp(saldoTotal)+'</div>'+
+      '<div class="row"><div><div class="mini">&#9660; Pemasukan</div><div class="val">'+fmtRp(pM)+'</div></div>'+
+      '<div><div class="mini">&#9650; Pengeluaran</div><div class="val">'+fmtRp(pK)+'</div></div></div>'+
+      '<div style="border-top:1px solid rgba(255,255,255,.22);margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">'+
+        '<span class="mini">Sisa saldo periode ini</span><span class="val" style="font-size:16px">'+fmtRp(pM-pK)+'</span></div></div>';
+  };
+
+  window.akunSlideHTML=function(a){
+    var p=akunPeriodeGabung(a.id);
+    return '<div class="saldo" onclick="bukaAkun(\''+a.id+'\')" style="cursor:pointer">'+
+      '<button class="saldo-eye" onclick="event.stopPropagation();toggleHide()" aria-label="Tampilkan atau sembunyikan nominal">'+eyeIcon(15)+'</button>'+
+      '<div class="lbl">'+akunIconHTML(a,15)+' '+esc(a.nama)+'</div><div class="amt">'+fmtRp(saldoAkunSaatIni(a.id))+'</div>'+
+      '<div class="row"><div><div class="mini">&#9660; Pemasukan</div><div class="val">'+fmtRp(p.masuk)+'</div></div>'+
+      '<div><div class="mini">&#9650; Pengeluaran</div><div class="val">'+fmtRp(p.keluar)+'</div></div></div>'+
+      '<div style="border-top:1px solid rgba(255,255,255,.22);margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">'+
+        '<span class="mini">Sisa saldo periode ini</span><span class="val" style="font-size:16px">'+fmtRp(p.masuk-p.keluar)+'</span></div></div>';
+  };
+
+  /* ===== 3. Tentang Aplikasi ===== */
+  window.renderProfAbout=function(){
+    S().innerHTML=
+      '<div class="fhead"><button class="bk" onclick="backProf()">&#8592;</button><div class="ti">Tentang aplikasi</div></div>'+
+      '<div class="set">'+
+        '<div class="prof-hero" style="padding-top:4px"><div class="pava-logo">'+logoMark(74)+'</div><div class="pn">KeuanganKu</div><div class="pe">Pencatat keuangan pribadi</div></div>'+
+        '<div class="menu" style="margin-bottom:14px">'+
+          '<div class="about-line"><span>Versi</span><b>1.0</b></div>'+
+          '<div class="about-line"><span>Created By</span><b>Erik Simarmata</b></div>'+
+          '<div class="about-line"><span>Status Aplikasi</span><b>Free to use</b></div>'+
+          '<div class="about-line"><span>Penyimpanan</span><b>Di perangkat (offline)</b></div>'+
+          '<div class="about-line"><span>Cadangan</span><b>Pencadangan pribadi (Google Drive)</b></div>'+
+          '<div class="about-line"><span>Login</span><b>Nomor Telepon</b></div>'+
+        '</div>'+
+        '<p class="hint">KeuanganKu mencatat pemasukan dan pengeluaran, menyimpannya di perangkat agar tetap dapat digunakan tanpa internet, dan mencadangkannya ke layanan pribadi milik Anda. Pemindai struk hanya memproses teks langsung di perangkat sehingga foto tidak dikirim ke mana pun.</p>'+
+      '</div>';
+  };
+
+})();
+</script>
   
 </body>
 </html>
