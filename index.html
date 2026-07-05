@@ -3427,6 +3427,37 @@ function actAdd(kind){
   }
 })();
 </script>
+
+<script>
+/* PATCH: sinkron warna status bar & navigation bar Android dengan tema aplikasi.
+   Mengirim pesan "TEMA|gelap" atau "TEMA|terang" ke Kodular setiap kali
+   tema berubah, dan sekali saat aplikasi dibuka.
+   Tempel sebelum </body>. Perlu blok tambahan di Kodular (lihat panduan). */
+(function(){
+  if(!(window.AppInventor && window.AppInventor.setWebViewString)) return;
+
+  var terakhir='';
+  function temaSekarang(){
+    var t=(document.documentElement.getAttribute('data-theme')||'')
+        +(document.body ? (document.body.getAttribute('data-theme')||'') : '');
+    return t.indexOf('dark')>-1 ? 'gelap' : 'terang';
+  }
+  function kirimTema(){
+    var t=temaSekarang();
+    if(t===terakhir) return;
+    terakhir=t;
+    try{ window.AppInventor.setWebViewString('TEMA|'+t); }catch(e){}
+  }
+
+  var obs=new MutationObserver(kirimTema);
+  obs.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+  if(document.body){
+    obs.observe(document.body,{attributes:true,attributeFilter:['data-theme']});
+  }
+  /* kirim kondisi awal setelah halaman siap */
+  setTimeout(kirimTema, 800);
+})();
+</script>
   
 </body>
 </html>
