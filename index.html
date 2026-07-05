@@ -471,14 +471,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-<script type="text/plain" id="gasCode">/**
- * KeuanganKu - Backend
- * Tempel kode ini di editor skrip milik lembar data Anda,
- * lalu terbitkan sebagai layanan web (Execute as: Me, Who has access: Anyone).
- * Catatan: laporan PDF/Excel kini dibuat langsung di aplikasi, sehingga
- * skrip ini hanya menangani pencadangan data dan OTP WhatsApp.
- */
-
+<script type="text/plain" id="gasCode">
 var SHEET_NAME = 'Transaksi';
 var HEADERS = ['id', 'tanggal', 'tipe', 'kategori', 'nominal', 'keterangan', 'catatan', 'createdAt', 'user', 'akunId'];
 var SHEET_UTANG = 'Utang';
@@ -701,13 +694,7 @@ function deleteUtang(ids) {
   }
   return { ok: true, deleted: n };
 }
-
-/* =======================================================================
- * VERIFIKASI NOMOR TELEPON (OTP VIA FONNTE)
- * Sebelum dipakai: daftar gratis di fonnte.com, hubungkan satu nomor WA
- * lewat scan QR di menu Device, salin Token-nya, lalu simpan sebagai
- * Script Property bernama FONNTE_TOKEN (Project Settings > Script Properties).
- * ======================================================================= */
+  
 var SHEET_OTP = 'OTP';
 var OTP_MASA_BERLAKU_DETIK = 300; // 5 menit
 
@@ -771,9 +758,6 @@ function verifikasiOtp(phone, code) {
   }
 }
 
-/* =======================================================================
- * PENAMPUNG SALDO (AKUN: BANK, KARTU KREDIT, DOMPET DIGITAL)
- * ======================================================================= */
 function sheetAkun() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(SHEET_AKUN);
@@ -844,9 +828,6 @@ function deleteAkun(ids) {
   return { ok: true, deleted: n };
 }
 
-/* =======================================================================
- * PERPINDAHAN SALDO ANTAR AKUN (TRANSFER)
- * ======================================================================= */
 function sheetTransfer() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(SHEET_TRANSFER);
@@ -918,9 +899,6 @@ function deleteTransfer(ids) {
   return { ok: true, deleted: n };
 }
 
-/* Cek sisa penyimpanan Google Drive milik pemilik lembar data, untuk
-   mengantisipasi Drive penuh karena data transaksi dan perpindahan saldo
-   yang terus bertambah. Dipanggil aplikasi saat Simpan & Sambungkan. */
 function cekKuota() {
   try {
     // Baris di bawah tidak pernah dijalankan. Tujuannya hanya agar Apps Script
@@ -952,7 +930,8 @@ function cekKuota() {
 function ujiIzin() {
   var sh = sheet();
   Logger.log('Lembar data siap: ' + sh.getName());
-}</script>
+}
+</script>
 
 <script>
 /* ====== KONFIGURASI ====== */
