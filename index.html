@@ -523,6 +523,7 @@ function doGet(e) {
   if (p.action === 'listUtang') out = listUtang(p.user);
   if (p.action === 'listAkun') out = listAkun(p.user);
   if (p.action === 'listTransfer') out = listTransfer(p.user);
+  if (p.action === 'cekKuota') out = cekKuota();
   if (p.callback) {
     return ContentService.createTextOutput(p.callback + '(' + JSON.stringify(out) + ')')
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
@@ -915,6 +916,37 @@ function deleteTransfer(ids) {
     if (values[i][0] && buang[String(values[i][0])]) { sh.deleteRow(i + 1); n++; }
   }
   return { ok: true, deleted: n };
+}
+
+/* Cek sisa penyimpanan Google Drive milik pemilik lembar data, untuk
+   mengantisipasi Drive penuh karena data transaksi dan perpindahan saldo
+   yang terus bertambah. Dipanggil aplikasi saat Simpan & Sambungkan. */
+function cekKuota() {
+  try {
+    // Baris di bawah tidak pernah dijalankan. Tujuannya hanya agar Apps Script
+    // ikut meminta izin Drive saat deploy, karena pengecekan kuota membutuhkannya.
+    if (false) DriveApp.getRootFolder();
+
+    var token = ScriptApp.getOAuthToken();
+    var resp = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/about?fields=storageQuota', {
+      headers: { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+    var data = JSON.parse(resp.getContentText() || '{}');
+    var q = data.storageQuota || {};
+    var takTerbatas = (q.limit == null);
+    var limit = takTerbatas ? null : Number(q.limit);
+    var usage = Number(q.usage || 0);
+    return {
+      ok: true,
+      takTerbatas: takTerbatas,
+      limit: limit,
+      usage: usage,
+      sisa: takTerbatas ? null : Math.max(0, limit - usage)
+    };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
 }
 
 function ujiIzin() {
@@ -2641,7 +2673,7 @@ function panduanSheet(){
     gstep(4,'Tempel kode di bawah','Hapus seluruh kode contoh yang ada di editor, lalu tempel kode berikut. Gunakan tombol Salin kode, kemudian simpan (Ctrl+S).'+
       '<div class="codebox"><button class="copy-btn" onclick="salinKode()">Salin kode</button><pre>'+kode+'</pre></div>')+
     gstep(5,'Terbitkan sebagai Web App','Klik <b>Deploy</b> &rarr; <b>New deployment</b>. Pilih jenis <b>Web app</b>. Atur <b>Execute as: Me</b> dan <b>Who has access: Anyone</b>, lalu klik <b>Deploy</b>.')+
-    gstep(6,'Berikan izin akses Google','Pilih akun Google Anda, lalu setujui izin yang diminta, yaitu akses ke lembar data Google Sheets milik Anda. Jika muncul peringatan keamanan, klik <b>Advanced</b> lalu lanjutkan; ini wajar karena skripnya dibuat oleh Anda sendiri.')+
+    gstep(6,'Berikan izin akses Google','Pilih akun Google Anda, lalu setujui izin yang diminta, yaitu akses ke lembar data Google Sheets milik Anda serta Google Drive untuk memeriksa sisa penyimpanan. Jika muncul peringatan keamanan, klik <b>Advanced</b> lalu lanjutkan; ini wajar karena skripnya dibuat oleh Anda sendiri.')+
     gstep(7,'Salin URL Web App','Setelah berhasil diterbitkan, Google menampilkan sebuah tautan yang diakhiri <b>/exec</b>. Salin tautan tersebut.')+
     gstep(8,'Hubungkan ke aplikasi','Kembali ke halaman ini, tempel alamat tadi pada kolom di atas, lalu tekan <b>Simpan &amp; sambungkan</b>. Aplikasi akan otomatis menguji koneksi ke Google Sheet dan menampilkan sisa penyimpanan Google Drive Anda pada langkah ini juga.')+
     '<div class="gnote">Jika suatu saat kode diperbarui, buka kembali Apps Script, lalu <b>Deploy</b> &rarr; <b>Manage deployments</b> &rarr; ikon pensil &rarr; <b>New version</b>, supaya perubahan diterapkan ke Google Sheet Anda.</div>'+
@@ -2690,6 +2722,14 @@ async function simpanUrl(){
   try{
     var d=await jsonp('action=list');
     var pesan='Berhasil tersambung. '+(d.data?d.data.length:0)+' catatan tersimpan.';
+    try{
+      var k=await jsonp('action=cekKuota');
+      if(k && k.ok){
+        pesan += k.takTerbatas
+          ? ' Sisa penyimpanan Drive: tidak terbatas.'
+          : ' Sisa penyimpanan Drive: '+formatBytes(k.sisa)+' dari '+formatBytes(k.limit)+'.';
+      }
+    }catch(e){}
     var m2=document.getElementById('setMsg');
     if(m2){ m2.style.color='var(--hijau-tx)'; m2.textContent=pesan; }
     flushDeletes();
