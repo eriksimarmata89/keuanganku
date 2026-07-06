@@ -3703,13 +3703,15 @@ function actAdd(kind){
   
 
 <script>
-/* PATCH: segarkan tampilan (refresh) v5.1.
-   Perombakan total: TIDAK ADA lagi listener sentuhan pada area scroll,
-   sehingga scroll satu jari dijamin murni ditangani browser.
-   Cara refresh: tahan sebentar (setengah detik) pada HEADER, yaitu baris
-   judul KeuanganKu di tab utama atau baris judul modul di halaman dalam.
-   Indikator berputar muncul, tampilan digambar ulang di posisi yang sama. */
+/* PATCH: tarik-untuk-menyegarkan (pull to refresh) v6.
+   Cara pakai: dari posisi paling atas halaman, TAHAN jari di layar sampai
+   terasa getar dan indikator mengintip, lalu tarik ke bawah dan lepaskan.
+   Lama menahan diatur konstanta TAHAN di bawah (milidetik).
+   Menyertakan pengaman CSS agar scroll satu jari selalu normal. */
 (function(){
+  var wadah=document.getElementById('scroll');
+  if(!wadah) return;
+
   var ind=document.createElement('div');
   ind.id='ptrInd';
   ind.style.cssText='position:fixed;left:50%;z-index:70;'+
@@ -3721,56 +3723,102 @@ function actAdd(kind){
 
   var st=document.createElement('style');
   st.textContent='@keyframes ptrPutar{to{transform:rotate(360deg)}} #ptrInd.putar #ptrIkon{animation:ptrPutar .8s linear infinite}'+
-    ' .appbar,.fhead{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}'+
     ' .scroll{overscroll-behavior:auto !important; touch-action:pan-y pinch-zoom;}'+
     ' html,body{overscroll-behavior-y:auto !important;}';
   document.head.appendChild(st);
 
-  var TAHAN=500, GOYANG=12;
-  var timer=null, x0=0, y0=0, sibuk=false;
+  var TAHAN=600;   /* lama menahan sebelum mode refresh siap (md); ubah sesuai selera */
+  var GOYANG=12, AMBANG=70, MAKS=110;
+  var y0=0, tarik=0, sibuk=false, siap=false, batal=false, pegang=false, timerTahan=null;
 
-  function batalkan(){ if(timer){ clearTimeout(timer); timer=null; } }
-
-  function jalankanRefresh(){
-    if(sibuk) return;
-    sibuk=true;
-    var adaAppbar=!!document.querySelector('.appbar');
-    ind.style.top='calc(env(safe-area-inset-top,0px) + '+(adaAppbar?'72px':'62px')+')';
-    ind.style.transition='transform .2s ease, opacity .2s ease';
-    ind.style.transform='translate(-50%,10px)';
-    ind.style.opacity='1';
-    ind.classList.add('putar');
-    try{ if(navigator.vibrate) navigator.vibrate(15); }catch(e){}
-    setTimeout(function(){
-      try{ render(); }catch(e){}
-      setTimeout(function(){
-        ind.style.transform='translate(-50%,-60px)';
-        ind.style.opacity='0';
-        ind.classList.remove('putar');
-        sibuk=false;
-      }, 500);
-    }, 450);
+  function posAtas(){
+    var b=document.scrollingElement || document.documentElement;
+    return wadah.scrollTop<=0 && (!b || b.scrollTop<=0);
+  }
+  function aturPosisiDasar(){
+    var pakaiAppbar=wadah.classList.contains('has-appbar');
+    ind.style.top='calc(env(safe-area-inset-top,0px) + '+(pakaiAppbar?'72px':'12px')+')';
+  }
+  function gambar(t){
+    ind.style.transition='none';
+    ind.style.transform='translate(-50%,'+(t-60)+'px)';
+    ind.style.opacity=Math.min(1, 0.35 + t/50);
+    var ik=document.getElementById('ptrIkon');
+    if(ik) ik.style.transform='rotate('+(t*2.6)+'deg)';
+  }
+  function intip(){
+    ind.style.transition='transform .18s ease, opacity .18s ease';
+    ind.style.transform='translate(-50%,-38px)';
+    ind.style.opacity='.55';
+  }
+  function pulang(){
+    ind.style.transition='transform .25s ease, opacity .25s ease';
+    ind.style.transform='translate(-50%,-60px)';
+    ind.style.opacity='0';
+    ind.classList.remove('putar');
+  }
+  function bersihkanTimer(){
+    if(timerTahan){ clearTimeout(timerTahan); timerTahan=null; }
+  }
+  function lepaskan(){
+    siap=false; batal=true; pegang=false; tarik=0;
+    bersihkanTimer(); pulang();
   }
 
-  /* Semua listener passive dan tanpa preventDefault: tidak mungkin
-     mengganggu scroll. Hanya aktif bila sentuhan dimulai di header. */
-  document.addEventListener('touchstart', function(e){
-    batalkan();
-    if(sibuk || e.touches.length>1) return;
-    var t=e.target && e.target.closest ? e.target.closest('.appbar, .fhead') : null;
-    if(!t) return;
-    x0=e.touches[0].clientX; y0=e.touches[0].clientY;
-    timer=setTimeout(function(){ timer=null; jalankanRefresh(); }, TAHAN);
+  wadah.addEventListener('touchstart', function(e){
+    bersihkanTimer();
+    siap=false; batal=false; pegang=false; tarik=0;
+    if(sibuk || e.touches.length>1 || !posAtas()){ batal=true; return; }
+    y0=e.touches[0].clientY;
+    timerTahan=setTimeout(function(){
+      timerTahan=null;
+      if(batal || sibuk || !posAtas()) return;
+      siap=true;
+      aturPosisiDasar();
+      intip();
+      try{ if(navigator.vibrate) navigator.vibrate(15); }catch(err){}
+    }, TAHAN);
   }, {passive:true});
 
-  document.addEventListener('touchmove', function(e){
-    if(!timer) return;
-    var dx=e.touches[0].clientX-x0, dy=e.touches[0].clientY-y0;
-    if(Math.abs(dx)>GOYANG || Math.abs(dy)>GOYANG) batalkan();
-  }, {passive:true});
+  wadah.addEventListener('touchmove', function(e){
+    if(batal || sibuk) return;
+    if(e.touches.length>1){ lepaskan(); return; }
+    var dy=e.touches[0].clientY - y0;
 
-  document.addEventListener('touchend', batalkan, {passive:true});
-  document.addEventListener('touchcancel', batalkan, {passive:true});
+    if(!siap){
+      /* bergerak sebelum waktu tahan selesai: murni scroll biasa */
+      if(Math.abs(dy)>GOYANG){ batal=true; bersihkanTimer(); }
+      return;
+    }
+    if(!pegang){
+      if(dy < -4){ lepaskan(); return; }   /* ternyata mau scroll: serahkan */
+      if(dy < 4) return;
+      pegang=true;
+    }
+    tarik=Math.max(0, Math.min(dy*0.5, MAKS));
+    gambar(tarik);
+    e.preventDefault();
+  }, {passive:false});
+
+  function selesaiSentuh(){
+    bersihkanTimer();
+    if(siap && pegang && !sibuk && tarik>=AMBANG){
+      sibuk=true;
+      ind.style.transition='transform .2s ease';
+      ind.style.transform='translate(-50%,'+(AMBANG-60)+'px)';
+      ind.style.opacity='1';
+      ind.classList.add('putar');
+      setTimeout(function(){
+        try{ render(); }catch(err){}
+        setTimeout(function(){ pulang(); sibuk=false; }, 350);
+      }, 450);
+    } else if(siap){
+      pulang();
+    }
+    siap=false; batal=false; pegang=false; tarik=0;
+  }
+  wadah.addEventListener('touchend', selesaiSentuh, {passive:true});
+  wadah.addEventListener('touchcancel', selesaiSentuh, {passive:true});
 })();
 </script>
 
