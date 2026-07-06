@@ -3216,217 +3216,6 @@ function actAdd(kind){
 </script>
 
 <script>
-/* PATCH LAPORAN LENGKAP. Tempel sebelum </body>, setelah patch lainnya.
-   Menambahkan pada tab Laporan:
-   1. Perbandingan pemasukan/pengeluaran dengan periode sebelumnya.
-   2. Grafik tren arus kas 6 bulan terakhir.
-   3. Rata-rata pengeluaran harian + proyeksi akhir bulan.
-   4. Ringkasan per penampung saldo.
-   5. Lima pengeluaran terbesar periode ini.
-   6. Grafik kategori bisa ditukar pemasukan / pengeluaran.
-   7. Ringkasan hutang & piutang berjalan. */
-(function(){
-
-  window.repKatMode = window.repKatMode || 'keluar';
-  window.setRepKat = function(m){ window.repKatMode = m; render(); };
-  window._chartTren = null;
-
-  function labelBanding(){
-    return periode==='harian' ? 'vs kemarin'
-         : periode==='mingguan' ? 'vs 7 hari sebelumnya'
-         : 'vs bulan lalu';
-  }
-
-  function dalamPeriodeLalu(tgl){
-    var t=new Date(tgl+'T00:00:00'), now=new Date(); now.setHours(0,0,0,0);
-    if(periode==='harian'){
-      var k=new Date(now); k.setDate(now.getDate()-1);
-      return t.getTime()===k.getTime();
-    }
-    if(periode==='mingguan'){
-      var a=new Date(now); a.setDate(now.getDate()-13);
-      var b=new Date(now); b.setDate(now.getDate()-7);
-      return t>=a && t<=b;
-    }
-    var m=new Date(now.getFullYear(), now.getMonth()-1, 1);
-    return t.getMonth()===m.getMonth() && t.getFullYear()===m.getFullYear();
-  }
-
-  function deltaHTML(kini, lalu, burukJikaNaik){
-    if(!lalu && !kini) return '';
-    if(!lalu) return '<div style="font-size:10.5px;color:var(--tx3);margin-top:3px">'+labelBanding()+': belum ada data</div>';
-    var d=(kini-lalu)/lalu*100;
-    var naik=d>=0;
-    var warna=Math.abs(d)<0.5 ? 'var(--tx3)' : (naik===burukJikaNaik ? 'var(--merah-tx)' : 'var(--hijau-tx)');
-    var tanda=naik ? '&#9650;' : '&#9660;';
-    return '<div style="font-size:10.5px;margin-top:3px;color:'+warna+'">'+tanda+' '+Math.abs(d).toFixed(0)+'% '+labelBanding()+'</div>';
-  }
-
-  window.renderReport=function(){
-    var now=new Date(); now.setHours(0,0,0,0);
-    var px=TX.filter(function(t){return dalamPeriode(t.tanggal);});
-    var masuk=px.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
-    var keluar=px.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
-
-    /* 1. Periode sebelumnya */
-    var pl=TX.filter(function(t){return dalamPeriodeLalu(t.tanggal);});
-    var masukLalu=pl.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
-    var keluarLalu=pl.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
-
-    /* 3. Rata-rata harian & proyeksi */
-    var hariBerjalan = periode==='harian' ? 1 : periode==='mingguan' ? 7 : now.getDate();
-    var rata = hariBerjalan ? keluar/hariBerjalan : 0;
-    var hariBulan = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
-    var proyeksi = rata*hariBulan;
-
-    /* 6. Kategori sesuai mode */
-    var tipeKat = window.repKatMode==='masuk' ? 'pemasukan' : 'pengeluaran';
-    var perKat={};
-    px.filter(function(t){return t.tipe===tipeKat;}).forEach(function(t){ perKat[t.kategori]=(perKat[t.kategori]||0)+(+t.nominal); });
-    var kats=Object.keys(perKat).map(function(k){return [k,perKat[k]];}).sort(function(a,b){return b[1]-a[1];});
-    var totKat=kats.reduce(function(s,kv){return s+kv[1];},0)||1;
-
-    /* 5. Top 5 pengeluaran */
-    var top5=px.filter(function(t){return t.tipe==='pengeluaran';})
-      .slice().sort(function(a,b){return (+b.nominal)-(+a.nominal);}).slice(0,5);
-
-    /* 7. Hutang & piutang */
-    var piutangSisa=UT.filter(function(u){return u.jenis==='piutang';}).reduce(function(s,u){return s+utSisa(u);},0);
-    var hutangSisa=UT.filter(function(u){return u.jenis==='hutang';}).reduce(function(s,u){return s+utSisa(u);},0);
-    var belumLunas=UT.filter(function(u){return utSisa(u)>0;});
-    var jt=belumLunas.filter(function(u){return u.jatuhTempo;})
-      .sort(function(a,b){return a.jatuhTempo<b.jatuhTempo?-1:1;})[0];
-
-    var repGab=daftarGabungan(px, TR.filter(function(t){return dalamPeriode(t.tanggal);}));
-    var nExp=TX.filter(function(t){return inRange(t.tanggal,expRange,expAwal,expAkhir);}).length;
-
-    S().innerHTML=
-      appBar()+periodeSeg()+
-
-      /* Kartu utama + perbandingan */
-      '<div class="rep-cards">'+
-        '<div class="rep-card"><div class="l">Pemasukan</div><div class="v" style="color:var(--hijau-tx)">'+fmtRp(masuk)+'</div>'+deltaHTML(masuk,masukLalu,false)+'</div>'+
-        '<div class="rep-card"><div class="l">Pengeluaran</div><div class="v" style="color:var(--merah-tx)">'+fmtRp(keluar)+'</div>'+deltaHTML(keluar,keluarLalu,true)+'</div>'+
-      '</div>'+
-
-      /* Rata-rata & proyeksi */
-      '<div class="panel" style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px">'+
-        '<div><div style="font-size:11px;color:var(--tx2)">Rata-rata pengeluaran harian</div><div style="font-size:15px;font-weight:700;margin-top:2px">'+fmtRp(rata)+'</div></div>'+
-        (periode==='bulanan' ? '<div style="text-align:right"><div style="font-size:11px;color:var(--tx2)">Proyeksi akhir bulan</div><div style="font-size:15px;font-weight:700;margin-top:2px;color:'+(proyeksi>masuk&&masuk>0?'var(--merah-tx)':'var(--tx)')+'">'+fmtRp(proyeksi)+'</div></div>' : '')+
-      '</div>'+
-      (periode==='bulanan' && proyeksi>masuk && masuk>0 ? '<div style="font-size:10.5px;color:var(--merah-tx);margin-top:8px">Dengan laju ini, pengeluaran bulan ini akan melebihi pemasukan.</div>' : '')+
-      '</div>'+
-
-      /* Tren 6 bulan */
-      '<div class="sec-head" style="padding-top:14px"><div class="t">Arus kas 6 bulan terakhir</div></div>'+
-      '<div class="panel"><div style="height:180px"><canvas id="trenBar"></canvas></div></div>'+
-
-      /* Kategori dengan toggle */
-      '<div class="sec-head" style="padding-top:14px"><div class="t">'+(tipeKat==='pemasukan'?'Pemasukan':'Pengeluaran')+' per kategori</div></div>'+
-      '<div class="chips">'+
-        '<button class="chip '+(window.repKatMode==='keluar'?'on':'')+'" onclick="setRepKat(\'keluar\')">Pengeluaran</button>'+
-        '<button class="chip '+(window.repKatMode==='masuk'?'on':'')+'" onclick="setRepKat(\'masuk\')">Pemasukan</button>'+
-      '</div>'+
-      (kats.length?'<div class="chartwrap"><canvas id="donut"></canvas></div><div class="catlist">'+
-        kats.map(function(kv,i){return '<div class="catrow"><span class="dot" style="background:'+WARNA_KAT[i%WARNA_KAT.length]+'"></span><span class="cn">'+kv[0]+'</span><span class="cv">'+fmtRp(kv[1])+'</span><span class="cp">'+Math.round(kv[1]/totKat*100)+'%</span></div>';}).join('')+'</div>'
-        :'<div class="empty">Belum ada '+(tipeKat==='pemasukan'?'pemasukan':'pengeluaran')+' pada periode ini.</div>')+
-
-      /* Top 5 pengeluaran */
-      (top5.length ? '<div class="sec-head" style="padding-top:14px"><div class="t">Pengeluaran terbesar periode ini</div></div>'+
-      '<div class="panel">'+top5.map(function(t,i){
-        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;'+(i<top5.length-1?'border-bottom:.5px solid var(--line)':'')+'">'+
-          '<span style="font-size:11px;color:var(--tx3);width:14px">'+(i+1)+'</span>'+
-          '<span style="flex:1;font-size:12.5px">'+esc(t.keterangan||t.kategori)+' <span style="color:var(--tx3);font-size:10.5px">&middot; '+labelTanggalSingkat(t.tanggal)+'</span></span>'+
-          '<b style="font-size:12.5px;color:var(--merah-tx)">'+fmtRp(t.nominal)+'</b></div>';
-      }).join('')+'</div>' : '')+
-
-      /* Ringkasan per penampung saldo */
-      (AK.length ? '<div class="sec-head" style="padding-top:14px"><div class="t">Per penampung saldo</div></div>'+
-      '<div class="panel">'+AK.map(function(a,i){
-        var p=akunPeriodeGabung(a.id);
-        return '<div style="padding:9px 0;'+(i<AK.length-1?'border-bottom:.5px solid var(--line)':'')+'">'+
-          '<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12.5px;font-weight:600">'+esc(a.nama)+'</span><b style="font-size:12.5px">'+fmtRp(saldoAkunSaatIni(a.id))+'</b></div>'+
-          '<div style="display:flex;gap:16px;font-size:10.5px;color:var(--tx3);margin-top:3px">'+
-            '<span>Masuk <b style="color:var(--hijau-tx)">'+fmtRp(p.masuk)+'</b></span>'+
-            '<span>Keluar <b style="color:var(--merah-tx)">'+fmtRp(p.keluar)+'</b></span></div></div>';
-      }).join('')+'</div>' : '')+
-
-      /* Hutang & piutang */
-      '<div class="sec-head" style="padding-top:14px"><div class="t">Hutang &amp; piutang berjalan</div></div>'+
-      '<div class="rep-cards">'+
-        '<div class="rep-card"><div class="l">Piutang berjalan</div><div class="v" style="color:var(--hijau-tx)">'+fmtRp(piutangSisa)+'</div></div>'+
-        '<div class="rep-card"><div class="l">Hutang berjalan</div><div class="v" style="color:var(--merah-tx)">'+fmtRp(hutangSisa)+'</div></div>'+
-      '</div>'+
-      '<div style="font-size:11px;color:var(--tx3);padding:8px 18px 0">'+
-        (belumLunas.length ? belumLunas.length+' catatan belum lunas.'+(jt?' Jatuh tempo terdekat: '+esc(jt.pihak)+', '+labelTanggalSingkat(jt.jatuhTempo)+'.':'') : 'Semua catatan hutang dan piutang sudah lunas.')+
-      '</div>'+
-
-      /* Unduh laporan (tidak berubah) */
-      '<div class="sec-head" style="padding-top:14px"><div class="t">Unduh laporan</div></div>'+
-      '<div class="chips">'+[['hari','Harian'],['minggu','Mingguan'],['bulan','Bulanan'],['kustom','Kustom']].map(function(c){return '<button class="chip '+(expRange===c[0]?'on':'')+'" onclick="setExpRange(\''+c[0]+'\')">'+c[1]+'</button>';}).join('')+'</div>'+
-      (expRange==='kustom'?'<div class="panel"><div class="kustom-date"><div><label class="fl">Dari</label><input class="field" type="date" value="'+expAwal+'" onchange="expAwal=this.value;render();"></div>'+
-        '<div><label class="fl">Sampai</label><input class="field" type="date" value="'+expAkhir+'" onchange="expAkhir=this.value;render();"></div></div></div>':'')+
-      '<div class="panel"><div style="font-size:12px;color:var(--tx2);margin-bottom:12px">'+nExp+' transaksi pada rentang '+esc(labelRentang())+'.</div>'+
-        '<div style="display:flex;gap:12px"><button class="btn-line" style="margin-top:0;flex:1" '+(nExp?'':'disabled')+' onclick="unduhHTML()">&#128196; PDF</button>'+
-        '<button class="btn-line" style="margin-top:0;flex:1" '+(nExp?'':'disabled')+' onclick="unduhCSV()">&#128202; Excel</button></div>'+
-        '<div style="font-size:11px;color:var(--tx3);margin-top:10px">Laporan dibuat langsung di perangkat dan tersimpan di folder Download/KeuanganKu.</div></div>'+
-
-      /* Daftar transaksi (tidak berubah) */
-      '<div class="sec-head" style="padding-top:10px"><div class="t">Daftar transaksi</div><div style="font-size:11px;color:var(--tx3)">'+repGab.length+' catatan</div></div>'+
-      limitChips(repLimit,'setRepLimit')+
-      '<div class="list" style="padding-top:6px;padding-bottom:10px">'+(repGab.length?repGab.slice(0,repLimit||repGab.length).map(barisGabungan).join(''):'<div class="empty">Belum ada catatan pada periode ini.</div>')+'</div>';
-
-    wirePeriode();
-    if(kats.length) gambarDonut(kats);
-    gambarTren();
-  };
-
-  /* 2. Grafik batang arus kas 6 bulan */
-  function gambarTren(){
-    var ctx=document.getElementById('trenBar'); if(!ctx) return;
-    if(window._chartTren){ try{ window._chartTren.destroy(); }catch(e){} window._chartTren=null; }
-    var now=new Date();
-    var labels=[], dMasuk=[], dKeluar=[];
-    for(var i=5;i>=0;i--){
-      var d0=new Date(now.getFullYear(), now.getMonth()-i, 1);
-      var mm=d0.getMonth(), yy=d0.getFullYear(), m=0, k=0;
-      TX.forEach(function(t){
-        var td=new Date(t.tanggal+'T00:00:00');
-        if(td.getMonth()===mm && td.getFullYear()===yy){
-          if(t.tipe==='pemasukan') m+=(+t.nominal);
-          else if(t.tipe==='pengeluaran') k+=(+t.nominal);
-        }
-      });
-      labels.push(d0.toLocaleDateString('id-ID',{month:'short'}));
-      dMasuk.push(m); dKeluar.push(k);
-    }
-    var css=getComputedStyle(document.documentElement);
-    var hij=(css.getPropertyValue('--hijau-tx')||'').trim()||'#1D9E75';
-    var mer=(css.getPropertyValue('--merah-tx')||'').trim()||'#D85A30';
-    window._chartTren=new Chart(ctx,{
-      type:'bar',
-      data:{ labels:labels, datasets:[
-        {label:'Pemasukan', data:dMasuk, backgroundColor:hij, borderRadius:4},
-        {label:'Pengeluaran', data:dKeluar, backgroundColor:mer, borderRadius:4}
-      ]},
-      options:{
-        plugins:{
-          legend:{display:true, labels:{boxWidth:10, font:{size:10}}},
-          tooltip:{callbacks:{label:function(c){ return ' '+c.dataset.label+': '+(HIDE_AMT?'Rp \u2022\u2022\u2022\u2022\u2022':rp(c.parsed.y)); }}}
-        },
-        scales:{
-          y:{ticks:{display:false}, grid:{color:'rgba(128,128,128,.12)'}},
-          x:{grid:{display:false}, ticks:{font:{size:10}}}
-        },
-        maintainAspectRatio:false
-      }
-    });
-  }
-
-})();
-</script>
-
-<script>
 /* PATCH UNDUH LOKAL v2: PDF dan Excel dibuat langsung di perangkat,
    dengan isi lengkap seperti laporan versi server:
    bagian Transaksi, Hutang & Piutang, dan Perpindahan Saldo.
@@ -3819,6 +3608,252 @@ function actAdd(kind){
   }
   wadah.addEventListener('touchend', selesaiSentuh, {passive:true});
   wadah.addEventListener('touchcancel', selesaiSentuh, {passive:true});
+})();
+</script>
+
+<script>
+/* PATCH: nonaktifkan pilih teks (select) & copy saat tekan lama di layar.
+   Input, textarea, dan select tetap bisa diketik/dipilih seperti biasa
+   supaya form (nominal, keterangan, dll) tidak terganggu.
+   Tempel sebelum </body>, setelah patch-patch lainnya. */
+(function(){
+  var st=document.createElement('style');
+  st.textContent =
+    '*{ -webkit-user-select:none; -moz-user-select:none; user-select:none; '+
+    '  -webkit-touch-callout:none; }'+
+    'input, textarea, select, [contenteditable="true"]{ '+
+    '  -webkit-user-select:text; -moz-user-select:text; user-select:text; '+
+    '  -webkit-touch-callout:default; }';
+  document.head.appendChild(st);
+
+  /* Cegah menu klik-kanan / tekan lama pada elemen non-input */
+  document.addEventListener('contextmenu', function(e){
+    var t=e.target;
+    if(!(t && /^(INPUT|TEXTAREA)$/.test(t.tagName))) e.preventDefault();
+  });
+
+  /* Cegah proses "mulai memilih teks" di luar input/textarea */
+  document.addEventListener('selectstart', function(e){
+    var t=e.target;
+    if(!(t && /^(INPUT|TEXTAREA)$/.test(t.tagName))) e.preventDefault();
+  });
+
+  /* Opsional: blokir tombol pintasan salin/potong di keyboard eksternal */
+  document.addEventListener('copy', function(e){
+    var t=document.activeElement;
+    if(!(t && /^(INPUT|TEXTAREA)$/.test(t.tagName))) e.preventDefault();
+  });
+})();
+</script>
+
+<script>
+/* PATCH LAPORAN LENGKAP. Tempel sebelum </body>, setelah patch lainnya.
+   Menambahkan pada tab Laporan:
+   1. Perbandingan pemasukan/pengeluaran dengan periode sebelumnya.
+   2. Grafik tren arus kas 6 bulan terakhir.
+   3. Rata-rata pengeluaran harian + proyeksi akhir bulan.
+   4. Ringkasan per penampung saldo.
+   5. Lima pengeluaran terbesar periode ini.
+   6. Grafik kategori bisa ditukar pemasukan / pengeluaran.
+   7. Ringkasan hutang & piutang berjalan. */
+(function(){
+
+  window.repKatMode = window.repKatMode || 'keluar';
+  window.setRepKat = function(m){ window.repKatMode = m; render(); };
+  window._chartTren = null;
+
+  function labelBanding(){
+    return periode==='harian' ? 'vs kemarin'
+         : periode==='mingguan' ? 'vs 7 hari sebelumnya'
+         : 'vs bulan lalu';
+  }
+
+  function dalamPeriodeLalu(tgl){
+    var t=new Date(tgl+'T00:00:00'), now=new Date(); now.setHours(0,0,0,0);
+    if(periode==='harian'){
+      var k=new Date(now); k.setDate(now.getDate()-1);
+      return t.getTime()===k.getTime();
+    }
+    if(periode==='mingguan'){
+      var a=new Date(now); a.setDate(now.getDate()-13);
+      var b=new Date(now); b.setDate(now.getDate()-7);
+      return t>=a && t<=b;
+    }
+    var m=new Date(now.getFullYear(), now.getMonth()-1, 1);
+    return t.getMonth()===m.getMonth() && t.getFullYear()===m.getFullYear();
+  }
+
+  function deltaHTML(kini, lalu, burukJikaNaik){
+    if(!lalu && !kini) return '';
+    if(!lalu) return '<div style="font-size:10.5px;color:var(--tx3);margin-top:3px">'+labelBanding()+': belum ada data</div>';
+    var d=(kini-lalu)/lalu*100;
+    var naik=d>=0;
+    var warna=Math.abs(d)<0.5 ? 'var(--tx3)' : (naik===burukJikaNaik ? 'var(--merah-tx)' : 'var(--hijau-tx)');
+    var tanda=naik ? '&#9650;' : '&#9660;';
+    return '<div style="font-size:10.5px;margin-top:3px;color:'+warna+'">'+tanda+' '+Math.abs(d).toFixed(0)+'% '+labelBanding()+'</div>';
+  }
+
+  window.renderReport=function(){
+    var now=new Date(); now.setHours(0,0,0,0);
+    var px=TX.filter(function(t){return dalamPeriode(t.tanggal);});
+    var masuk=px.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
+    var keluar=px.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
+
+    /* 1. Periode sebelumnya */
+    var pl=TX.filter(function(t){return dalamPeriodeLalu(t.tanggal);});
+    var masukLalu=pl.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
+    var keluarLalu=pl.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
+
+    /* 3. Rata-rata harian & proyeksi */
+    var hariBerjalan = periode==='harian' ? 1 : periode==='mingguan' ? 7 : now.getDate();
+    var rata = hariBerjalan ? keluar/hariBerjalan : 0;
+    var hariBulan = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+    var proyeksi = rata*hariBulan;
+
+    /* 6. Kategori sesuai mode */
+    var tipeKat = window.repKatMode==='masuk' ? 'pemasukan' : 'pengeluaran';
+    var perKat={};
+    px.filter(function(t){return t.tipe===tipeKat;}).forEach(function(t){ perKat[t.kategori]=(perKat[t.kategori]||0)+(+t.nominal); });
+    var kats=Object.keys(perKat).map(function(k){return [k,perKat[k]];}).sort(function(a,b){return b[1]-a[1];});
+    var totKat=kats.reduce(function(s,kv){return s+kv[1];},0)||1;
+
+    /* 5. Top 5 pengeluaran */
+    var top5=px.filter(function(t){return t.tipe==='pengeluaran';})
+      .slice().sort(function(a,b){return (+b.nominal)-(+a.nominal);}).slice(0,5);
+
+    /* 7. Hutang & piutang */
+    var piutangSisa=UT.filter(function(u){return u.jenis==='piutang';}).reduce(function(s,u){return s+utSisa(u);},0);
+    var hutangSisa=UT.filter(function(u){return u.jenis==='hutang';}).reduce(function(s,u){return s+utSisa(u);},0);
+    var belumLunas=UT.filter(function(u){return utSisa(u)>0;});
+    var jt=belumLunas.filter(function(u){return u.jatuhTempo;})
+      .sort(function(a,b){return a.jatuhTempo<b.jatuhTempo?-1:1;})[0];
+
+    var repGab=daftarGabungan(px, TR.filter(function(t){return dalamPeriode(t.tanggal);}));
+    var nExp=TX.filter(function(t){return inRange(t.tanggal,expRange,expAwal,expAkhir);}).length;
+
+    S().innerHTML=
+      appBar()+periodeSeg()+
+
+      /* Kartu utama + perbandingan */
+      '<div class="rep-cards">'+
+        '<div class="rep-card"><div class="l">Pemasukan</div><div class="v" style="color:var(--hijau-tx)">'+fmtRp(masuk)+'</div>'+deltaHTML(masuk,masukLalu,false)+'</div>'+
+        '<div class="rep-card"><div class="l">Pengeluaran</div><div class="v" style="color:var(--merah-tx)">'+fmtRp(keluar)+'</div>'+deltaHTML(keluar,keluarLalu,true)+'</div>'+
+      '</div>'+
+
+      /* Rata-rata & proyeksi */
+      '<div class="panel" style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px">'+
+        '<div><div style="font-size:11px;color:var(--tx2)">Rata-rata pengeluaran harian</div><div style="font-size:15px;font-weight:700;margin-top:2px">'+fmtRp(rata)+'</div></div>'+
+        (periode==='bulanan' ? '<div style="text-align:right"><div style="font-size:11px;color:var(--tx2)">Proyeksi akhir bulan</div><div style="font-size:15px;font-weight:700;margin-top:2px;color:'+(proyeksi>masuk&&masuk>0?'var(--merah-tx)':'var(--tx)')+'">'+fmtRp(proyeksi)+'</div></div>' : '')+
+      '</div>'+
+      (periode==='bulanan' && proyeksi>masuk && masuk>0 ? '<div style="font-size:10.5px;color:var(--merah-tx);margin-top:8px">Dengan laju ini, pengeluaran bulan ini akan melebihi pemasukan.</div>' : '')+
+      '</div>'+
+
+      /* Tren 6 bulan */
+      '<div class="sec-head" style="padding-top:14px"><div class="t">Arus kas 6 bulan terakhir</div></div>'+
+      '<div class="panel"><div style="height:180px"><canvas id="trenBar"></canvas></div></div>'+
+
+      /* Kategori dengan toggle */
+      '<div class="sec-head" style="padding-top:14px"><div class="t">'+(tipeKat==='pemasukan'?'Pemasukan':'Pengeluaran')+' per kategori</div></div>'+
+      '<div class="chips">'+
+        '<button class="chip '+(window.repKatMode==='keluar'?'on':'')+'" onclick="setRepKat(\'keluar\')">Pengeluaran</button>'+
+        '<button class="chip '+(window.repKatMode==='masuk'?'on':'')+'" onclick="setRepKat(\'masuk\')">Pemasukan</button>'+
+      '</div>'+
+      (kats.length?'<div class="chartwrap"><canvas id="donut"></canvas></div><div class="catlist">'+
+        kats.map(function(kv,i){return '<div class="catrow"><span class="dot" style="background:'+WARNA_KAT[i%WARNA_KAT.length]+'"></span><span class="cn">'+kv[0]+'</span><span class="cv">'+fmtRp(kv[1])+'</span><span class="cp">'+Math.round(kv[1]/totKat*100)+'%</span></div>';}).join('')+'</div>'
+        :'<div class="empty">Belum ada '+(tipeKat==='pemasukan'?'pemasukan':'pengeluaran')+' pada periode ini.</div>')+
+
+      /* Top 5 pengeluaran */
+      (top5.length ? '<div class="sec-head" style="padding-top:14px"><div class="t">Pengeluaran terbesar periode ini</div></div>'+
+      '<div class="panel">'+top5.map(function(t,i){
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;'+(i<top5.length-1?'border-bottom:.5px solid var(--line)':'')+'">'+
+          '<span style="font-size:11px;color:var(--tx3);width:14px">'+(i+1)+'</span>'+
+          '<span style="flex:1;font-size:12.5px">'+esc(t.keterangan||t.kategori)+' <span style="color:var(--tx3);font-size:10.5px">&middot; '+labelTanggalSingkat(t.tanggal)+'</span></span>'+
+          '<b style="font-size:12.5px;color:var(--merah-tx)">'+fmtRp(t.nominal)+'</b></div>';
+      }).join('')+'</div>' : '')+
+
+      /* Ringkasan per penampung saldo */
+      (AK.length ? '<div class="sec-head" style="padding-top:14px"><div class="t">Per penampung saldo</div></div>'+
+      '<div class="panel">'+AK.map(function(a,i){
+        var p=akunPeriodeGabung(a.id);
+        return '<div style="padding:9px 0;'+(i<AK.length-1?'border-bottom:.5px solid var(--line)':'')+'">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12.5px;font-weight:600">'+esc(a.nama)+'</span><b style="font-size:12.5px">'+fmtRp(saldoAkunSaatIni(a.id))+'</b></div>'+
+          '<div style="display:flex;gap:16px;font-size:10.5px;color:var(--tx3);margin-top:3px">'+
+            '<span>Masuk <b style="color:var(--hijau-tx)">'+fmtRp(p.masuk)+'</b></span>'+
+            '<span>Keluar <b style="color:var(--merah-tx)">'+fmtRp(p.keluar)+'</b></span></div></div>';
+      }).join('')+'</div>' : '')+
+
+      /* Hutang & piutang */
+      '<div class="sec-head" style="padding-top:14px"><div class="t">Hutang &amp; piutang berjalan</div></div>'+
+      '<div class="rep-cards">'+
+        '<div class="rep-card"><div class="l">Piutang berjalan</div><div class="v" style="color:var(--hijau-tx)">'+fmtRp(piutangSisa)+'</div></div>'+
+        '<div class="rep-card"><div class="l">Hutang berjalan</div><div class="v" style="color:var(--merah-tx)">'+fmtRp(hutangSisa)+'</div></div>'+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--tx3);padding:8px 18px 0">'+
+        (belumLunas.length ? belumLunas.length+' catatan belum lunas.'+(jt?' Jatuh tempo terdekat: '+esc(jt.pihak)+', '+labelTanggalSingkat(jt.jatuhTempo)+'.':'') : 'Semua catatan hutang dan piutang sudah lunas.')+
+      '</div>'+
+
+      /* Unduh laporan (tidak berubah) */
+      '<div class="sec-head" style="padding-top:14px"><div class="t">Unduh laporan</div></div>'+
+      '<div class="chips">'+[['hari','Harian'],['minggu','Mingguan'],['bulan','Bulanan'],['kustom','Kustom']].map(function(c){return '<button class="chip '+(expRange===c[0]?'on':'')+'" onclick="setExpRange(\''+c[0]+'\')">'+c[1]+'</button>';}).join('')+'</div>'+
+      (expRange==='kustom'?'<div class="panel"><div class="kustom-date"><div><label class="fl">Dari</label><input class="field" type="date" value="'+expAwal+'" onchange="expAwal=this.value;render();"></div>'+
+        '<div><label class="fl">Sampai</label><input class="field" type="date" value="'+expAkhir+'" onchange="expAkhir=this.value;render();"></div></div></div>':'')+
+      '<div class="panel"><div style="font-size:12px;color:var(--tx2);margin-bottom:12px">'+nExp+' transaksi pada rentang '+esc(labelRentang())+'.</div>'+
+        '<div style="display:flex;gap:12px"><button class="btn-line" style="margin-top:0;flex:1" '+(nExp?'':'disabled')+' onclick="unduhHTML()">&#128196; PDF</button>'+
+        '<button class="btn-line" style="margin-top:0;flex:1" '+(nExp?'':'disabled')+' onclick="unduhCSV()">&#128202; Excel</button></div>'+
+        '<div style="font-size:11px;color:var(--tx3);margin-top:10px">Laporan dibuat langsung di perangkat dan tersimpan di folder Download/KeuanganKu.</div></div>'+
+
+      /* Daftar transaksi (tidak berubah) */
+      '<div class="sec-head" style="padding-top:10px"><div class="t">Daftar transaksi</div><div style="font-size:11px;color:var(--tx3)">'+repGab.length+' catatan</div></div>'+
+      limitChips(repLimit,'setRepLimit')+
+      '<div class="list" style="padding-top:6px;padding-bottom:10px">'+(repGab.length?repGab.slice(0,repLimit||repGab.length).map(barisGabungan).join(''):'<div class="empty">Belum ada catatan pada periode ini.</div>')+'</div>';
+
+    wirePeriode();
+    if(kats.length) gambarDonut(kats);
+    gambarTren();
+  };
+
+  /* 2. Grafik batang arus kas 6 bulan */
+  function gambarTren(){
+    var ctx=document.getElementById('trenBar'); if(!ctx) return;
+    if(window._chartTren){ try{ window._chartTren.destroy(); }catch(e){} window._chartTren=null; }
+    var now=new Date();
+    var labels=[], dMasuk=[], dKeluar=[];
+    for(var i=5;i>=0;i--){
+      var d0=new Date(now.getFullYear(), now.getMonth()-i, 1);
+      var mm=d0.getMonth(), yy=d0.getFullYear(), m=0, k=0;
+      TX.forEach(function(t){
+        var td=new Date(t.tanggal+'T00:00:00');
+        if(td.getMonth()===mm && td.getFullYear()===yy){
+          if(t.tipe==='pemasukan') m+=(+t.nominal);
+          else if(t.tipe==='pengeluaran') k+=(+t.nominal);
+        }
+      });
+      labels.push(d0.toLocaleDateString('id-ID',{month:'short'}));
+      dMasuk.push(m); dKeluar.push(k);
+    }
+    var css=getComputedStyle(document.documentElement);
+    var hij=(css.getPropertyValue('--hijau-tx')||'').trim()||'#1D9E75';
+    var mer=(css.getPropertyValue('--merah-tx')||'').trim()||'#D85A30';
+    window._chartTren=new Chart(ctx,{
+      type:'bar',
+      data:{ labels:labels, datasets:[
+        {label:'Pemasukan', data:dMasuk, backgroundColor:hij, borderRadius:4},
+        {label:'Pengeluaran', data:dKeluar, backgroundColor:mer, borderRadius:4}
+      ]},
+      options:{
+        plugins:{
+          legend:{display:true, labels:{boxWidth:10, font:{size:10}}},
+          tooltip:{callbacks:{label:function(c){ return ' '+c.dataset.label+': '+(HIDE_AMT?'Rp \u2022\u2022\u2022\u2022\u2022':rp(c.parsed.y)); }}}
+        },
+        scales:{
+          y:{ticks:{display:false}, grid:{color:'rgba(128,128,128,.12)'}},
+          x:{grid:{display:false}, ticks:{font:{size:10}}}
+        },
+        maintainAspectRatio:false
+      }
+    });
+  }
+
 })();
 </script>
 
