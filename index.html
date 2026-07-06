@@ -3703,7 +3703,7 @@ function actAdd(kind){
   
 
 <script>
-/* PATCH: segarkan tampilan (refresh) v5.
+/* PATCH: segarkan tampilan (refresh) v5.1.
    Perombakan total: TIDAK ADA lagi listener sentuhan pada area scroll,
    sehingga scroll satu jari dijamin murni ditangani browser.
    Cara refresh: tahan sebentar (setengah detik) pada HEADER, yaitu baris
@@ -3721,7 +3721,9 @@ function actAdd(kind){
 
   var st=document.createElement('style');
   st.textContent='@keyframes ptrPutar{to{transform:rotate(360deg)}} #ptrInd.putar #ptrIkon{animation:ptrPutar .8s linear infinite}'+
-    ' .appbar,.fhead{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}';
+    ' .appbar,.fhead{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}'+
+    ' .scroll{overscroll-behavior:auto !important; touch-action:pan-y pinch-zoom;}'+
+    ' html,body{overscroll-behavior-y:auto !important;}';
   document.head.appendChild(st);
 
   var TAHAN=500, GOYANG=12;
