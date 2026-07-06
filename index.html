@@ -3216,402 +3216,6 @@ function actAdd(kind){
 </script>
 
 <script>
-/* PATCH UNDUH LOKAL v2: PDF dan Excel dibuat langsung di perangkat,
-   dengan isi lengkap seperti laporan versi server:
-   bagian Transaksi, Hutang & Piutang, dan Perpindahan Saldo.
-   Menggantikan patch unduh lokal v1. */
-(function(){
-
-  /* ===== pemuat pustaka (biasanya sudah termuat dari tag script di atas) ===== */
-  var _sudah={};
-  function muatSkrip(src){
-    return new Promise(function(res,rej){
-      if(_sudah[src]){ res(); return; }
-      var s=document.createElement('script');
-      s.src=src;
-      s.onload=function(){ _sudah[src]=1; res(); };
-      s.onerror=function(){ rej(new Error('gagal memuat '+src)); };
-      document.head.appendChild(s);
-    });
-  }
-  var CDN_JSPDF='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-  var CDN_AUTOTABLE='https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
-  var CDN_XLSX='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-  async function pastikanPDF(){
-    if(!(window.jspdf && window.jspdf.jsPDF)) await muatSkrip(CDN_JSPDF);
-    var punyaAutoTable=false;
-    try{ punyaAutoTable=typeof (new window.jspdf.jsPDF()).autoTable==='function'; }catch(e){}
-    if(!punyaAutoTable) await muatSkrip(CDN_AUTOTABLE);
-  }
-  async function pastikanXLSX(){
-    if(!window.XLSX) await muatSkrip(CDN_XLSX);
-  }
-
-  /* ===== pengunduh blob (browser dan APK) ===== */
-  function unduhBlob(blob, nama){
-    if(window.AppInventor && window.AppInventor.setWebViewString){
-      try{ window.AppInventor.setWebViewString('SIMPAN|'+nama); }catch(e){}
-    }
-    var u=URL.createObjectURL(blob);
-    var a=document.createElement('a');
-    a.href=u; a.download=nama;
-    document.body.appendChild(a); a.click();
-    setTimeout(function(){
-      try{ document.body.removeChild(a); URL.revokeObjectURL(u); }catch(e){}
-    }, 60000);
-  }
-
-  /* ===== data laporan (sama seperti versi server) ===== */
-  function namaAkunDari(id){
-    var a=cariAkun(id); return (a && a.nama) ? a.nama : '-';
-  }
-  function dataTransaksi(){
-    return TX.filter(function(t){ return inRange(t.tanggal,expRange,expAwal,expAkhir); })
-      .slice().sort(function(a,b){ return a.tanggal<b.tanggal?-1:1; });
-  }
-  function dataUtang(){
-    var label={lunas:'Lunas', sebagian:'Terbayar sebagian', belum:'Belum dibayar'};
-    return UT.slice().sort(function(a,b){ return a.tanggal<b.tanggal?-1:1; })
-      .map(function(u){
-        return {
-          jenis: u.jenis==='piutang'?'Piutang':'Hutang',
-          pihak: u.pihak||'',
-          pokok: +u.pokok||0,
-          tanggal: u.tanggal||'',
-          jatuhTempo: u.jatuhTempo||'',
-          terbayar: utTerbayar(u),
-          sisa: utSisa(u),
-          status: label[utStatus(u)]||'',
-          catatan: u.catatan||''
-        };
-      });
-  }
-  function dataTransfer(){
-    return TR.filter(function(t){ return inRange(t.tanggal,expRange,expAwal,expAkhir); })
-      .slice().sort(function(a,b){ return a.tanggal<b.tanggal?-1:1; });
-  }
-  function namaRentang(){
-    return (labelRentang()||'periode').replace(/[^0-9A-Za-z]+/g,'-').replace(/^-+|-+$/g,'');
-  }
-  function angka(n){ return (Number(n)||0).toLocaleString('id-ID'); }
-
-  /* ===== PDF (menggantikan unduhHTML) ===== */
-  window.unduhHTML=async function(){
-    var rows=dataTransaksi(), ut=dataUtang(), tr=dataTransfer();
-    if(!rows.length && !ut.length && !tr.length){ toast('Tidak ada data pada rentang ini'); return; }
-    toast('Menyiapkan PDF...');
-    try{ await pastikanPDF(); }
-    catch(e){ toast('Perlu internet sekali untuk memuat pembuat PDF'); return; }
-
-    var masuk=rows.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
-    var keluar=rows.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
-    var piutangSisa=ut.filter(function(u){return u.jenis==='Piutang';}).reduce(function(s,u){return s+u.sisa;},0);
-    var hutangSisa=ut.filter(function(u){return u.jenis==='Hutang';}).reduce(function(s,u){return s+u.sisa;},0);
-    var totalTransfer=tr.reduce(function(s,r){return s+(+r.nominal||0);},0);
-
-    var doc=new window.jspdf.jsPDF('p','mm','a4');
-    var BIRU=[24,95,165];
-
-    function judulBagian(teks){
-      var y=doc.lastAutoTable ? doc.lastAutoTable.finalY+12 : 41;
-      if(y>262){ doc.addPage(); y=16; }
-      doc.setFont('helvetica','bold'); doc.setFontSize(11);
-      doc.setTextColor(BIRU[0],BIRU[1],BIRU[2]);
-      doc.text(teks, 14, y);
-      doc.setTextColor(0); doc.setFont('helvetica','normal');
-      return y+3;
-    }
-    function badanKosong(n){
-      return [[{content:'Tidak ada data', colSpan:n, styles:{halign:'center', textColor:130}}]];
-    }
-
-    /* Kop */
-    doc.setFont('helvetica','bold'); doc.setFontSize(15);
-    doc.text('Laporan Keuangan - KeuanganKu', 14, 16);
-    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110);
-    doc.text('Pemilik: '+(((USER&&USER.name)||'-')+'  ('+((USER&&USER.phone)||'')+')'), 14, 22);
-    doc.text('Rentang: '+labelRentang(), 14, 27);
-    doc.text('Dicetak: '+new Date().toLocaleString('id-ID'), 14, 32);
-    doc.setTextColor(0);
-
-    /* Bagian 1: Transaksi */
-    var y1=judulBagian('Transaksi');
-    doc.autoTable({
-      startY:y1,
-      head:[['Tanggal','Jenis','Penampung','Kategori','Keterangan','Catatan','Nominal']],
-      body: rows.length ? rows.map(function(t){
-        var n=(+t.nominal)||0;
-        return [t.tanggal,
-                t.tipe==='pemasukan'?'Pemasukan':'Pengeluaran',
-                namaAkunDari(t.akunId),
-                t.kategori||'',
-                t.keterangan||'',
-                t.catatan||'',
-                (t.tipe==='pemasukan'?'':'-')+angka(n)];
-      }) : badanKosong(7),
-      foot:[
-        ['','','','','','Total pemasukan', angka(masuk)],
-        ['','','','','','Total pengeluaran', angka(keluar)],
-        ['','','','','','Selisih', angka(masuk-keluar)]
-      ],
-      styles:{ fontSize:7, cellPadding:1.4 },
-      headStyles:{ fillColor:BIRU, fontSize:7 },
-      footStyles:{ fillColor:[238,241,245], textColor:30, fontStyle:'bold', fontSize:7, halign:'right' },
-      columnStyles:{ 6:{ halign:'right' } }
-    });
-
-    /* Bagian 2: Hutang & Piutang (seluruh catatan, seperti versi server) */
-    var y2=judulBagian('Hutang & Piutang (per '+new Date().toLocaleDateString('id-ID')+')');
-    doc.autoTable({
-      startY:y2,
-      head:[['Jenis','Pihak','Pokok','Tanggal','Jatuh Tempo','Dibayar','Sisa','Status','Catatan']],
-      body: ut.length ? ut.map(function(u){
-        return [u.jenis, u.pihak, angka(u.pokok), u.tanggal, u.jatuhTempo||'-',
-                angka(u.terbayar), angka(u.sisa), u.status, u.catatan];
-      }) : badanKosong(9),
-      foot:[
-        ['','','','','','','', 'Total piutang berjalan', angka(piutangSisa)],
-        ['','','','','','','', 'Total hutang berjalan', angka(hutangSisa)]
-      ],
-      styles:{ fontSize:6.5, cellPadding:1.3 },
-      headStyles:{ fillColor:BIRU, fontSize:6.5 },
-      footStyles:{ fillColor:[238,241,245], textColor:30, fontStyle:'bold', fontSize:6.5, halign:'right' },
-      columnStyles:{ 2:{halign:'right'}, 5:{halign:'right'}, 6:{halign:'right'} }
-    });
-
-    /* Bagian 3: Perpindahan Saldo */
-    var y3=judulBagian('Perpindahan Saldo');
-    doc.autoTable({
-      startY:y3,
-      head:[['Tanggal','Dari Penampung','Ke Penampung','Nominal','Catatan']],
-      body: tr.length ? tr.map(function(r){
-        return [r.tanggal, namaAkunDari(r.dariAkunId), namaAkunDari(r.keAkunId), angka(r.nominal), r.catatan||''];
-      }) : badanKosong(5),
-      foot:[['','','Total perpindahan', angka(totalTransfer), '']],
-      styles:{ fontSize:7, cellPadding:1.4 },
-      headStyles:{ fillColor:BIRU, fontSize:7 },
-      footStyles:{ fillColor:[238,241,245], textColor:30, fontStyle:'bold', fontSize:7 },
-      columnStyles:{ 3:{ halign:'right' } }
-    });
-
-    var yA=(doc.lastAutoTable?doc.lastAutoTable.finalY:41)+8;
-    if(yA>285){ doc.addPage(); yA=16; }
-    doc.setFontSize(8); doc.setTextColor(130);
-    doc.text('Dibuat otomatis oleh KeuanganKu', 14, yA);
-
-    unduhBlob(doc.output('blob'), 'Laporan-KeuanganKu-'+namaRentang()+'.pdf');
-  };
-
-  /* ===== Excel .xlsx 3 sheet (menggantikan unduhCSV) ===== */
-  window.unduhCSV=async function(){
-    var rows=dataTransaksi(), ut=dataUtang(), tr=dataTransfer();
-    if(!rows.length && !ut.length && !tr.length){ toast('Tidak ada data pada rentang ini'); return; }
-    toast('Menyiapkan Excel...');
-    try{ await pastikanXLSX(); }
-    catch(e){ toast('Perlu internet sekali untuk memuat pembuat Excel'); return; }
-
-    var masuk=rows.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
-    var keluar=rows.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
-    var piutangSisa=ut.filter(function(u){return u.jenis==='Piutang';}).reduce(function(s,u){return s+u.sisa;},0);
-    var hutangSisa=ut.filter(function(u){return u.jenis==='Hutang';}).reduce(function(s,u){return s+u.sisa;},0);
-    var totalTransfer=tr.reduce(function(s,r){return s+(+r.nominal||0);},0);
-    var pemilik=(USER&&USER.name)||'-';
-    var cetak=new Date().toLocaleString('id-ID');
-
-    var wb=XLSX.utils.book_new();
-
-    /* Sheet 1: Transaksi */
-    var d1=[
-      ['Laporan Keuangan - KeuanganKu'],
-      ['Pemilik: '+pemilik],
-      ['Rentang: '+labelRentang()],
-      ['Dicetak: '+cetak],
-      [],
-      ['Tanggal','Jenis','Penampung','Kategori','Keterangan','Catatan','Nominal']
-    ];
-    rows.forEach(function(t){
-      var n=(+t.nominal)||0;
-      d1.push([t.tanggal,
-               t.tipe==='pemasukan'?'Pemasukan':'Pengeluaran',
-               namaAkunDari(t.akunId),
-               t.kategori||'',
-               t.keterangan||'',
-               t.catatan||'',
-               t.tipe==='pemasukan'? n : -n]);
-    });
-    d1.push([]);
-    d1.push(['','','','','','Total pemasukan', masuk]);
-    d1.push(['','','','','','Total pengeluaran', keluar]);
-    d1.push(['','','','','','Selisih', masuk-keluar]);
-    var ws1=XLSX.utils.aoa_to_sheet(d1);
-    ws1['!cols']=[{wch:11},{wch:12},{wch:16},{wch:14},{wch:28},{wch:22},{wch:13}];
-    XLSX.utils.book_append_sheet(wb, ws1, 'Transaksi');
-
-    /* Sheet 2: Hutang & Piutang */
-    var d2=[
-      ['Hutang & Piutang - KeuanganKu'],
-      ['Pemilik: '+pemilik],
-      ['Per tanggal: '+new Date().toLocaleDateString('id-ID')],
-      [],
-      ['Jenis','Pihak','Pokok','Tanggal','Jatuh Tempo','Sudah Dibayar','Sisa','Status','Catatan']
-    ];
-    ut.forEach(function(u){
-      d2.push([u.jenis, u.pihak, u.pokok, u.tanggal, u.jatuhTempo, u.terbayar, u.sisa, u.status, u.catatan]);
-    });
-    d2.push([]);
-    d2.push(['','','','','','Total piutang berjalan', piutangSisa]);
-    d2.push(['','','','','','Total hutang berjalan', hutangSisa]);
-    var ws2=XLSX.utils.aoa_to_sheet(d2);
-    ws2['!cols']=[{wch:9},{wch:18},{wch:12},{wch:11},{wch:11},{wch:13},{wch:12},{wch:16},{wch:24}];
-    XLSX.utils.book_append_sheet(wb, ws2, 'Hutang & Piutang');
-
-    /* Sheet 3: Perpindahan Saldo */
-    var d3=[
-      ['Perpindahan Saldo - KeuanganKu'],
-      ['Pemilik: '+pemilik],
-      ['Rentang: '+labelRentang()],
-      [],
-      ['Tanggal','Dari Penampung','Ke Penampung','Nominal','Catatan']
-    ];
-    tr.forEach(function(r){
-      d3.push([r.tanggal, namaAkunDari(r.dariAkunId), namaAkunDari(r.keAkunId), +r.nominal||0, r.catatan||'']);
-    });
-    d3.push([]);
-    d3.push(['','','Total perpindahan', totalTransfer, '']);
-    var ws3=XLSX.utils.aoa_to_sheet(d3);
-    ws3['!cols']=[{wch:11},{wch:18},{wch:18},{wch:13},{wch:24}];
-    XLSX.utils.book_append_sheet(wb, ws3, 'Perpindahan Saldo');
-
-    var out=XLSX.write(wb, { bookType:'xlsx', type:'array' });
-    var blob=new Blob([out], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    unduhBlob(blob, 'Laporan-KeuanganKu-'+namaRentang()+'.xlsx');
-  };
-
-})();
-</script>
-  
-
-<script>
-/* PATCH: tarik-untuk-menyegarkan (pull to refresh) v6.
-   Cara pakai: dari posisi paling atas halaman, TAHAN jari di layar sampai
-   terasa getar dan indikator mengintip, lalu tarik ke bawah dan lepaskan.
-   Lama menahan diatur konstanta TAHAN di bawah (milidetik).
-   Menyertakan pengaman CSS agar scroll satu jari selalu normal. */
-(function(){
-  var wadah=document.getElementById('scroll');
-  if(!wadah) return;
-
-  var ind=document.createElement('div');
-  ind.id='ptrInd';
-  ind.style.cssText='position:fixed;left:50%;z-index:70;'+
-    'width:38px;height:38px;border-radius:50%;background:var(--card);'+
-    'box-shadow:0 2px 10px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;'+
-    'transform:translate(-50%,-60px);opacity:0;pointer-events:none';
-  ind.innerHTML='<svg id="ptrIkon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--biru)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>';
-  document.body.appendChild(ind);
-
-  var st=document.createElement('style');
-  st.textContent='@keyframes ptrPutar{to{transform:rotate(360deg)}} #ptrInd.putar #ptrIkon{animation:ptrPutar .8s linear infinite}'+
-    ' .scroll{overscroll-behavior:auto !important; touch-action:pan-y pinch-zoom;}'+
-    ' html,body{overscroll-behavior-y:auto !important;}';
-  document.head.appendChild(st);
-
-  var TAHAN=600;   /* lama menahan sebelum mode refresh siap (md); ubah sesuai selera */
-  var GOYANG=12, AMBANG=70, MAKS=110;
-  var y0=0, tarik=0, sibuk=false, siap=false, batal=false, pegang=false, timerTahan=null;
-
-  function posAtas(){
-    var b=document.scrollingElement || document.documentElement;
-    return wadah.scrollTop<=0 && (!b || b.scrollTop<=0);
-  }
-  function aturPosisiDasar(){
-    var pakaiAppbar=wadah.classList.contains('has-appbar');
-    ind.style.top='calc(env(safe-area-inset-top,0px) + '+(pakaiAppbar?'72px':'12px')+')';
-  }
-  function gambar(t){
-    ind.style.transition='none';
-    ind.style.transform='translate(-50%,'+(t-60)+'px)';
-    ind.style.opacity=Math.min(1, 0.35 + t/50);
-    var ik=document.getElementById('ptrIkon');
-    if(ik) ik.style.transform='rotate('+(t*2.6)+'deg)';
-  }
-  function intip(){
-    ind.style.transition='transform .18s ease, opacity .18s ease';
-    ind.style.transform='translate(-50%,-38px)';
-    ind.style.opacity='.55';
-  }
-  function pulang(){
-    ind.style.transition='transform .25s ease, opacity .25s ease';
-    ind.style.transform='translate(-50%,-60px)';
-    ind.style.opacity='0';
-    ind.classList.remove('putar');
-  }
-  function bersihkanTimer(){
-    if(timerTahan){ clearTimeout(timerTahan); timerTahan=null; }
-  }
-  function lepaskan(){
-    siap=false; batal=true; pegang=false; tarik=0;
-    bersihkanTimer(); pulang();
-  }
-
-  wadah.addEventListener('touchstart', function(e){
-    bersihkanTimer();
-    siap=false; batal=false; pegang=false; tarik=0;
-    if(sibuk || e.touches.length>1 || !posAtas()){ batal=true; return; }
-    y0=e.touches[0].clientY;
-    timerTahan=setTimeout(function(){
-      timerTahan=null;
-      if(batal || sibuk || !posAtas()) return;
-      siap=true;
-      aturPosisiDasar();
-      intip();
-      try{ if(navigator.vibrate) navigator.vibrate(15); }catch(err){}
-    }, TAHAN);
-  }, {passive:true});
-
-  wadah.addEventListener('touchmove', function(e){
-    if(batal || sibuk) return;
-    if(e.touches.length>1){ lepaskan(); return; }
-    var dy=e.touches[0].clientY - y0;
-
-    if(!siap){
-      /* bergerak sebelum waktu tahan selesai: murni scroll biasa */
-      if(Math.abs(dy)>GOYANG){ batal=true; bersihkanTimer(); }
-      return;
-    }
-    if(!pegang){
-      if(dy < -4){ lepaskan(); return; }   /* ternyata mau scroll: serahkan */
-      if(dy < 4) return;
-      pegang=true;
-    }
-    tarik=Math.max(0, Math.min(dy*0.5, MAKS));
-    gambar(tarik);
-    e.preventDefault();
-  }, {passive:false});
-
-  function selesaiSentuh(){
-    bersihkanTimer();
-    if(siap && pegang && !sibuk && tarik>=AMBANG){
-      sibuk=true;
-      ind.style.transition='transform .2s ease';
-      ind.style.transform='translate(-50%,'+(AMBANG-60)+'px)';
-      ind.style.opacity='1';
-      ind.classList.add('putar');
-      setTimeout(function(){
-        try{ render(); }catch(err){}
-        setTimeout(function(){ pulang(); sibuk=false; }, 350);
-      }, 450);
-    } else if(siap){
-      pulang();
-    }
-    siap=false; batal=false; pegang=false; tarik=0;
-  }
-  wadah.addEventListener('touchend', selesaiSentuh, {passive:true});
-  wadah.addEventListener('touchcancel', selesaiSentuh, {passive:true});
-})();
-</script>
-
-<script>
 /* PATCH LAPORAN LENGKAP v2. Tempel sebelum </body>, menggantikan
    seluruh "PATCH LAPORAN LENGKAP" versi sebelumnya.
 
@@ -4071,6 +3675,436 @@ function actAdd(kind){
 })();
 </script>
 
+<script>
+/* PATCH UNDUH LOKAL v2: PDF dan Excel dibuat langsung di perangkat,
+   dengan isi lengkap seperti laporan versi server:
+   bagian Transaksi, Hutang & Piutang, dan Perpindahan Saldo.
+   Menggantikan patch unduh lokal v1. */
+(function(){
+
+  /* ===== pemuat pustaka (biasanya sudah termuat dari tag script di atas) ===== */
+  var _sudah={};
+  function muatSkrip(src){
+    return new Promise(function(res,rej){
+      if(_sudah[src]){ res(); return; }
+      var s=document.createElement('script');
+      s.src=src;
+      s.onload=function(){ _sudah[src]=1; res(); };
+      s.onerror=function(){ rej(new Error('gagal memuat '+src)); };
+      document.head.appendChild(s);
+    });
+  }
+  var CDN_JSPDF='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+  var CDN_AUTOTABLE='https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+  var CDN_XLSX='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  async function pastikanPDF(){
+    if(!(window.jspdf && window.jspdf.jsPDF)) await muatSkrip(CDN_JSPDF);
+    var punyaAutoTable=false;
+    try{ punyaAutoTable=typeof (new window.jspdf.jsPDF()).autoTable==='function'; }catch(e){}
+    if(!punyaAutoTable) await muatSkrip(CDN_AUTOTABLE);
+  }
+  async function pastikanXLSX(){
+    if(!window.XLSX) await muatSkrip(CDN_XLSX);
+  }
+
+  /* ===== pengunduh blob (browser dan APK) ===== */
+  function unduhBlob(blob, nama){
+    if(window.AppInventor && window.AppInventor.setWebViewString){
+      try{ window.AppInventor.setWebViewString('SIMPAN|'+nama); }catch(e){}
+    }
+    var u=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=u; a.download=nama;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){
+      try{ document.body.removeChild(a); URL.revokeObjectURL(u); }catch(e){}
+    }, 60000);
+  }
+
+  /* ===== data laporan (sama seperti versi server) ===== */
+  function namaAkunDari(id){
+    var a=cariAkun(id); return (a && a.nama) ? a.nama : '-';
+  }
+  function dataTransaksi(){
+    return TX.filter(function(t){ return inRange(t.tanggal,expRange,expAwal,expAkhir); })
+      .slice().sort(function(a,b){ return a.tanggal<b.tanggal?-1:1; });
+  }
+  function dataUtang(){
+    var label={lunas:'Lunas', sebagian:'Terbayar sebagian', belum:'Belum dibayar'};
+    return UT.slice().sort(function(a,b){ return a.tanggal<b.tanggal?-1:1; })
+      .map(function(u){
+        return {
+          jenis: u.jenis==='piutang'?'Piutang':'Hutang',
+          pihak: u.pihak||'',
+          pokok: +u.pokok||0,
+          tanggal: u.tanggal||'',
+          jatuhTempo: u.jatuhTempo||'',
+          terbayar: utTerbayar(u),
+          sisa: utSisa(u),
+          status: label[utStatus(u)]||'',
+          catatan: u.catatan||''
+        };
+      });
+  }
+  function dataTransfer(){
+    return TR.filter(function(t){ return inRange(t.tanggal,expRange,expAwal,expAkhir); })
+      .slice().sort(function(a,b){ return a.tanggal<b.tanggal?-1:1; });
+  }
+  function namaRentang(){
+    return (labelRentang()||'periode').replace(/[^0-9A-Za-z]+/g,'-').replace(/^-+|-+$/g,'');
+  }
+  function angka(n){ return (Number(n)||0).toLocaleString('id-ID'); }
+
+  /* ===== PDF (menggantikan unduhHTML) ===== */
+  window.unduhHTML=async function(){
+    var rows=dataTransaksi(), ut=dataUtang(), tr=dataTransfer();
+    if(!rows.length && !ut.length && !tr.length){ toast('Tidak ada data pada rentang ini'); return; }
+    toast('Menyiapkan PDF...');
+    try{ await pastikanPDF(); }
+    catch(e){ toast('Perlu internet sekali untuk memuat pembuat PDF'); return; }
+
+    var masuk=rows.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
+    var keluar=rows.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
+    var piutangSisa=ut.filter(function(u){return u.jenis==='Piutang';}).reduce(function(s,u){return s+u.sisa;},0);
+    var hutangSisa=ut.filter(function(u){return u.jenis==='Hutang';}).reduce(function(s,u){return s+u.sisa;},0);
+    var totalTransfer=tr.reduce(function(s,r){return s+(+r.nominal||0);},0);
+
+    var doc=new window.jspdf.jsPDF('p','mm','a4');
+    var BIRU=[24,95,165];
+
+    function judulBagian(teks){
+      var y=doc.lastAutoTable ? doc.lastAutoTable.finalY+12 : 41;
+      if(y>262){ doc.addPage(); y=16; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(11);
+      doc.setTextColor(BIRU[0],BIRU[1],BIRU[2]);
+      doc.text(teks, 14, y);
+      doc.setTextColor(0); doc.setFont('helvetica','normal');
+      return y+3;
+    }
+    function badanKosong(n){
+      return [[{content:'Tidak ada data', colSpan:n, styles:{halign:'center', textColor:130}}]];
+    }
+
+    /* Kop */
+    doc.setFont('helvetica','bold'); doc.setFontSize(15);
+    doc.text('Laporan Keuangan - KeuanganKu', 14, 16);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110);
+    doc.text('Pemilik: '+(((USER&&USER.name)||'-')+'  ('+((USER&&USER.phone)||'')+')'), 14, 22);
+    doc.text('Rentang: '+labelRentang(), 14, 27);
+    doc.text('Dicetak: '+new Date().toLocaleString('id-ID'), 14, 32);
+    doc.setTextColor(0);
+
+    /* Bagian 1: Transaksi */
+    var y1=judulBagian('Transaksi');
+    doc.autoTable({
+      startY:y1,
+      head:[['Tanggal','Jenis','Penampung','Kategori','Keterangan','Catatan','Nominal']],
+      body: rows.length ? rows.map(function(t){
+        var n=(+t.nominal)||0;
+        return [t.tanggal,
+                t.tipe==='pemasukan'?'Pemasukan':'Pengeluaran',
+                namaAkunDari(t.akunId),
+                t.kategori||'',
+                t.keterangan||'',
+                t.catatan||'',
+                (t.tipe==='pemasukan'?'':'-')+angka(n)];
+      }) : badanKosong(7),
+      foot:[
+        ['','','','','','Total pemasukan', angka(masuk)],
+        ['','','','','','Total pengeluaran', angka(keluar)],
+        ['','','','','','Selisih', angka(masuk-keluar)]
+      ],
+      styles:{ fontSize:7, cellPadding:1.4 },
+      headStyles:{ fillColor:BIRU, fontSize:7 },
+      footStyles:{ fillColor:[238,241,245], textColor:30, fontStyle:'bold', fontSize:7, halign:'right' },
+      columnStyles:{ 6:{ halign:'right' } }
+    });
+
+    /* Bagian 2: Hutang & Piutang (seluruh catatan, seperti versi server) */
+    var y2=judulBagian('Hutang & Piutang (per '+new Date().toLocaleDateString('id-ID')+')');
+    doc.autoTable({
+      startY:y2,
+      head:[['Jenis','Pihak','Pokok','Tanggal','Jatuh Tempo','Dibayar','Sisa','Status','Catatan']],
+      body: ut.length ? ut.map(function(u){
+        return [u.jenis, u.pihak, angka(u.pokok), u.tanggal, u.jatuhTempo||'-',
+                angka(u.terbayar), angka(u.sisa), u.status, u.catatan];
+      }) : badanKosong(9),
+      foot:[
+        ['','','','','','','', 'Total piutang berjalan', angka(piutangSisa)],
+        ['','','','','','','', 'Total hutang berjalan', angka(hutangSisa)]
+      ],
+      styles:{ fontSize:6.5, cellPadding:1.3 },
+      headStyles:{ fillColor:BIRU, fontSize:6.5 },
+      footStyles:{ fillColor:[238,241,245], textColor:30, fontStyle:'bold', fontSize:6.5, halign:'right' },
+      columnStyles:{ 2:{halign:'right'}, 5:{halign:'right'}, 6:{halign:'right'} }
+    });
+
+    /* Bagian 3: Perpindahan Saldo */
+    var y3=judulBagian('Perpindahan Saldo');
+    doc.autoTable({
+      startY:y3,
+      head:[['Tanggal','Dari Penampung','Ke Penampung','Nominal','Catatan']],
+      body: tr.length ? tr.map(function(r){
+        return [r.tanggal, namaAkunDari(r.dariAkunId), namaAkunDari(r.keAkunId), angka(r.nominal), r.catatan||''];
+      }) : badanKosong(5),
+      foot:[['','','Total perpindahan', angka(totalTransfer), '']],
+      styles:{ fontSize:7, cellPadding:1.4 },
+      headStyles:{ fillColor:BIRU, fontSize:7 },
+      footStyles:{ fillColor:[238,241,245], textColor:30, fontStyle:'bold', fontSize:7 },
+      columnStyles:{ 3:{ halign:'right' } }
+    });
+
+    var yA=(doc.lastAutoTable?doc.lastAutoTable.finalY:41)+8;
+    if(yA>285){ doc.addPage(); yA=16; }
+    doc.setFontSize(8); doc.setTextColor(130);
+    doc.text('Dibuat otomatis oleh KeuanganKu', 14, yA);
+
+    unduhBlob(doc.output('blob'), 'Laporan-KeuanganKu-'+namaRentang()+'.pdf');
+  };
+
+  /* ===== Excel .xlsx 3 sheet (menggantikan unduhCSV) ===== */
+  window.unduhCSV=async function(){
+    var rows=dataTransaksi(), ut=dataUtang(), tr=dataTransfer();
+    if(!rows.length && !ut.length && !tr.length){ toast('Tidak ada data pada rentang ini'); return; }
+    toast('Menyiapkan Excel...');
+    try{ await pastikanXLSX(); }
+    catch(e){ toast('Perlu internet sekali untuk memuat pembuat Excel'); return; }
+
+    var masuk=rows.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
+    var keluar=rows.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
+    var piutangSisa=ut.filter(function(u){return u.jenis==='Piutang';}).reduce(function(s,u){return s+u.sisa;},0);
+    var hutangSisa=ut.filter(function(u){return u.jenis==='Hutang';}).reduce(function(s,u){return s+u.sisa;},0);
+    var totalTransfer=tr.reduce(function(s,r){return s+(+r.nominal||0);},0);
+    var pemilik=(USER&&USER.name)||'-';
+    var cetak=new Date().toLocaleString('id-ID');
+
+    var wb=XLSX.utils.book_new();
+
+    /* Sheet 1: Transaksi */
+    var d1=[
+      ['Laporan Keuangan - KeuanganKu'],
+      ['Pemilik: '+pemilik],
+      ['Rentang: '+labelRentang()],
+      ['Dicetak: '+cetak],
+      [],
+      ['Tanggal','Jenis','Penampung','Kategori','Keterangan','Catatan','Nominal']
+    ];
+    rows.forEach(function(t){
+      var n=(+t.nominal)||0;
+      d1.push([t.tanggal,
+               t.tipe==='pemasukan'?'Pemasukan':'Pengeluaran',
+               namaAkunDari(t.akunId),
+               t.kategori||'',
+               t.keterangan||'',
+               t.catatan||'',
+               t.tipe==='pemasukan'? n : -n]);
+    });
+    d1.push([]);
+    d1.push(['','','','','','Total pemasukan', masuk]);
+    d1.push(['','','','','','Total pengeluaran', keluar]);
+    d1.push(['','','','','','Selisih', masuk-keluar]);
+    var ws1=XLSX.utils.aoa_to_sheet(d1);
+    ws1['!cols']=[{wch:11},{wch:12},{wch:16},{wch:14},{wch:28},{wch:22},{wch:13}];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Transaksi');
+
+    /* Sheet 2: Hutang & Piutang */
+    var d2=[
+      ['Hutang & Piutang - KeuanganKu'],
+      ['Pemilik: '+pemilik],
+      ['Per tanggal: '+new Date().toLocaleDateString('id-ID')],
+      [],
+      ['Jenis','Pihak','Pokok','Tanggal','Jatuh Tempo','Sudah Dibayar','Sisa','Status','Catatan']
+    ];
+    ut.forEach(function(u){
+      d2.push([u.jenis, u.pihak, u.pokok, u.tanggal, u.jatuhTempo, u.terbayar, u.sisa, u.status, u.catatan]);
+    });
+    d2.push([]);
+    d2.push(['','','','','','Total piutang berjalan', piutangSisa]);
+    d2.push(['','','','','','Total hutang berjalan', hutangSisa]);
+    var ws2=XLSX.utils.aoa_to_sheet(d2);
+    ws2['!cols']=[{wch:9},{wch:18},{wch:12},{wch:11},{wch:11},{wch:13},{wch:12},{wch:16},{wch:24}];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Hutang & Piutang');
+
+    /* Sheet 3: Perpindahan Saldo */
+    var d3=[
+      ['Perpindahan Saldo - KeuanganKu'],
+      ['Pemilik: '+pemilik],
+      ['Rentang: '+labelRentang()],
+      [],
+      ['Tanggal','Dari Penampung','Ke Penampung','Nominal','Catatan']
+    ];
+    tr.forEach(function(r){
+      d3.push([r.tanggal, namaAkunDari(r.dariAkunId), namaAkunDari(r.keAkunId), +r.nominal||0, r.catatan||'']);
+    });
+    d3.push([]);
+    d3.push(['','','Total perpindahan', totalTransfer, '']);
+    var ws3=XLSX.utils.aoa_to_sheet(d3);
+    ws3['!cols']=[{wch:11},{wch:18},{wch:18},{wch:13},{wch:24}];
+    XLSX.utils.book_append_sheet(wb, ws3, 'Perpindahan Saldo');
+
+    var out=XLSX.write(wb, { bookType:'xlsx', type:'array' });
+    var blob=new Blob([out], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    unduhBlob(blob, 'Laporan-KeuanganKu-'+namaRentang()+'.xlsx');
+  };
+
+})();
+</script>
+  
+
+<script>
+/* PATCH: tarik-untuk-menyegarkan (pull to refresh) v6.
+   Cara pakai: dari posisi paling atas halaman, TAHAN jari di layar sampai
+   terasa getar dan indikator mengintip, lalu tarik ke bawah dan lepaskan.
+   Lama menahan diatur konstanta TAHAN di bawah (milidetik).
+   Menyertakan pengaman CSS agar scroll satu jari selalu normal. */
+(function(){
+  var wadah=document.getElementById('scroll');
+  if(!wadah) return;
+
+  var ind=document.createElement('div');
+  ind.id='ptrInd';
+  ind.style.cssText='position:fixed;left:50%;z-index:70;'+
+    'width:38px;height:38px;border-radius:50%;background:var(--card);'+
+    'box-shadow:0 2px 10px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;'+
+    'transform:translate(-50%,-60px);opacity:0;pointer-events:none';
+  ind.innerHTML='<svg id="ptrIkon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--biru)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>';
+  document.body.appendChild(ind);
+
+  var st=document.createElement('style');
+  st.textContent='@keyframes ptrPutar{to{transform:rotate(360deg)}} #ptrInd.putar #ptrIkon{animation:ptrPutar .8s linear infinite}'+
+    ' .scroll{overscroll-behavior:auto !important; touch-action:pan-y pinch-zoom;}'+
+    ' html,body{overscroll-behavior-y:auto !important;}';
+  document.head.appendChild(st);
+
+  var TAHAN=600;   /* lama menahan sebelum mode refresh siap (md); ubah sesuai selera */
+  var GOYANG=12, AMBANG=70, MAKS=110;
+  var y0=0, tarik=0, sibuk=false, siap=false, batal=false, pegang=false, timerTahan=null;
+
+  function posAtas(){
+    var b=document.scrollingElement || document.documentElement;
+    return wadah.scrollTop<=0 && (!b || b.scrollTop<=0);
+  }
+  function aturPosisiDasar(){
+    var pakaiAppbar=wadah.classList.contains('has-appbar');
+    ind.style.top='calc(env(safe-area-inset-top,0px) + '+(pakaiAppbar?'72px':'12px')+')';
+  }
+  function gambar(t){
+    ind.style.transition='none';
+    ind.style.transform='translate(-50%,'+(t-60)+'px)';
+    ind.style.opacity=Math.min(1, 0.35 + t/50);
+    var ik=document.getElementById('ptrIkon');
+    if(ik) ik.style.transform='rotate('+(t*2.6)+'deg)';
+  }
+  function intip(){
+    ind.style.transition='transform .18s ease, opacity .18s ease';
+    ind.style.transform='translate(-50%,-38px)';
+    ind.style.opacity='.55';
+  }
+  function pulang(){
+    ind.style.transition='transform .25s ease, opacity .25s ease';
+    ind.style.transform='translate(-50%,-60px)';
+    ind.style.opacity='0';
+    ind.classList.remove('putar');
+  }
+  function bersihkanTimer(){
+    if(timerTahan){ clearTimeout(timerTahan); timerTahan=null; }
+  }
+  function lepaskan(){
+    siap=false; batal=true; pegang=false; tarik=0;
+    bersihkanTimer(); pulang();
+  }
+
+  wadah.addEventListener('touchstart', function(e){
+    bersihkanTimer();
+    siap=false; batal=false; pegang=false; tarik=0;
+    if(sibuk || e.touches.length>1 || !posAtas()){ batal=true; return; }
+    y0=e.touches[0].clientY;
+    timerTahan=setTimeout(function(){
+      timerTahan=null;
+      if(batal || sibuk || !posAtas()) return;
+      siap=true;
+      aturPosisiDasar();
+      intip();
+      try{ if(navigator.vibrate) navigator.vibrate(15); }catch(err){}
+    }, TAHAN);
+  }, {passive:true});
+
+  wadah.addEventListener('touchmove', function(e){
+    if(batal || sibuk) return;
+    if(e.touches.length>1){ lepaskan(); return; }
+    var dy=e.touches[0].clientY - y0;
+
+    if(!siap){
+      /* bergerak sebelum waktu tahan selesai: murni scroll biasa */
+      if(Math.abs(dy)>GOYANG){ batal=true; bersihkanTimer(); }
+      return;
+    }
+    if(!pegang){
+      if(dy < -4){ lepaskan(); return; }   /* ternyata mau scroll: serahkan */
+      if(dy < 4) return;
+      pegang=true;
+    }
+    tarik=Math.max(0, Math.min(dy*0.5, MAKS));
+    gambar(tarik);
+    e.preventDefault();
+  }, {passive:false});
+
+  function selesaiSentuh(){
+    bersihkanTimer();
+    if(siap && pegang && !sibuk && tarik>=AMBANG){
+      sibuk=true;
+      ind.style.transition='transform .2s ease';
+      ind.style.transform='translate(-50%,'+(AMBANG-60)+'px)';
+      ind.style.opacity='1';
+      ind.classList.add('putar');
+      setTimeout(function(){
+        try{ render(); }catch(err){}
+        setTimeout(function(){ pulang(); sibuk=false; }, 350);
+      }, 450);
+    } else if(siap){
+      pulang();
+    }
+    siap=false; batal=false; pegang=false; tarik=0;
+  }
+  wadah.addEventListener('touchend', selesaiSentuh, {passive:true});
+  wadah.addEventListener('touchcancel', selesaiSentuh, {passive:true});
+})();
+</script>
+
+<script>
+/* PATCH: nonaktifkan pilih teks (select) & copy saat tekan lama di layar.
+   Input, textarea, dan select tetap bisa diketik/dipilih seperti biasa
+   supaya form (nominal, keterangan, dll) tidak terganggu.
+   Tempel sebelum </body>, setelah patch-patch lainnya. */
+(function(){
+  var st=document.createElement('style');
+  st.textContent =
+    '*{ -webkit-user-select:none; -moz-user-select:none; user-select:none; '+
+    '  -webkit-touch-callout:none; }'+
+    'input, textarea, select, [contenteditable="true"]{ '+
+    '  -webkit-user-select:text; -moz-user-select:text; user-select:text; '+
+    '  -webkit-touch-callout:default; }';
+  document.head.appendChild(st);
+
+  /* Cegah menu klik-kanan / tekan lama pada elemen non-input */
+  document.addEventListener('contextmenu', function(e){
+    var t=e.target;
+    if(!(t && /^(INPUT|TEXTAREA)$/.test(t.tagName))) e.preventDefault();
+  });
+
+  /* Cegah proses "mulai memilih teks" di luar input/textarea */
+  document.addEventListener('selectstart', function(e){
+    var t=e.target;
+    if(!(t && /^(INPUT|TEXTAREA)$/.test(t.tagName))) e.preventDefault();
+  });
+
+  /* Opsional: blokir tombol pintasan salin/potong di keyboard eksternal */
+  document.addEventListener('copy', function(e){
+    var t=document.activeElement;
+    if(!(t && /^(INPUT|TEXTAREA)$/.test(t.tagName))) e.preventDefault();
+  });
+})();
+</script>
+
 </body>
 </html>
-
