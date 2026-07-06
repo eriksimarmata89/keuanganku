@@ -31,11 +31,16 @@
   .greet{display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;}
   .greet .hi{font-size:13px; color:var(--tx2);}
   .greet .nm{font-size:16px; font-weight:600; margin-top:2px;}
+  .eye-pill{display:flex; align-items:center; gap:6px; border:none; background:var(--card); color:var(--tx2); font-size:12px; font-weight:600; padding:8px 13px; border-radius:20px;}
+  .eye-pill:active{opacity:.7;}
   .ava{width:38px; height:38px; border-radius:50%; background:#E6F1FB; color:var(--biru); display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px; object-fit:cover;}
 
   .saldo{background:var(--biru); border-radius:16px; padding:18px 20px; color:#fff; position:relative;}
   .saldo-carousel{display:flex; gap:12px; overflow-x:auto; scroll-snap-type:x mandatory; scroll-padding:0 18px; padding:0 18px; box-sizing:border-box; -webkit-overflow-scrolling:touch; scrollbar-width:none;}
   .saldo-carousel::-webkit-scrollbar{display:none;}
+  .saldo-carousel{cursor:grab;}
+  .saldo-carousel.men-drag{scroll-snap-type:none; cursor:grabbing; user-select:none;}
+  .saldo-dot{cursor:pointer;}
   .saldo-slide{scroll-snap-align:start; flex:none; width:100%; box-sizing:border-box;}
   .saldo-dots{display:flex; justify-content:center; gap:6px; margin:9px 0 2px;}
   .saldo-dot{width:6px; height:6px; border-radius:50%; background:var(--line); transition:.2s;}
@@ -288,7 +293,7 @@
   .acts-mask{position:absolute; inset:0; background:rgba(0,0,0,.42);}
   .acts-card{position:absolute; left:50%; bottom:0; transform:translateX(-50%); width:100%; max-width:var(--maxw); background:var(--card); border-radius:18px 18px 0 0; padding:10px 16px 20px;}
   .acts-h{font-size:11px; color:var(--tx3); font-weight:600; text-transform:uppercase; letter-spacing:.5px; padding:8px 4px 6px;}
-  .acts-btn{display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:none; border:none; padding:11px 4px; border-bottom:.5px solid var(--line);}
+  .acts-btn{color:var(--tx); display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:none; border:none; padding:11px 4px; border-bottom:.5px solid var(--line);}
   .acts-btn:active{opacity:.7;}
   .acts-ic{width:38px; height:38px; border-radius:11px; color:#fff; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;}
   .acts-tx{min-width:0;}
@@ -433,7 +438,7 @@
 <div class="acts" id="acts">
   <div class="acts-mask" onclick="closeSheet()"></div>
   <div class="acts-card">
-    <div class="acts-h">Tambah catatan</div>
+    <div class="acts-h">Tambah Transaksi</div>
     <button class="acts-btn" onclick="actAdd('transaksi')"><span class="acts-ic" style="background:var(--biru)">&#8693;</span><div class="acts-tx"><div class="at">Transaksi</div><div class="as">Pemasukan atau pengeluaran</div></div></button>
     <button class="acts-btn" onclick="actAdd('pindah')"><span class="acts-ic" style="background:#7F77DD">&#8646;</span><div class="acts-tx"><div class="at">Pindah Saldo</div><div class="as">Perpindahan antar penampung saldo</div></div></button>
     <button class="acts-btn" onclick="actAdd('piutang')"><span class="acts-ic" style="background:var(--hijau)">&#8599;</span><div class="acts-tx"><div class="at">Piutang</div><div class="as">Uang Anda yang ada pada pihak lain</div></div></button>
@@ -993,7 +998,10 @@ applyTheme();
 /* ====== MODE PRIVASI (sembunyikan nominal) ====== */
 var LS_HIDE='kk_hide';
 var HIDE_AMT=localStorage.getItem(LS_HIDE)==='1';
-function setHideAmt(v){ HIDE_AMT=!!v; localStorage.setItem(LS_HIDE, HIDE_AMT?'1':'0'); render(); }
+function setHideAmt(v){ HIDE_AMT=!!v; localStorage.setItem(LS_HIDE, HIDE_AMT?'1':'0');
+  var c=document.getElementById('saldoCarousel'); var posX=c?c.scrollLeft:0;
+  render();
+  var c2=document.getElementById('saldoCarousel'); if(c2) c2.scrollLeft=posX; }
 function toggleHide(){ setHideAmt(!HIDE_AMT); }
 function fmtRp(n, paksa){ return (HIDE_AMT && !paksa) ? 'Rp \u2022\u2022\u2022\u2022\u2022' : rp(n); }
 function eyeIcon(size){
@@ -1490,7 +1498,7 @@ function renderHome(){
   var slides=[totalSlideHTML(totalSaldo,pM,pK)].concat(AK.map(akunSlideHTML));
   S().innerHTML=
     appBar()+
-    '<div class="topbar"><div class="greet"><div><div class="hi">Halo,</div><div class="nm">'+esc((USER&&USER.name)||'')+'</div></div></div></div>'+
+    '<div class="topbar"><div class="greet"><div><div class="hi">Halo,</div><div class="nm">'+esc((USER&&USER.name)||'')+'</div></div><button class="eye-pill" onclick="toggleHide()" aria-label="Tampilkan atau sembunyikan saldo">'+eyeIcon(14)+'<span>Saldo</span></button></div></div>'+
     '<div class="saldo-carousel" id="saldoCarousel">'+slides.map(function(s){return '<div class="saldo-slide'+(slides.length===1?' solo':'')+'">'+s+'</div>';}).join('')+'</div>'+
     (slides.length>1?('<div class="saldo-dots" id="saldoDots">'+slides.map(function(_,i){return '<span class="saldo-dot'+(i===0?' on':'')+'"></span>';}).join('')+'</div>'):'')+
     '<div class="uring" onclick="goView(\'utang\')">'+
@@ -1507,7 +1515,7 @@ function renderHome(){
   wireSaldoCarousel();
 }
 function totalSlideHTML(saldoTotal,pM,pK){
-  return '<div class="saldo"><button class="saldo-eye" onclick="toggleHide()" aria-label="Tampilkan atau sembunyikan nominal">'+eyeIcon(15)+'</button>'+
+  return '<div class="saldo">'+
     '<div class="lbl">Total saldo</div><div class="amt">'+fmtRp(saldoTotal)+'</div>'+
     '<div class="row"><div><div class="mini">&#9660; Pemasukan</div><div class="val">'+fmtRp(pM)+'</div></div>'+
     '<div><div class="mini">&#9650; Pengeluaran</div><div class="val">'+fmtRp(pK)+'</div></div></div>'+
@@ -1533,6 +1541,51 @@ function wireSaldoCarousel(){
     var idx=Math.round(car.scrollLeft/w);
     document.querySelectorAll('.saldo-dot').forEach(function(d,i){ d.classList.toggle('on', i===idx); });
   }, {passive:true});
+
+  function keSlide(i, mulus){
+    var s=car.children[i]; if(!s) return;
+    car.scrollTo({ left:Math.max(0, s.offsetLeft-18), behavior:mulus?'smooth':'auto' });
+  }
+
+  /* Titik indikator bisa diklik */
+  document.querySelectorAll('#saldoDots .saldo-dot').forEach(function(d,i){
+    d.onclick=function(){ keSlide(i, true); };
+  });
+
+  /* Geser kartu dengan mouse di komputer */
+  window._caroDrag={ car:car, turun:false, geser:false, x0:0, s0:0 };
+  car.addEventListener('mousedown', function(e){
+    var st=window._caroDrag;
+    st.turun=true; st.geser=false; st.x0=e.pageX; st.s0=car.scrollLeft;
+    car.classList.add('men-drag');
+    e.preventDefault();
+  });
+  car.addEventListener('click', function(e){
+    var st=window._caroDrag;
+    if(st && st.geser){ e.stopPropagation(); e.preventDefault(); st.geser=false; }
+  }, true);
+  if(!window._caroDragGlobal){
+    window._caroDragGlobal=true;
+    window.addEventListener('mousemove', function(e){
+      var st=window._caroDrag;
+      if(!st || !st.turun || !document.body.contains(st.car)) return;
+      var dx=e.pageX-st.x0;
+      if(Math.abs(dx)>5) st.geser=true;
+      st.car.scrollLeft=st.s0-dx;
+    });
+    window.addEventListener('mouseup', function(){
+      var st=window._caroDrag;
+      if(!st || !st.turun) return;
+      st.turun=false;
+      st.car.classList.remove('men-drag');
+      if(st.geser && st.car.firstElementChild && document.body.contains(st.car)){
+        var w=st.car.firstElementChild.getBoundingClientRect().width+12;
+        var idx=Math.max(0, Math.min(st.car.children.length-1, Math.round(st.car.scrollLeft/w)));
+        var s=st.car.children[idx];
+        if(s) st.car.scrollTo({ left:Math.max(0, s.offsetLeft-18), behavior:'smooth' });
+      }
+    });
+  }
 }
 
 function txRow(t){
@@ -3123,7 +3176,7 @@ function actAdd(kind){
      Salinan totalSlideHTML dan akunSlideHTML tanpa parameter paksa-tampil,
      plus tombol mata di tiap slide penampung. */
   window.totalSlideHTML=function(saldoTotal,pM,pK){
-    return '<div class="saldo"><button class="saldo-eye" onclick="toggleHide()" aria-label="Tampilkan atau sembunyikan nominal">'+eyeIcon(15)+'</button>'+
+    return '<div class="saldo">'+
       '<div class="lbl">Total saldo</div><div class="amt">'+fmtRp(saldoTotal)+'</div>'+
       '<div class="row"><div><div class="mini">&#9660; Pemasukan</div><div class="val">'+fmtRp(pM)+'</div></div>'+
       '<div><div class="mini">&#9650; Pengeluaran</div><div class="val">'+fmtRp(pK)+'</div></div></div>'+
@@ -3134,7 +3187,6 @@ function actAdd(kind){
   window.akunSlideHTML=function(a){
     var p=akunPeriodeGabung(a.id);
     return '<div class="saldo" onclick="bukaAkun(\''+a.id+'\')" style="cursor:pointer">'+
-      '<button class="saldo-eye" onclick="event.stopPropagation();toggleHide()" aria-label="Tampilkan atau sembunyikan nominal">'+eyeIcon(15)+'</button>'+
       '<div class="lbl">'+akunIconHTML(a,15)+' '+esc(a.nama)+'</div><div class="amt">'+fmtRp(saldoAkunSaatIni(a.id))+'</div>'+
       '<div class="row"><div><div class="mini">&#9660; Pemasukan</div><div class="val">'+fmtRp(p.masuk)+'</div></div>'+
       '<div><div class="mini">&#9650; Pengeluaran</div><div class="val">'+fmtRp(p.keluar)+'</div></div></div>'+
