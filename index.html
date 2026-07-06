@@ -4145,13 +4145,21 @@ function actAdd(kind){
     window._chartTren=new Chart(ctx,{
       type:'line',
       data:{ labels:labels, datasets:[
-        {label:'Pemasukan', data:dMasuk, borderColor:hij, backgroundColor:hij, fill:false, tension:.35, pointRadius:2.5, pointHoverRadius:4, borderWidth:2},
-        {label:'Pengeluaran', data:dKeluar, borderColor:mer, backgroundColor:mer, fill:false, tension:.35, pointRadius:2.5, pointHoverRadius:4, borderWidth:2}
+        {label:'Pemasukan', data:dMasuk, borderColor:hij, backgroundColor:hij, fill:false, tension:.35, pointRadius:2.5, pointHoverRadius:5, pointHitRadius:14, borderWidth:2},
+        {label:'Pengeluaran', data:dKeluar, borderColor:mer, backgroundColor:mer, fill:false, tension:.35, pointRadius:2.5, pointHoverRadius:5, pointHitRadius:14, borderWidth:2}
       ]},
       options:{
+        /* Kunci perbaikan untuk layar sentuh:
+           mode 'index' + intersect false = ketuk di mana saja pada
+           garis vertikal suatu titik, tooltip langsung muncul untuk
+           kedua garis sekaligus, tidak perlu mengenai titiknya persis. */
+        interaction:{ mode:'index', intersect:false },
         plugins:{
           legend:{display:true, labels:{boxWidth:10, font:{size:10}}},
-          tooltip:{callbacks:{label:function(c){ return ' '+c.dataset.label+': '+(HIDE_AMT?'Rp \u2022\u2022\u2022\u2022\u2022':rp(c.parsed.y)); }}}
+          tooltip:{
+            mode:'index', intersect:false,
+            callbacks:{label:function(c){ return ' '+c.dataset.label+': '+(HIDE_AMT?'Rp \u2022\u2022\u2022\u2022\u2022':rp(c.parsed.y)); }}
+          }
         },
         scales:{
           y:{ticks:{display:false}, grid:{color:'rgba(128,128,128,.12)'}},
