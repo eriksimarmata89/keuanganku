@@ -3703,13 +3703,19 @@ function actAdd(kind){
   
 
 <script>
-/* PATCH: tarik-untuk-menyegarkan (pull to refresh) v2.
-   - Gestur baru dibajak setelah arah tarikan jelas (turun > 8px dari posisi
-     paling atas); gerakan lain diserahkan penuh ke scroll native.
-   - Indikator muncul dari bawah header, seperti Instagram. */
+/* PATCH: tarik-untuk-menyegarkan (pull to refresh) v3.
+   Yang menggulir di aplikasi ini adalah dokumen (body), bukan elemen .scroll,
+   sehingga posisi puncak dicek dari document.scrollingElement.
+   Gestur dibajak hanya bila dimulai benar-benar dari puncak halaman dan
+   arahnya jelas turun; selain itu diserahkan penuh ke scroll native. */
 (function(){
   var wadah=document.getElementById('scroll');
   if(!wadah) return;
+
+  function posisiGulir(){
+    var d=document.scrollingElement||document.documentElement;
+    return Math.max(d?d.scrollTop:0, wadah.scrollTop||0, window.pageYOffset||0);
+  }
 
   var ind=document.createElement('div');
   ind.id='ptrInd';
@@ -3721,16 +3727,13 @@ function actAdd(kind){
   document.body.appendChild(ind);
   var st=document.createElement('style');
   st.textContent='@keyframes ptrPutar{to{transform:rotate(360deg)}} #ptrInd.putar #ptrIkon{animation:ptrPutar .8s linear infinite}'+
-    ' .scroll{overscroll-behavior-y:contain;}';
+    ' html,body{overscroll-behavior-y:contain;}';
   document.head.appendChild(st);
 
-  var AMBANG=70, MAKS=110, MULAI=8;
+  var AMBANG=70, MAKS=110, MULAI=10;
   var y0=0, tarik=0, mode=null, sibuk=false;
-  /* mode: null = belum jelas, 'tarik' = gestur refresh, 'lewat' = scroll biasa */
 
   function aturPosisiDasar(){
-    /* Muncul dari bawah header: appbar di tab utama, atau tepi atas di modul
-       (header modul ikut tergulir bersama isi). */
     var pakaiAppbar=wadah.classList.contains('has-appbar');
     ind.style.top='calc(env(safe-area-inset-top,0px) + '+(pakaiAppbar?'72px':'12px')+')';
   }
@@ -3750,7 +3753,7 @@ function actAdd(kind){
 
   wadah.addEventListener('touchstart', function(e){
     if(sibuk){ mode='lewat'; return; }
-    if(wadah.scrollTop<=0){ y0=e.touches[0].clientY; mode=null; tarik=0; }
+    if(posisiGulir()<=0){ y0=e.touches[0].clientY; mode=null; tarik=0; }
     else mode='lewat';
   }, {passive:true});
 
@@ -3758,10 +3761,8 @@ function actAdd(kind){
     if(mode==='lewat' || sibuk) return;
     var dy=e.touches[0].clientY - y0;
     if(mode===null){
-      /* jangan preventDefault sebelum arah gestur jelas,
-         supaya scroll biasa tidak pernah terkunci */
-      if(dy < -4){ mode='lewat'; return; }
-      if(dy > MULAI && wadah.scrollTop<=0){ mode='tarik'; aturPosisiDasar(); }
+      if(dy < -4 || posisiGulir()>0){ mode='lewat'; return; }
+      if(dy > MULAI){ mode='tarik'; aturPosisiDasar(); }
       else return;
     }
     tarik=Math.max(0, Math.min((dy-MULAI)*0.5, MAKS));
