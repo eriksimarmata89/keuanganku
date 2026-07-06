@@ -3647,40 +3647,71 @@ function actAdd(kind){
 </script>
 
 <script>
-/* PATCH LAPORAN LENGKAP. Tempel sebelum </body>, setelah patch lainnya.
-   Menambahkan pada tab Laporan:
-   1. Perbandingan pemasukan/pengeluaran dengan periode sebelumnya.
-   2. Grafik tren arus kas 6 bulan terakhir.
-   3. Rata-rata pengeluaran harian + proyeksi akhir bulan.
-   4. Ringkasan per penampung saldo.
-   5. Lima pengeluaran terbesar periode ini.
-   6. Grafik kategori bisa ditukar pemasukan / pengeluaran.
-   7. Ringkasan hutang & piutang berjalan. */
+/* PATCH LAPORAN LENGKAP v2. Tempel sebelum </body>, menggantikan
+   seluruh "PATCH LAPORAN LENGKAP" versi sebelumnya.
+
+   Perubahan dari v1:
+   1. Filter periode Laporan sendiri (harian/mingguan/bulanan/tahunan),
+      terpisah dari filter periode Beranda supaya tidak saling mengganggu.
+   2. Grafik batang 6 bulan dihapus.
+   3. Diganti 1 grafik GARIS yang isinya menyesuaikan periode:
+      - Harian   : tren per jam (00:00 s/d jam sekarang)
+      - Mingguan : tren per hari (7 hari terakhir)
+      - Bulanan  : tren per tanggal (tanggal 1 s/d hari ini)
+      - Tahunan  : tren per bulan (bulan yang sama tahun lalu s/d bulan ini)
+   4. Kategori, Top 5, Per penampung saldo tetap ada, mengikuti periode baru.
+   5. Hutang & Piutang tetap (tidak tergantung periode, memang saldo berjalan).
+   6. Bagian baru: Insight & Saran Keuangan. */
 (function(){
 
+  /* ====== STATE PERIODE KHUSUS LAPORAN ====== */
+  window.repPeriode = window.repPeriode || 'bulanan';
   window.repKatMode = window.repKatMode || 'keluar';
-  window.setRepKat = function(m){ window.repKatMode = m; render(); };
+  window.setRepKat  = function(m){ window.repKatMode = m; render(); };
   window._chartTren = null;
 
-  function labelBanding(){
-    return periode==='harian' ? 'vs kemarin'
-         : periode==='mingguan' ? 'vs 7 hari sebelumnya'
-         : 'vs bulan lalu';
+  function setRepPeriode(p){ repPeriode=p; render(); }
+  window.setRepPeriode = setRepPeriode;
+
+  function repPeriodeSeg(){
+    var opsi=[['harian','Harian'],['mingguan','Mingguan'],['bulanan','Bulanan'],['tahunan','Tahunan']];
+    return '<div class="seg" style="font-size:12px">'+opsi.map(function(p){
+      return '<button style="font-size:12px" data-rp="'+p[0]+'" class="'+(repPeriode===p[0]?'on':'')+'">'+p[1]+'</button>';
+    }).join('')+'</div>';
+  }
+  function wireRepPeriode(){
+    document.querySelectorAll('.seg [data-rp]').forEach(function(b){
+      b.onclick=function(){ setRepPeriode(b.dataset.rp); };
+    });
   }
 
-  function dalamPeriodeLalu(tgl){
+  /* ====== FILTER TANGGAL SESUAI PERIODE LAPORAN ====== */
+  function dalamRepPeriode(tgl){
     var t=new Date(tgl+'T00:00:00'), now=new Date(); now.setHours(0,0,0,0);
-    if(periode==='harian'){
-      var k=new Date(now); k.setDate(now.getDate()-1);
-      return t.getTime()===k.getTime();
-    }
-    if(periode==='mingguan'){
-      var a=new Date(now); a.setDate(now.getDate()-13);
-      var b=new Date(now); b.setDate(now.getDate()-7);
-      return t>=a && t<=b;
-    }
+    if(repPeriode==='harian') return t.getTime()===now.getTime();
+    if(repPeriode==='mingguan'){ var a=new Date(now); a.setDate(now.getDate()-6); return t>=a && t<=now; }
+    if(repPeriode==='tahunan') return t.getFullYear()===now.getFullYear();
+    return t.getMonth()===now.getMonth() && t.getFullYear()===now.getFullYear(); /* bulanan */
+  }
+  function dalamRepPeriodeLalu(tgl){
+    var t=new Date(tgl+'T00:00:00'), now=new Date(); now.setHours(0,0,0,0);
+    if(repPeriode==='harian'){ var k=new Date(now); k.setDate(now.getDate()-1); return t.getTime()===k.getTime(); }
+    if(repPeriode==='mingguan'){ var a=new Date(now); a.setDate(now.getDate()-13); var b=new Date(now); b.setDate(now.getDate()-7); return t>=a && t<=b; }
+    if(repPeriode==='tahunan'){ return t.getFullYear()===now.getFullYear()-1; }
     var m=new Date(now.getFullYear(), now.getMonth()-1, 1);
     return t.getMonth()===m.getMonth() && t.getFullYear()===m.getFullYear();
+  }
+  function labelBanding(){
+    return repPeriode==='harian' ? 'vs kemarin'
+         : repPeriode==='mingguan' ? 'vs 7 hari sebelumnya'
+         : repPeriode==='tahunan' ? 'vs tahun lalu'
+         : 'vs bulan lalu';
+  }
+  function labelPeriodeAktif(){
+    return repPeriode==='harian' ? 'hari ini'
+         : repPeriode==='mingguan' ? '7 hari terakhir'
+         : repPeriode==='tahunan' ? 'tahun ini'
+         : 'bulan ini';
   }
 
   function deltaHTML(kini, lalu, burukJikaNaik){
@@ -3693,70 +3724,106 @@ function actAdd(kind){
     return '<div style="font-size:10.5px;margin-top:3px;color:'+warna+'">'+tanda+' '+Math.abs(d).toFixed(0)+'% '+labelBanding()+'</div>';
   }
 
+  /* ====== PER PENAMPUNG SALDO, MENGIKUTI PERIODE LAPORAN ====== */
+  function akunPeriodeRep(akunId){
+    var aid=String(akunId);
+    var px=TX.filter(function(t){return String(t.akunId)===aid && dalamRepPeriode(t.tanggal);});
+    var pM=px.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
+    var pK=px.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
+    return {masuk:pM, keluar:pK};
+  }
+  function akunTransferPeriodeRep(akunId){
+    var aid=String(akunId);
+    var masuk=TR.filter(function(t){return String(t.keAkunId)===aid && dalamRepPeriode(t.tanggal);}).reduce(function(s,t){return s+(+t.nominal);},0);
+    var keluar=TR.filter(function(t){return String(t.dariAkunId)===aid && dalamRepPeriode(t.tanggal);}).reduce(function(s,t){return s+(+t.nominal);},0);
+    return {masuk:masuk, keluar:keluar};
+  }
+  function akunPeriodeGabungRep(akunId){
+    var p=akunPeriodeRep(akunId), tp=akunTransferPeriodeRep(akunId);
+    return {masuk:p.masuk+tp.masuk, keluar:p.keluar+tp.keluar};
+  }
+
+  /* ====== RENDER TAB LAPORAN ====== */
   window.renderReport=function(){
     var now=new Date(); now.setHours(0,0,0,0);
-    var px=TX.filter(function(t){return dalamPeriode(t.tanggal);});
+    var px=TX.filter(function(t){return dalamRepPeriode(t.tanggal);});
     var masuk=px.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
     var keluar=px.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
 
-    /* 1. Periode sebelumnya */
-    var pl=TX.filter(function(t){return dalamPeriodeLalu(t.tanggal);});
+    var pl=TX.filter(function(t){return dalamRepPeriodeLalu(t.tanggal);});
     var masukLalu=pl.filter(function(t){return t.tipe==='pemasukan';}).reduce(function(s,t){return s+(+t.nominal);},0);
     var keluarLalu=pl.filter(function(t){return t.tipe==='pengeluaran';}).reduce(function(s,t){return s+(+t.nominal);},0);
 
-    /* 3. Rata-rata harian & proyeksi */
-    var hariBerjalan = periode==='harian' ? 1 : periode==='mingguan' ? 7 : now.getDate();
-    var rata = hariBerjalan ? keluar/hariBerjalan : 0;
-    var hariBulan = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
-    var proyeksi = rata*hariBulan;
+    /* Rata-rata & proyeksi: hanya relevan untuk bulanan & tahunan */
+    var panelRata='';
+    if(repPeriode==='bulanan'){
+      var hariBerjalan=now.getDate();
+      var rata=hariBerjalan?keluar/hariBerjalan:0;
+      var hariBulan=new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+      var proyeksi=rata*hariBulan;
+      panelRata='<div class="panel" style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px">'+
+        '<div><div style="font-size:11px;color:var(--tx2)">Rata-rata pengeluaran harian</div><div style="font-size:15px;font-weight:700;margin-top:2px">'+fmtRp(rata)+'</div></div>'+
+        '<div style="text-align:right"><div style="font-size:11px;color:var(--tx2)">Proyeksi akhir bulan</div><div style="font-size:15px;font-weight:700;margin-top:2px;color:'+(proyeksi>masuk&&masuk>0?'var(--merah-tx)':'var(--tx)')+'">'+fmtRp(proyeksi)+'</div></div></div>'+
+        (proyeksi>masuk&&masuk>0?'<div style="font-size:10.5px;color:var(--merah-tx);margin-top:8px">Dengan laju ini, pengeluaran bulan ini berpotensi melebihi pemasukan.</div>':'')+
+        '</div>';
+    } else if(repPeriode==='tahunan'){
+      var bulanBerjalan=now.getMonth()+1;
+      var rataB=bulanBerjalan?keluar/bulanBerjalan:0;
+      var proyeksiT=rataB*12;
+      var rataMasukB=bulanBerjalan?masuk/bulanBerjalan:0;
+      var proyeksiMasukT=rataMasukB*12;
+      panelRata='<div class="panel" style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px">'+
+        '<div><div style="font-size:11px;color:var(--tx2)">Rata-rata pengeluaran bulanan</div><div style="font-size:15px;font-weight:700;margin-top:2px">'+fmtRp(rataB)+'</div></div>'+
+        '<div style="text-align:right"><div style="font-size:11px;color:var(--tx2)">Proyeksi akhir tahun</div><div style="font-size:15px;font-weight:700;margin-top:2px;color:'+(proyeksiT>proyeksiMasukT&&proyeksiMasukT>0?'var(--merah-tx)':'var(--tx)')+'">'+fmtRp(proyeksiT)+'</div></div></div>'+
+        (proyeksiT>proyeksiMasukT&&proyeksiMasukT>0?'<div style="font-size:10.5px;color:var(--merah-tx);margin-top:8px">Dengan laju ini, pengeluaran setahun berpotensi melebihi pemasukan.</div>':'')+
+        '</div>';
+    }
 
-    /* 6. Kategori sesuai mode */
-    var tipeKat = window.repKatMode==='masuk' ? 'pemasukan' : 'pengeluaran';
+    /* Kategori sesuai mode */
+    var tipeKat = repKatMode==='masuk' ? 'pemasukan' : 'pengeluaran';
     var perKat={};
     px.filter(function(t){return t.tipe===tipeKat;}).forEach(function(t){ perKat[t.kategori]=(perKat[t.kategori]||0)+(+t.nominal); });
     var kats=Object.keys(perKat).map(function(k){return [k,perKat[k]];}).sort(function(a,b){return b[1]-a[1];});
     var totKat=kats.reduce(function(s,kv){return s+kv[1];},0)||1;
 
-    /* 5. Top 5 pengeluaran */
+    /* Top 5 pengeluaran */
     var top5=px.filter(function(t){return t.tipe==='pengeluaran';})
       .slice().sort(function(a,b){return (+b.nominal)-(+a.nominal);}).slice(0,5);
 
-    /* 7. Hutang & piutang */
+    /* Hutang & piutang (saldo berjalan, tidak tergantung periode) */
     var piutangSisa=UT.filter(function(u){return u.jenis==='piutang';}).reduce(function(s,u){return s+utSisa(u);},0);
     var hutangSisa=UT.filter(function(u){return u.jenis==='hutang';}).reduce(function(s,u){return s+utSisa(u);},0);
     var belumLunas=UT.filter(function(u){return utSisa(u)>0;});
     var jt=belumLunas.filter(function(u){return u.jatuhTempo;})
       .sort(function(a,b){return a.jatuhTempo<b.jatuhTempo?-1:1;})[0];
 
-    var repGab=daftarGabungan(px, TR.filter(function(t){return dalamPeriode(t.tanggal);}));
+    var repGab=daftarGabungan(px, TR.filter(function(t){return dalamRepPeriode(t.tanggal);}));
     var nExp=TX.filter(function(t){return inRange(t.tanggal,expRange,expAwal,expAkhir);}).length;
 
-    S().innerHTML=
-      appBar()+periodeSeg()+
+    var judulTren = repPeriode==='harian' ? 'Tren transaksi per jam (hari ini)'
+                  : repPeriode==='mingguan' ? 'Tren transaksi 7 hari terakhir'
+                  : repPeriode==='tahunan' ? 'Tren transaksi 12 bulan terakhir'
+                  : 'Tren transaksi bulan ini (per tanggal)';
 
-      /* Kartu utama + perbandingan */
+    S().innerHTML=
+      appBar()+repPeriodeSeg()+
+
       '<div class="rep-cards">'+
         '<div class="rep-card"><div class="l">Pemasukan</div><div class="v" style="color:var(--hijau-tx)">'+fmtRp(masuk)+'</div>'+deltaHTML(masuk,masukLalu,false)+'</div>'+
         '<div class="rep-card"><div class="l">Pengeluaran</div><div class="v" style="color:var(--merah-tx)">'+fmtRp(keluar)+'</div>'+deltaHTML(keluar,keluarLalu,true)+'</div>'+
       '</div>'+
 
-      /* Rata-rata & proyeksi */
-      '<div class="panel" style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px">'+
-        '<div><div style="font-size:11px;color:var(--tx2)">Rata-rata pengeluaran harian</div><div style="font-size:15px;font-weight:700;margin-top:2px">'+fmtRp(rata)+'</div></div>'+
-        (periode==='bulanan' ? '<div style="text-align:right"><div style="font-size:11px;color:var(--tx2)">Proyeksi akhir bulan</div><div style="font-size:15px;font-weight:700;margin-top:2px;color:'+(proyeksi>masuk&&masuk>0?'var(--merah-tx)':'var(--tx)')+'">'+fmtRp(proyeksi)+'</div></div>' : '')+
-      '</div>'+
-      (periode==='bulanan' && proyeksi>masuk && masuk>0 ? '<div style="font-size:10.5px;color:var(--merah-tx);margin-top:8px">Dengan laju ini, pengeluaran bulan ini akan melebihi pemasukan.</div>' : '')+
-      '</div>'+
+      panelRata+
 
-      /* Tren 6 bulan */
-      '<div class="sec-head" style="padding-top:14px"><div class="t">Arus kas 6 bulan terakhir</div></div>'+
-      '<div class="panel"><div style="height:180px"><canvas id="trenBar"></canvas></div></div>'+
+      /* Grafik garis tren */
+      '<div class="sec-head" style="padding-top:14px"><div class="t">'+judulTren+'</div></div>'+
+      '<div class="panel"><div style="height:200px"><canvas id="trenLine"></canvas></div></div>'+
 
       /* Kategori dengan toggle */
       '<div class="sec-head" style="padding-top:14px"><div class="t">'+(tipeKat==='pemasukan'?'Pemasukan':'Pengeluaran')+' per kategori</div></div>'+
       '<div class="chips">'+
-        '<button class="chip '+(window.repKatMode==='keluar'?'on':'')+'" onclick="setRepKat(\'keluar\')">Pengeluaran</button>'+
-        '<button class="chip '+(window.repKatMode==='masuk'?'on':'')+'" onclick="setRepKat(\'masuk\')">Pemasukan</button>'+
+        '<button class="chip '+(repKatMode==='keluar'?'on':'')+'" onclick="setRepKat(\'keluar\')">Pengeluaran</button>'+
+        '<button class="chip '+(repKatMode==='masuk'?'on':'')+'" onclick="setRepKat(\'masuk\')">Pemasukan</button>'+
       '</div>'+
       (kats.length?'<div class="chartwrap"><canvas id="donut"></canvas></div><div class="catlist">'+
         kats.map(function(kv,i){return '<div class="catrow"><span class="dot" style="background:'+WARNA_KAT[i%WARNA_KAT.length]+'"></span><span class="cn">'+kv[0]+'</span><span class="cv">'+fmtRp(kv[1])+'</span><span class="cp">'+Math.round(kv[1]/totKat*100)+'%</span></div>';}).join('')+'</div>'
@@ -3771,10 +3838,10 @@ function actAdd(kind){
           '<b style="font-size:12.5px;color:var(--merah-tx)">'+fmtRp(t.nominal)+'</b></div>';
       }).join('')+'</div>' : '')+
 
-      /* Ringkasan per penampung saldo */
-      (AK.length ? '<div class="sec-head" style="padding-top:14px"><div class="t">Per penampung saldo</div></div>'+
+      /* Per penampung saldo */
+      (AK.length ? '<div class="sec-head" style="padding-top:14px"><div class="t">Per penampung saldo ('+labelPeriodeAktif()+')</div></div>'+
       '<div class="panel">'+AK.map(function(a,i){
-        var p=akunPeriodeGabung(a.id);
+        var p=akunPeriodeGabungRep(a.id);
         return '<div style="padding:9px 0;'+(i<AK.length-1?'border-bottom:.5px solid var(--line)':'')+'">'+
           '<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12.5px;font-weight:600">'+esc(a.nama)+'</span><b style="font-size:12.5px">'+fmtRp(saldoAkunSaatIni(a.id))+'</b></div>'+
           '<div style="display:flex;gap:16px;font-size:10.5px;color:var(--tx3);margin-top:3px">'+
@@ -3792,7 +3859,10 @@ function actAdd(kind){
         (belumLunas.length ? belumLunas.length+' catatan belum lunas.'+(jt?' Jatuh tempo terdekat: '+esc(jt.pihak)+', '+labelTanggalSingkat(jt.jatuhTempo)+'.':'') : 'Semua catatan hutang dan piutang sudah lunas.')+
       '</div>'+
 
-      /* Unduh laporan (tidak berubah) */
+      /* Insight & Saran */
+      buatInsightHTML()+
+
+      /* Unduh laporan */
       '<div class="sec-head" style="padding-top:14px"><div class="t">Unduh laporan</div></div>'+
       '<div class="chips">'+[['hari','Harian'],['minggu','Mingguan'],['bulan','Bulanan'],['kustom','Kustom']].map(function(c){return '<button class="chip '+(expRange===c[0]?'on':'')+'" onclick="setExpRange(\''+c[0]+'\')">'+c[1]+'</button>';}).join('')+'</div>'+
       (expRange==='kustom'?'<div class="panel"><div class="kustom-date"><div><label class="fl">Dari</label><input class="field" type="date" value="'+expAwal+'" onchange="expAwal=this.value;render();"></div>'+
@@ -3802,43 +3872,82 @@ function actAdd(kind){
         '<button class="btn-line" style="margin-top:0;flex:1" '+(nExp?'':'disabled')+' onclick="unduhCSV()">&#128202; Excel</button></div>'+
         '<div style="font-size:11px;color:var(--tx3);margin-top:10px">Laporan dibuat langsung di perangkat dan tersimpan di folder Download/KeuanganKu.</div></div>'+
 
-      /* Daftar transaksi (tidak berubah) */
+      /* Daftar transaksi */
       '<div class="sec-head" style="padding-top:10px"><div class="t">Daftar transaksi</div><div style="font-size:11px;color:var(--tx3)">'+repGab.length+' catatan</div></div>'+
       limitChips(repLimit,'setRepLimit')+
       '<div class="list" style="padding-top:6px;padding-bottom:10px">'+(repGab.length?repGab.slice(0,repLimit||repGab.length).map(barisGabungan).join(''):'<div class="empty">Belum ada catatan pada periode ini.</div>')+'</div>';
 
-    wirePeriode();
+    wireRepPeriode();
     if(kats.length) gambarDonut(kats);
-    gambarTren();
+    gambarTrenGaris();
   };
 
-  /* 2. Grafik batang arus kas 6 bulan */
-  function gambarTren(){
-    var ctx=document.getElementById('trenBar'); if(!ctx) return;
+  /* ====== GRAFIK GARIS TREN (menggantikan grafik batang 6 bulan) ====== */
+  function gambarTrenGaris(){
+    var ctx=document.getElementById('trenLine'); if(!ctx) return;
     if(window._chartTren){ try{ window._chartTren.destroy(); }catch(e){} window._chartTren=null; }
+
     var now=new Date();
     var labels=[], dMasuk=[], dKeluar=[];
-    for(var i=5;i>=0;i--){
-      var d0=new Date(now.getFullYear(), now.getMonth()-i, 1);
-      var mm=d0.getMonth(), yy=d0.getFullYear(), m=0, k=0;
+
+    if(repPeriode==='harian'){
+      var todayStr=todayISO(), jamSkr=now.getHours();
+      var perJamM=[], perJamK=[];
+      for(var h=0; h<24; h++){ perJamM.push(0); perJamK.push(0); }
       TX.forEach(function(t){
-        var td=new Date(t.tanggal+'T00:00:00');
-        if(td.getMonth()===mm && td.getFullYear()===yy){
-          if(t.tipe==='pemasukan') m+=(+t.nominal);
-          else if(t.tipe==='pengeluaran') k+=(+t.nominal);
-        }
+        if(t.tanggal!==todayStr) return;
+        var jam=0;
+        if(t.createdAt){ try{ jam=new Date(t.createdAt).getHours(); }catch(e){ jam=0; } }
+        if(t.tipe==='pemasukan') perJamM[jam]+=(+t.nominal);
+        else if(t.tipe==='pengeluaran') perJamK[jam]+=(+t.nominal);
       });
-      labels.push(d0.toLocaleDateString('id-ID',{month:'short'}));
-      dMasuk.push(m); dKeluar.push(k);
+      for(var i=0;i<=jamSkr;i++){
+        labels.push(String(i).padStart(2,'0')+':00');
+        dMasuk.push(perJamM[i]); dKeluar.push(perJamK[i]);
+      }
+    } else if(repPeriode==='mingguan'){
+      for(var d=6; d>=0; d--){
+        var d0=new Date(now); d0.setHours(0,0,0,0); d0.setDate(now.getDate()-d);
+        var iso=d0.getFullYear()+'-'+String(d0.getMonth()+1).padStart(2,'0')+'-'+String(d0.getDate()).padStart(2,'0');
+        var m=0,k=0;
+        TX.forEach(function(t){ if(t.tanggal===iso){ if(t.tipe==='pemasukan') m+=(+t.nominal); else if(t.tipe==='pengeluaran') k+=(+t.nominal); } });
+        labels.push(d0.toLocaleDateString('id-ID',{weekday:'short', day:'numeric'}));
+        dMasuk.push(m); dKeluar.push(k);
+      }
+    } else if(repPeriode==='bulanan'){
+      var hariIni=now.getDate();
+      for(var tgl=1; tgl<=hariIni; tgl++){
+        var dd=new Date(now.getFullYear(), now.getMonth(), tgl);
+        var iso2=dd.getFullYear()+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getDate()).padStart(2,'0');
+        var m2=0,k2=0;
+        TX.forEach(function(t){ if(t.tanggal===iso2){ if(t.tipe==='pemasukan') m2+=(+t.nominal); else if(t.tipe==='pengeluaran') k2+=(+t.nominal); } });
+        labels.push(String(tgl));
+        dMasuk.push(m2); dKeluar.push(k2);
+      }
+    } else { /* tahunan: bulan yang sama tahun lalu s/d bulan ini (13 titik) */
+      for(var mo=12; mo>=0; mo--){
+        var d1=new Date(now.getFullYear(), now.getMonth()-mo, 1);
+        var mm=d1.getMonth(), yy=d1.getFullYear(), m3=0,k3=0;
+        TX.forEach(function(t){
+          var td=new Date(t.tanggal+'T00:00:00');
+          if(td.getMonth()===mm && td.getFullYear()===yy){
+            if(t.tipe==='pemasukan') m3+=(+t.nominal);
+            else if(t.tipe==='pengeluaran') k3+=(+t.nominal);
+          }
+        });
+        labels.push(d1.toLocaleDateString('id-ID',{month:'short', year:'2-digit'}));
+        dMasuk.push(m3); dKeluar.push(k3);
+      }
     }
+
     var css=getComputedStyle(document.documentElement);
     var hij=(css.getPropertyValue('--hijau-tx')||'').trim()||'#1D9E75';
     var mer=(css.getPropertyValue('--merah-tx')||'').trim()||'#D85A30';
     window._chartTren=new Chart(ctx,{
-      type:'bar',
+      type:'line',
       data:{ labels:labels, datasets:[
-        {label:'Pemasukan', data:dMasuk, backgroundColor:hij, borderRadius:4},
-        {label:'Pengeluaran', data:dKeluar, backgroundColor:mer, borderRadius:4}
+        {label:'Pemasukan', data:dMasuk, borderColor:hij, backgroundColor:hij, fill:false, tension:.35, pointRadius:2.5, pointHoverRadius:4, borderWidth:2},
+        {label:'Pengeluaran', data:dKeluar, borderColor:mer, backgroundColor:mer, fill:false, tension:.35, pointRadius:2.5, pointHoverRadius:4, borderWidth:2}
       ]},
       options:{
         plugins:{
@@ -3847,11 +3956,151 @@ function actAdd(kind){
         },
         scales:{
           y:{ticks:{display:false}, grid:{color:'rgba(128,128,128,.12)'}},
-          x:{grid:{display:false}, ticks:{font:{size:10}}}
+          x:{grid:{display:false}, ticks:{font:{size:9}, maxRotation:0, autoSkip:true}}
         },
         maintainAspectRatio:false
       }
     });
+  }
+
+  /* ====== INSIGHT & SARAN KEUANGAN ====== */
+  function sum(arr,tipe){ return arr.filter(function(t){return t.tipe===tipe;}).reduce(function(s,t){return s+(+t.nominal);},0); }
+
+  function badgeSurplus(masukV, keluarV){
+    if(masukV<=0) return {lbl:'Data terbatas', cls:'belum'};
+    var r=keluarV/masukV;
+    if(r>1) return {lbl:'Defisit', cls:'telat'};
+    if(r>=0.8) return {lbl:'Ketat', cls:'seb'};
+    return {lbl:'Surplus', cls:'lunas'};
+  }
+  function baris(label, masukV, keluarV, badge, catatan){
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:.5px solid var(--line)">'+
+      '<div><div style="font-size:12.5px;font-weight:600">'+label+'</div>'+
+      '<div style="font-size:10.5px;color:var(--tx3);margin-top:2px">Masuk '+fmtRp(masukV)+' &middot; Keluar '+fmtRp(keluarV)+(catatan?(' &middot; '+catatan):'')+'</div></div>'+
+      '<span class="ubadge '+badge.cls+'" style="flex-shrink:0;margin-left:10px">'+badge.lbl+'</span>'+
+      '</div>';
+  }
+
+  function buatInsightHTML(){
+    var now=new Date(); now.setHours(0,0,0,0);
+
+    /* Harian */
+    var todayStr=todayISO();
+    var txHari=TX.filter(function(t){return t.tanggal===todayStr;});
+    var keluarHari=sum(txHari,'pengeluaran'), masukHari=sum(txHari,'pemasukan');
+    var d30=new Date(now); d30.setDate(d30.getDate()-30);
+    var tx30=TX.filter(function(t){ var td=new Date(t.tanggal+'T00:00:00'); return td>=d30 && td<now && t.tipe==='pengeluaran'; });
+    var rataHarian30 = sum(tx30,'pengeluaran')/30;
+    var badgeHari;
+    if(!rataHarian30){ badgeHari={lbl:'Data terbatas', cls:'belum'}; }
+    else{
+      var rH=keluarHari/rataHarian30;
+      badgeHari = rH>1.3 ? {lbl:'Di atas rata-rata', cls:'telat'} : rH<0.7 ? {lbl:'Di bawah rata-rata', cls:'lunas'} : {lbl:'Sesuai rata-rata', cls:'belum'};
+    }
+
+    /* Mingguan */
+    var awalMinggu=new Date(now); awalMinggu.setDate(now.getDate()-6);
+    var txMinggu=TX.filter(function(t){ var td=new Date(t.tanggal+'T00:00:00'); return td>=awalMinggu && td<=now; });
+    var keluarMinggu=sum(txMinggu,'pengeluaran'), masukMinggu=sum(txMinggu,'pemasukan');
+
+    /* Bulanan */
+    var txBulan=TX.filter(function(t){ var td=new Date(t.tanggal+'T00:00:00'); return td.getMonth()===now.getMonth() && td.getFullYear()===now.getFullYear(); });
+    var keluarBulan=sum(txBulan,'pengeluaran'), masukBulan=sum(txBulan,'pemasukan');
+
+    /* Tahunan */
+    var txTahun=TX.filter(function(t){ var td=new Date(t.tanggal+'T00:00:00'); return td.getFullYear()===now.getFullYear(); });
+    var keluarTahun=sum(txTahun,'pengeluaran'), masukTahun=sum(txTahun,'pemasukan');
+
+    /* Kategori dominan bulan ini */
+    var katBulan={};
+    txBulan.filter(function(t){return t.tipe==='pengeluaran';}).forEach(function(t){ katBulan[t.kategori]=(katBulan[t.kategori]||0)+(+t.nominal); });
+    var katArr=Object.keys(katBulan).map(function(k){return [k,katBulan[k]];}).sort(function(a,b){return b[1]-a[1];});
+    var katTop=katArr[0];
+    var persenKatTop = (keluarBulan>0 && katTop) ? (katTop[1]/keluarBulan*100) : 0;
+
+    /* Hutang */
+    var hutangSisaAll=UT.filter(function(u){return u.jenis==='hutang';}).reduce(function(s,u){return s+utSisa(u);},0);
+
+    /* Deteksi pola */
+    var flags=[];
+    var rasioTabunganBulan = masukBulan>0 ? ((masukBulan-keluarBulan)/masukBulan*100) : null;
+    if(masukBulan>0 && keluarBulan>=masukBulan){
+      flags.push('Pengeluaran bulan ini sudah menyamai atau melebihi pemasukan bulan ini, tanda gaya hidup mendekati atau melebihi kemampuan.');
+    }
+    if(katTop && persenKatTop>=45){
+      flags.push('Kategori "'+katTop[0]+'" menyerap sekitar '+Math.round(persenKatTop)+'% dari total pengeluaran bulan ini, indikasi belanja terkonsentrasi/konsumtif pada kategori tersebut.');
+    }
+    var jmlTransBelanjaHiburan = txBulan.filter(function(t){ return t.tipe==='pengeluaran' && (t.kategori==='Hiburan'||t.kategori==='Belanja'); }).length;
+    if(jmlTransBelanjaHiburan>=12){
+      flags.push('Frekuensi transaksi Belanja/Hiburan cukup tinggi bulan ini ('+jmlTransBelanjaHiburan+' transaksi), perlu diwaspadai potensi pembelian impulsif.');
+    }
+    if(hutangSisaAll>0 && masukBulan>0 && hutangSisaAll >= masukBulan*3){
+      flags.push('Total hutang berjalan setara lebih dari 3x pemasukan bulan ini, beban hutang tergolong berat.');
+    }
+    if(rasioTabunganBulan!==null && rasioTabunganBulan>=70){
+      flags.push('Tingkat tabungan bulan ini sangat tinggi (sekitar '+Math.round(rasioTabunganBulan)+'%), baik untuk cadangan dana namun perlu dicek apakah kebutuhan penting sudah terpenuhi.');
+    }
+
+    var flagsHtml = flags.length
+      ? flags.map(function(f){ return '<div style="display:flex;gap:8px;padding:6px 0;font-size:12px;color:var(--tx2);line-height:1.5"><span>&#9888;</span><span>'+esc(f)+'</span></div>'; }).join('')
+      : '<div style="font-size:12px;color:var(--tx2);line-height:1.5">Tidak terdeteksi pola mencolok. Kondisi pengeluaran relatif seimbang berdasarkan data yang tercatat.</div>';
+
+    /* Paragraf dampak jika dipertahankan */
+    var paragraf;
+    if(rasioTabunganBulan===null){
+      paragraf='Belum cukup data pemasukan bulan ini untuk menilai keseimbangan pengeluaran secara menyeluruh. Catat juga transaksi pemasukan agar insight dapat lebih akurat.';
+    } else if(rasioTabunganBulan<0){
+      paragraf='Ketika pengeluaran rutin melebihi pemasukan, dana darurat akan tergerus dan berpotensi menambah hutang baru untuk menutup kekurangan. Bila pola ini berlanjut beberapa bulan berturut-turut, disarankan segera meninjau pos pengeluaran terbesar dan menyesuaikannya dengan pemasukan yang tersedia.';
+    } else if(rasioTabunganBulan>70){
+      paragraf='Tingkat hemat yang sangat tinggi umumnya baik untuk membangun tabungan atau dana darurat, namun bila dilakukan berlebihan dalam jangka panjang dapat mengorbankan kebutuhan penting (kesehatan, pengembangan diri, relasi sosial) atau membuat dana hanya mengendap tanpa berkembang. Pertimbangkan mengalokasikan sebagian surplus untuk instrumen yang lebih produktif.';
+    } else {
+      paragraf='Keseimbangan antara pemasukan dan pengeluaran saat ini tergolong wajar. Menjaga rasio tabungan pada level yang sehat (idealnya sekitar 20-30% dari pemasukan) akan membantu kondisi keuangan tetap stabil dalam jangka panjang tanpa terlalu membatasi kebutuhan sehari-hari.';
+    }
+
+    /* Saran perbaikan */
+    var saran=[];
+    saran.push('Catat setiap transaksi sesegera mungkin (termasuk pemasukan) agar data lebih lengkap dan insight lebih akurat.');
+    if(rasioTabunganBulan!==null && rasioTabunganBulan<0){
+      saran.push('Evaluasi kategori pengeluaran terbesar bulan ini'+(katTop?(' ("'+katTop[0]+'")'):'')+' dan cari pos yang bisa dikurangi lebih dulu.');
+    }
+    if(hutangSisaAll>0){
+      saran.push('Prioritaskan pelunasan hutang, mulai dari yang jatuh temponya paling dekat, untuk mengurangi beban kewajiban ke depan.');
+    }
+    if(jmlTransBelanjaHiburan>=12){
+      saran.push('Terapkan jeda waktu (misalnya 24 jam) sebelum melakukan pembelian non-esensial, untuk mengurangi potensi pembelian impulsif.');
+    }
+    if(katTop && persenKatTop>=45){
+      saran.push('Tetapkan anggaran bulanan khusus untuk kategori "'+katTop[0]+'" agar proporsinya lebih terkendali.');
+    }
+    if(rasioTabunganBulan!==null && rasioTabunganBulan>70){
+      saran.push('Pertimbangkan mengalokasikan sebagian dana surplus untuk investasi atau kebutuhan pengembangan diri, bukan hanya disimpan diam.');
+    }
+    var saranHtml = saran.map(function(s,i){
+      return '<div style="display:flex;gap:8px;padding:6px 0;font-size:12px;color:var(--tx2);line-height:1.5"><span style="color:var(--biru);font-weight:700">'+(i+1)+'.</span><span>'+esc(s)+'</span></div>';
+    }).join('');
+
+    return (
+      '<div class="sec-head" style="padding-top:14px"><div class="t">Insight &amp; Saran Keuangan</div></div>'+
+      '<div class="panel">'+
+        '<div style="font-size:12.5px;font-weight:600;margin-bottom:2px">Ringkasan kondisi</div>'+
+        baris('Hari ini', masukHari, keluarHari, badgeHari, rataHarian30?('rata-rata harian '+fmtRp(rataHarian30)):'')+
+        baris('7 hari terakhir', masukMinggu, keluarMinggu, badgeSurplus(masukMinggu,keluarMinggu), '')+
+        baris('Bulan ini', masukBulan, keluarBulan, badgeSurplus(masukBulan,keluarBulan), '')+
+        baris('Tahun ini', masukTahun, keluarTahun, badgeSurplus(masukTahun,keluarTahun), '')+
+      '</div>'+
+      '<div class="panel" style="margin-top:10px">'+
+        '<div style="font-size:12.5px;font-weight:600;margin-bottom:4px">Pola yang terdeteksi</div>'+
+        flagsHtml+
+      '</div>'+
+      '<div class="panel" style="margin-top:10px">'+
+        '<div style="font-size:12.5px;font-weight:600;margin-bottom:6px">Jika kondisi ini dipertahankan</div>'+
+        '<div style="font-size:12px;color:var(--tx2);line-height:1.6">'+paragraf+'</div>'+
+      '</div>'+
+      '<div class="panel" style="margin-top:10px">'+
+        '<div style="font-size:12.5px;font-weight:600;margin-bottom:2px">Saran perbaikan ke depan</div>'+
+        saranHtml+
+      '</div>'
+    );
   }
 
 })();
