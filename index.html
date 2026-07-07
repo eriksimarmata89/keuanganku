@@ -3931,28 +3931,28 @@ function actAdd(kind){
 </script>
 
 <script>
-/* PATCH KAMERA v5: zoom, fokus, dan ketajaman.
-   Ganti seluruh PATCH KAMERA v4 dengan blok ini (tempel sebelum </body>).
+/* PATCH KAMERA v6: tata letak gaya Instagram Stories.
+   Ganti seluruh PATCH KAMERA v5 dengan blok ini (tempel sebelum </body>).
 
-   Pembaruan dibanding v4:
-   - Zoom: cubit dua jari pada pratinjau, atau geser slider di bawah.
-     Memakai zoom optik/asli kamera bila didukung perangkat; bila tidak,
-     otomatis memakai zoom digital (hasil dipotong dari tengah).
-   - Fokus: ketuk layar untuk fokus ke titik itu (dengan indikator
-     lingkaran). Bila perangkat mendukung fokus manual, muncul tombol
-     "Fokus" yang membuka slider jarak fokus (Auto untuk kembali).
-   - Ketajaman: hasil jepretan dipertajam otomatis (unsharp mask),
-     lebih kuat untuk struk supaya huruf tegas, ringan untuk profil.
-   Semua kemampuan v4 dipertahankan (takePhoto, senter, auto-level,
-   analisis gelap/terang, pemotong bingkai struk). */
+   Perubahan dari v5 hanya pada tampilan:
+   - Pratinjau kamera memenuhi seluruh layar.
+   - Tombol X (batal) di kiri atas, pil status di tengah atas.
+   - Ikon senter, balik kamera, dan fokus manual tersusun vertikal
+     di sisi kanan atas, melayang di atas pratinjau. Ikon menyala
+     kuning saat fiturnya aktif.
+   - Tombol jepret bulat besar di bawah tengah, slider zoom tipis
+     melayang di atasnya, slider fokus muncul bila mode manual aktif.
+   Semua logika v5 dipertahankan: takePhoto, zoom asli/digital,
+   cubit dua jari, ketuk-untuk-fokus, fokus manual, senter,
+   auto-level, penajaman, dan pemotong bingkai struk. */
 (function(){
   var HAMBANG_GELAP  = 55;
   var HAMBANG_TERANG = 215;
   var HAMBANG_TAJAM  = 5;
   var SISI_MAKS_STRUK = 2400;
   var SISI_MAKS_POLOS = 1600;
-  var TAJAM_STRUK = 0.8;   /* kekuatan penajaman struk (0 = mati) */
-  var TAJAM_POLOS = 0.3;   /* kekuatan penajaman foto profil */
+  var TAJAM_STRUK = 0.8;
+  var TAJAM_POLOS = 0.3;
 
   function adaAPK(){ return !!(window.AppInventor && window.AppInventor.setWebViewString); }
   function perangkatSentuh(){
@@ -3972,40 +3972,64 @@ function actAdd(kind){
   }
   function trackAktif(){ return _stream ? _stream.getVideoTracks()[0] : null; }
 
-  /* ================= UI ================= */
+  /* ================= UI GAYA STORIES ================= */
+  var IKON={
+    x:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    kilat:'<svg viewBox="0 0 24 24" width="22" height="22" fill="#fff"><path d="M13 2L4.5 13.5H11L9.5 22 19 10h-6.5L13 2z"/></svg>',
+    balik:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 8a8 8 0 0 0-14.9-2M4 16a8 8 0 0 0 14.9 2"/><path d="M20 3v5h-5M4 21v-5h5"/></svg>',
+    fokus:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M4 8V5a1 1 0 0 1 1-1h3M20 8V5a1 1 0 0 0-1-1h-3M4 16v3a1 1 0 0 0 1 1h3M20 16v3a1 1 0 0 1-1 1h-3"/></svg>'
+  };
+  function tombolBulat(id, ikon, onclick){
+    return '<button id="'+id+'" onclick="'+onclick+'" style="width:44px;height:44px;border-radius:50%;border:none;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:0;-webkit-tap-highlight-color:transparent">'+ikon+'</button>';
+  }
+  function nyalakanIkon(id, nyala){
+    var b=document.getElementById(id); if(!b) return;
+    b.style.background = nyala ? 'rgba(255,213,74,.95)' : 'rgba(0,0,0,.45)';
+    var svg=b.querySelector('svg'); if(!svg) return;
+    svg.querySelectorAll('[stroke]').forEach(function(el){ el.setAttribute('stroke', nyala?'#111':'#fff'); });
+    svg.querySelectorAll('[fill]').forEach(function(el){ if(el.getAttribute('fill')!=='none') el.setAttribute('fill', nyala?'#111':'#fff'); });
+  }
+
   function pastikanUI(){
     var lama=document.getElementById('kamMask');
-    if(lama){ if(lama.dataset.versi==='5') return; lama.remove(); }
+    if(lama){ if(lama.dataset.versi==='6') return; lama.remove(); }
     var div=document.createElement('div');
-    div.id='kamMask'; div.dataset.versi='5';
-    div.style.cssText='position:fixed;inset:0;z-index:80;display:none;flex-direction:column;background:#000';
+    div.id='kamMask'; div.dataset.versi='6';
+    div.style.cssText='position:fixed;inset:0;z-index:80;display:none;background:#000';
     div.innerHTML=
-      '<div id="kamWrap" style="position:relative;flex:1;overflow:hidden;touch-action:none">'+
+      '<div id="kamWrap" style="position:absolute;inset:0;overflow:hidden;touch-action:none">'+
         '<video id="kamVideo" autoplay playsinline muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;transform-origin:center center"></video>'+
         '<div id="kamGelap" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">'+
-          '<div id="kamBingkai" style="width:72%;max-width:340px;aspect-ratio:3/4.6;border:2.5px solid rgba(255,255,255,.95);border-radius:14px;box-shadow:0 0 0 4000px rgba(0,0,0,.55)"></div>'+
+          '<div id="kamBingkai" style="width:72%;max-width:340px;aspect-ratio:3/4.6;border:2.5px solid rgba(255,255,255,.95);border-radius:14px;box-shadow:0 0 0 4000px rgba(0,0,0,.45)"></div>'+
         '</div>'+
-        '<div id="kamRing" style="position:absolute;width:64px;height:64px;border:2px solid #ffd54a;border-radius:50%;pointer-events:none;display:none;transform:translate(-50%,-50%)"></div>'+
-        '<div id="kamStatus" style="position:absolute;top:calc(env(safe-area-inset-top,0px) + 14px);left:50%;transform:translateX(-50%);background:rgba(0,0,0,.65);color:#fff;font-size:13px;font-weight:600;padding:8px 16px;border-radius:20px;white-space:nowrap;transition:background .3s">Arahkan kamera ke struk</div>'+
+        '<div id="kamRing" style="position:absolute;width:64px;height:64px;border:2px solid #ffd54a;border-radius:50%;pointer-events:none;display:none;transform:translate(-50%,-50%);transition:opacity .3s"></div>'+
       '</div>'+
-      /* baris slider fokus manual (tersembunyi, muncul bila didukung dan diaktifkan) */
-      '<div id="kamFokusRow" style="display:none;align-items:center;gap:10px;padding:10px 18px 0;background:#000">'+
-        '<span style="color:#bbb;font-size:11px;flex:0 0 auto">Dekat</span>'+
-        '<input id="kamFokusSlider" type="range" style="flex:1;accent-color:#ffd54a">'+
-        '<span style="color:#bbb;font-size:11px;flex:0 0 auto">Jauh</span>'+
+
+      /* lapisan kontrol di atas pratinjau */
+      '<div style="position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);left:12px;z-index:2">'+
+        tombolBulat('kamTutup', IKON.x, 'tutupKameraWeb()')+
       '</div>'+
-      /* baris zoom */
-      '<div style="display:flex;align-items:center;gap:10px;padding:10px 18px 0;background:#000">'+
-        '<span style="color:#bbb;font-size:12px;flex:0 0 auto">Zoom</span>'+
-        '<input id="kamZoomSlider" type="range" style="flex:1;accent-color:#fff">'+
-        '<span id="kamZoomLbl" style="color:#fff;font-size:12px;font-weight:600;flex:0 0 34px;text-align:right">1.0x</span>'+
+      '<div id="kamStatus" style="position:absolute;top:calc(env(safe-area-inset-top,0px) + 18px);left:50%;transform:translateX(-50%);z-index:1;background:rgba(0,0,0,.55);color:#fff;font-size:12.5px;font-weight:600;padding:7px 14px;border-radius:18px;white-space:nowrap;max-width:62%;overflow:hidden;text-overflow:ellipsis;transition:background .3s">Arahkan kamera</div>'+
+      '<div style="position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:12px;z-index:2;display:flex;flex-direction:column;gap:12px">'+
+        tombolBulat('kamSenter', IKON.kilat, 'senterKameraWeb()')+
+        tombolBulat('kamBalik', IKON.balik, 'balikKameraWeb()')+
+        tombolBulat('kamFokusBtn', IKON.fokus, 'fokusManualKameraWeb()')+
       '</div>'+
-      '<div style="display:flex;gap:8px;align-items:center;justify-content:center;padding:12px 16px calc(env(safe-area-inset-bottom,0px) + 16px);background:#000">'+
-        '<button class="cmbtn cancel" style="flex:0 0 auto;padding:12px 14px" onclick="tutupKameraWeb()">Batal</button>'+
-        '<button id="kamSenter" class="cmbtn cancel" style="flex:0 0 auto;padding:12px 14px;display:none" onclick="senterKameraWeb()">Senter</button>'+
-        '<button id="kamFokusBtn" class="cmbtn cancel" style="flex:0 0 auto;padding:12px 14px;display:none" onclick="fokusManualKameraWeb()">Fokus</button>'+
-        '<button class="cmbtn cancel" style="flex:0 0 auto;padding:12px 14px" onclick="balikKameraWeb()">Balik</button>'+
-        '<button id="kamAmbil" class="cmbtn ok" style="flex:1;max-width:170px" onclick="jepretKameraWeb()">Ambil foto</button>'+
+
+      /* panel bawah: slider fokus, slider zoom, tombol jepret */
+      '<div style="position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);z-index:2;display:flex;flex-direction:column;align-items:center;gap:12px;pointer-events:none">'+
+        '<div id="kamFokusRow" style="display:none;align-items:center;gap:8px;width:70%;max-width:320px;background:rgba(0,0,0,.45);border-radius:16px;padding:7px 12px;pointer-events:auto">'+
+          '<span style="color:#eee;font-size:10.5px;flex:0 0 auto">Dekat</span>'+
+          '<input id="kamFokusSlider" type="range" style="flex:1;accent-color:#ffd54a;height:18px">'+
+          '<span style="color:#eee;font-size:10.5px;flex:0 0 auto">Jauh</span>'+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:8px;width:70%;max-width:320px;background:rgba(0,0,0,.45);border-radius:16px;padding:7px 12px;pointer-events:auto">'+
+          '<input id="kamZoomSlider" type="range" style="flex:1;accent-color:#fff;height:18px">'+
+          '<span id="kamZoomLbl" style="color:#fff;font-size:11px;font-weight:700;flex:0 0 32px;text-align:right">1.0x</span>'+
+        '</div>'+
+        '<button id="kamAmbil" onclick="jepretKameraWeb()" style="pointer-events:auto;width:74px;height:74px;border-radius:50%;border:4px solid rgba(255,255,255,.95);background:transparent;display:flex;align-items:center;justify-content:center;padding:0;-webkit-tap-highlight-color:transparent">'+
+          '<span id="kamAmbilInti" style="width:56px;height:56px;border-radius:50%;background:#fff;transition:transform .12s, background .2s"></span>'+
+        '</button>'+
       '</div>';
     document.body.appendChild(div);
 
@@ -4018,7 +4042,6 @@ function actAdd(kind){
     var fs=document.getElementById('kamFokusSlider');
     if(fs) fs.addEventListener('input', function(){ setFokusManual(parseFloat(fs.value)); });
 
-    /* cubit dua jari untuk zoom */
     var wrap=document.getElementById('kamWrap');
     var jarakAwal=0, zoomAwal=1;
     function jarak(e){
@@ -4041,18 +4064,27 @@ function actAdd(kind){
   }
 
   function sembunyikanUI(){ var m=document.getElementById('kamMask'); if(m) m.style.display='none'; }
-  function pulihkanTombol(){ var b=document.getElementById('kamAmbil'); if(b){ b.disabled=false; b.textContent='Ambil foto'; } }
+  function pulihkanTombol(){
+    var b=document.getElementById('kamAmbil');
+    var inti=document.getElementById('kamAmbilInti');
+    if(b) b.disabled=false;
+    if(inti){ inti.style.background='#fff'; inti.style.transform='scale(1)'; }
+  }
+  function tombolMemproses(){
+    var b=document.getElementById('kamAmbil');
+    var inti=document.getElementById('kamAmbilInti');
+    if(b) b.disabled=true;
+    if(inti){ inti.style.background='#999'; inti.style.transform='scale(.82)'; }
+  }
   function setStatus(teks, warna){
     var s=document.getElementById('kamStatus'); if(!s) return;
     s.textContent=teks;
     s.style.background = warna==='hijau' ? 'rgba(28,140,90,.9)'
                        : warna==='merah' ? 'rgba(180,60,50,.9)'
-                       : 'rgba(0,0,0,.65)';
-    var b=document.getElementById('kamAmbil');
-    if(b) b.style.opacity = warna==='hijau' ? '1' : '.75';
+                       : 'rgba(0,0,0,.55)';
   }
 
-  /* ================= ZOOM ================= */
+  /* ================= ZOOM (logika sama dengan v5) ================= */
   function siapkanZoom(){
     var track=trackAktif();
     var caps=null;
@@ -4088,11 +4120,10 @@ function actAdd(kind){
     }
   }
 
-  /* ================= FOKUS ================= */
+  /* ================= FOKUS (logika sama dengan v5) ================= */
   function fokusTitik(ev){
     var track=trackAktif();
     if(!track || _fokusManual) return;
-    /* indikator lingkaran di titik ketuk */
     var ring=document.getElementById('kamRing');
     if(ring){
       ring.style.left=ev.clientX+'px'; ring.style.top=ev.clientY+'px';
@@ -4122,7 +4153,7 @@ function actAdd(kind){
     var row=document.getElementById('kamFokusRow');
     _fokusManual=false;
     if(row) row.style.display='none';
-    if(btn){ btn.style.display='none'; btn.textContent='Fokus'; }
+    if(btn){ btn.style.display='none'; nyalakanIkon('kamFokusBtn', false); }
     var track=trackAktif();
     if(!track || !track.getCapabilities) return;
     var caps; try{ caps=track.getCapabilities(); }catch(e){ return; }
@@ -4134,23 +4165,21 @@ function actAdd(kind){
         fs.step=caps.focusDistance.step||0.01;
         fs.value=caps.focusDistance.min;
       }
-      if(btn) btn.style.display='block';
+      if(btn) btn.style.display='flex';
     }
   }
   window.fokusManualKameraWeb=function(){
-    var btn=document.getElementById('kamFokusBtn');
     var row=document.getElementById('kamFokusRow');
     var track=trackAktif(); if(!track) return;
     _fokusManual=!_fokusManual;
+    nyalakanIkon('kamFokusBtn', _fokusManual);
     if(_fokusManual){
       if(row) row.style.display='flex';
-      if(btn) btn.textContent='Auto';
       var fs=document.getElementById('kamFokusSlider');
       if(fs) setFokusManual(parseFloat(fs.value));
       setStatus('Fokus manual: geser slider Dekat-Jauh','');
     } else {
       if(row) row.style.display='none';
-      if(btn) btn.textContent='Fokus';
       try{ track.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(function(){}); }catch(e){}
       setStatus('Fokus otomatis aktif','');
     }
@@ -4163,22 +4192,19 @@ function actAdd(kind){
   /* ================= SENTER ================= */
   function cekSenter(){
     var btn=document.getElementById('kamSenter'); if(!btn) return;
-    btn.style.display='none'; _senterNyala=false; btn.textContent='Senter';
+    btn.style.display='none'; _senterNyala=false; nyalakanIkon('kamSenter', false);
     var track=trackAktif(); if(!track || !track.getCapabilities) return;
     try{
       var caps=track.getCapabilities();
-      if(caps && caps.torch) btn.style.display='block';
+      if(caps && caps.torch) btn.style.display='flex';
     }catch(e){}
   }
   window.senterKameraWeb=function(){
     var track=trackAktif(); if(!track) return;
     _senterNyala=!_senterNyala;
     track.applyConstraints({ advanced:[{ torch:_senterNyala }] })
-      .then(function(){
-        var btn=document.getElementById('kamSenter');
-        if(btn) btn.textContent=_senterNyala ? 'Senter mati' : 'Senter';
-      })
-      .catch(function(){ _senterNyala=false; toast('Senter tidak didukung perangkat ini'); });
+      .then(function(){ nyalakanIkon('kamSenter', _senterNyala); })
+      .catch(function(){ _senterNyala=false; nyalakanIkon('kamSenter', false); toast('Senter tidak didukung perangkat ini'); });
   };
 
   /* ================= ANALISIS INDIKATOR ================= */
@@ -4247,7 +4273,7 @@ function actAdd(kind){
     if(window.ImageCapture && track){ try{ _ic=new ImageCapture(track); }catch(e){ _ic=null; } }
     var v=document.getElementById('kamVideo');
     if(v){ v.srcObject=_stream; v.style.transform='none'; }
-    document.getElementById('kamMask').style.display='flex';
+    document.getElementById('kamMask').style.display='block';
     pulihkanTombol();
     setTimeout(function(){ cekSenter(); siapkanZoom(); siapkanFokusManual(); }, 600);
     if(_analisaTimer) clearInterval(_analisaTimer);
@@ -4299,7 +4325,7 @@ function actAdd(kind){
     });
   }
 
-  /* ===== Auto-level + gamma (sama seperti v4) ===== */
+  /* ===== Auto-level + gamma (sama seperti v5) ===== */
   function perbaikiFoto(c, mode){
     var ctx=c.getContext('2d');
     var d=ctx.getImageData(0,0,c.width,c.height), p=d.data;
@@ -4331,10 +4357,7 @@ function actAdd(kind){
     ctx.putImageData(d,0,0);
   }
 
-  /* ===== Penajaman unsharp mask =====
-     hasil = asli + jumlah x (asli - versi blur). Blur memakai
-     ctx.filter; bila WebView lama tidak mendukung, efeknya jadi
-     nol (tidak merusak apa-apa). */
+  /* ===== Penajaman unsharp mask (sama seperti v5) ===== */
   function penajaman(c, jumlah){
     if(!jumlah) return;
     var w=c.width, h=c.height;
@@ -4360,9 +4383,9 @@ function actAdd(kind){
   window.jepretKameraWeb=async function(){
     var v=document.getElementById('kamVideo');
     if(!v || !v.videoWidth){ toast('Kamera belum siap'); return; }
-    var btn=document.getElementById('kamAmbil');
-    if(btn && btn.disabled) return;
-    if(btn){ btn.disabled=true; btn.textContent='Memproses...'; }
+    var b=document.getElementById('kamAmbil');
+    if(b && b.disabled) return;
+    tombolMemproses();
     setStatus('Mengambil foto...','');
 
     var sumber=null, sw=0, sh=0;
@@ -4387,9 +4410,6 @@ function actAdd(kind){
     if(_mode==='struk'){
       var f=document.getElementById('kamBingkai').getBoundingClientRect();
       var r=v.getBoundingClientRect();
-      /* getBoundingClientRect sudah memperhitungkan transform scale
-         zoom digital, jadi pemetaan bingkai ke koordinat video tetap
-         berlaku baik dengan zoom asli maupun zoom digital */
       var skala=Math.max(r.width/v.videoWidth, r.height/v.videoHeight);
       var sx=(v.videoWidth - r.width/skala)/2;
       var sy=(v.videoHeight - r.height/skala)/2;
@@ -4409,8 +4429,6 @@ function actAdd(kind){
       ctx.imageSmoothingQuality='high';
       ctx.drawImage(sumber, cx, cy, cw, ch, 0, 0, c.width, c.height);
     } else {
-      /* mode polos: bila zoom digital aktif, potong bagian tengah
-         sesuai tingkat zoom supaya hasil sama dengan pratinjau */
       var zx=0, zy=0, zw=sw, zh=sh;
       if(!_zoomInfo.native && _zoomVal>1.01){
         zw=sw/_zoomVal; zh=sh/_zoomVal;
@@ -4434,7 +4452,7 @@ function actAdd(kind){
     if(cb) cb(data);
   };
 
-  /* ====== Sambungan ke alur yang ada (sama seperti v4) ====== */
+  /* ====== Sambungan ke alur yang ada (sama seperti v5) ====== */
   var _mintaFotoLama=window.mintaFoto;
   window.mintaFoto=function(sumber){
     if(sumber==='galeri'){
