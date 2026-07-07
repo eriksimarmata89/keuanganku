@@ -4719,7 +4719,10 @@ function actAdd(kind){
                total:Math.round(+o.total||0), items:items, dikoreksi:0, ditaksir:0, dibuang:0 };
     });
     var timeout=new Promise(function(res){ setTimeout(function(){ res(null); }, BATAS_TUNGGU_AI); });
-    return Promise.race([panggil, timeout]).catch(function(){ return null; });
+    return Promise.race([panggil, timeout]).catch(function(e){
+      toast('Gemini gagal: '+((e&&e.message)||'tanpa pesan'));
+      return null;
+    });
   }
 
   /* ============ tombol debug teks OCR ============ */
