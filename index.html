@@ -4502,5 +4502,246 @@ function actAdd(kind){
 })();
 </script>
 
+<script>
+/* PATCH OCR STRUK v1: Gemini dengan cadangan Tesseract.js.
+   Tempel sebelum </body>, setelah PATCH KAMERA.
+
+   Alur: scanStrukPintar(dataURL) -> coba Gemini (fungsi yang sudah ada)
+   -> bila gagal/offline -> Tesseract.js (dimuat dari CDN saat pertama
+   dipakai, lalu di-cache) -> parser struk Indonesia -> hasil dinormalkan
+   ke bentuk yang sama dengan hasil Gemini. */
+(function(){
+
+  /* ================= TITIK SAMBUNGAN, SESUAIKAN 2 BARIS INI =================
+     1) PANGGIL_GEMINI: fungsi Anda yang sudah ada untuk scan via Gemini.
+        Harus mengembalikan Promise berisi objek hasil, atau melempar error
+        bila gagal. Bila fungsi Gemini Anda memakai callback, bungkus jadi
+        Promise di sini.
+     2) TERAPKAN_HASIL: fungsi Anda yang menerima hasil scan dan mengisi
+        form transaksi (yang sekarang dipanggil setelah Gemini sukses). */
+  function PANGGIL_GEMINI(dataURL){
+    if(typeof window.prosesStrukGemini==='function') return window.prosesStrukGemini(dataURL);
+    return Promise.reject(new Error('fungsi Gemini tidak ditemukan'));
+  }
+  function TERAPKAN_HASIL(hasil){
+    if(typeof window.isiFormDariScan==='function'){ window.isiFormDariScan(hasil); return; }
+    console.log('Hasil scan struk:', hasil);
+    toast('Scan selesai: '+(hasil.items.length)+' item terbaca ('+hasil.sumber+')');
+  }
+  /* ========================================================================= */
+
+  var URL_TESSERACT='https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js';
+  var _worker=null, _muatJanji=null;
+
+  function muatSkrip(url){
+    return new Promise(function(res,rej){
+      var s=document.createElement('script');
+      s.src=url; s.onload=res;
+      s.onerror=function(){ rej(new Error('gagal memuat '+url)); };
+      document.head.appendChild(s);
+    });
+  }
+
+  /* muat library + worker sekali saja, dipakai ulang seterusnya */
+  function siapkanTesseract(onStatus){
+    if(_worker) return Promise.resolve(_worker);
+    if(_muatJanji) return _muatJanji;
+    _muatJanji=(async function(){
+      if(!window.Tesseract){
+        onStatus('Mengunduh mesin OCR...');
+        await muatSkrip(URL_TESSERACT);
+      }
+      onStatus('Menyiapkan bahasa...');
+      /* ind+eng: struk Indonesia banyak memuat kata Inggris (TOTAL, CASH) */
+      _worker=await Tesseract.createWorker('ind+eng', 1, {
+        logger:function(m){
+          if(m.status==='recognizing text' && m.progress){
+            onStatus('Membaca teks... '+Math.round(m.progress*100)+'%');
+          }
+        }
+      });
+      /* karakter yang lazim di struk, mengurangi salah baca simbol aneh */
+      await _worker.setParameters({
+        tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:/%()xX*&-+ '
+      });
+      return _worker;
+    })();
+    _muatJanji.catch(function(){ _muatJanji=null; });
+    return _muatJanji;
+  }
+
+  /* ================= PARSER STRUK INDONESIA ================= */
+  function angkaDari(s){
+    /* "21,000" / "21.000" / "21000" -> 21000. Buang pemisah ribuan. */
+    s=String(s).replace(/[^\d.,]/g,'');
+    if(!s) return NaN;
+    /* bila ada koma DAN titik, yang terakhir dianggap desimal, sisanya ribuan */
+    var koma=s.lastIndexOf(','), titik=s.lastIndexOf('.');
+    var des=Math.max(koma,titik);
+    if(des>-1 && s.length-des-1===3){ /* 3 digit setelah pemisah = ribuan */
+      return parseInt(s.replace(/[.,]/g,''),10);
+    }
+    if(des>-1 && s.length-des-1<=2){ /* desimal sungguhan, bulatkan */
+      return Math.round(parseFloat(s.replace(/[.,](?=\d{3})/g,'').replace(',','.')));
+    }
+    return parseInt(s.replace(/[.,]/g,''),10);
+  }
+
+  function cariTanggal(baris){
+    /* pola: 05.07.26 / 05/07/2026 / 05-07-26 / 2026-07-05 */
+    for(var i=0;i<baris.length;i++){
+      var m=baris[i].match(/(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
+      if(m){ return m[1]+'-'+String(+m[2]).padStart(2,'0')+'-'+String(+m[3]).padStart(2,'0'); }
+      m=baris[i].match(/(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/);
+      if(m){
+        var th=+m[3]; if(th<100) th+=2000;
+        var bl=+m[2], tg=+m[1];
+        if(bl>=1 && bl<=12 && tg>=1 && tg<=31){
+          return th+'-'+String(bl).padStart(2,'0')+'-'+String(tg).padStart(2,'0');
+        }
+      }
+    }
+    return todayISO ? todayISO() : new Date().toISOString().slice(0,10);
+  }
+
+  function cariTotal(baris){
+    /* prioritas: baris mengandung TOTAL (bukan SUBTOTAL saja bila ada TOTAL) */
+    var kandidat=[];
+    baris.forEach(function(b){
+      var u=b.toUpperCase();
+      if(/TOTAL/.test(u) && !/SUB\s*TOTAL/.test(u)){
+        var m=b.match(/([\d.,]{3,})\s*$/);
+        if(m){ var n=angkaDari(m[1]); if(n>0) kandidat.push(n); }
+      }
+    });
+    if(kandidat.length) return kandidat[0];
+    /* cadangan: SUBTOTAL */
+    for(var i=0;i<baris.length;i++){
+      var u2=baris[i].toUpperCase();
+      if(/SUB\s*TOTAL/.test(u2)){
+        var m2=baris[i].match(/([\d.,]{3,})\s*$/);
+        if(m2){ var n2=angkaDari(m2[1]); if(n2>0) return n2; }
+      }
+    }
+    return 0;
+  }
+
+  var KATA_BUKAN_ITEM=/TOTAL|TUNAI|CASH|KEMBALI|CHANGE|PPN|DPP|PAJAK|TAX|HARGA JUAL|DISKON|DISC|VOUCHER|DEBIT|KREDIT|QRIS|NPWP|TELP|SMS|WA |LAYANAN|KONSUMEN|KASIR|STRUK|TERIMA|KASIH|SELAMAT|BELANJA|GRATIS|ONGKIR|MEMBER|POIN|JL\.|JALAN|KEL\.|KEC\.|KAB\.|KOTA/i;
+
+  function urai(teks){
+    var baris=teks.split(/\r?\n/).map(function(b){ return b.trim(); }).filter(Boolean);
+    var items=[];
+    baris.forEach(function(b){
+      if(KATA_BUKAN_ITEM.test(b)) return;
+      /* Pola A (Indomaret dkk): NAMA  QTY  HARGA  TOTAL */
+      var m=b.match(/^(.{3,}?)\s+(\d{1,3})\s+([\d.,]{3,})\s+([\d.,]{3,})$/);
+      if(m){
+        var qty=+m[2], harga=angkaDari(m[3]), tot=angkaDari(m[4]);
+        if(harga>=50 && tot>=50){
+          items.push({nama:rapikanNama(m[1]), qty:qty||1, harga:tot});
+          return;
+        }
+      }
+      /* Pola B (timbangan/warung): NAMA ... TOTAL di ujung, tanpa qty jelas */
+      m=b.match(/^([A-Za-z].{2,}?)\s+([\d.,]{4,})$/);
+      if(m && !/^\d/.test(m[1])){
+        var tot2=angkaDari(m[2]);
+        if(tot2>=100 && tot2<100000000){
+          items.push({nama:rapikanNama(m[1]), qty:1, harga:tot2});
+        }
+      }
+    });
+    /* nama toko: baris awal yang bukan promosi/alamat, huruf dominan */
+    var toko='';
+    for(var i=0;i<Math.min(6,baris.length);i++){
+      var b2=baris[i];
+      if(KATA_BUKAN_ITEM.test(b2)) continue;
+      if(/PT\.|CV\.|TOKO|MART|MARET|SWALAYAN|MINIMARKET|INDOMAR|ALFAMAR/i.test(b2)){ toko=b2; break; }
+      if(!toko && /^[A-Za-z .,'&-]{4,}$/.test(b2)) toko=b2;
+    }
+    var total=cariTotal(baris);
+    /* pemeriksaan silang: bila jumlah item jauh dari total, total tetap dipercaya */
+    var jumlahItem=items.reduce(function(s,it){ return s+it.harga; },0);
+    if(!total && jumlahItem) total=jumlahItem;
+    return {
+      toko:rapikanNama(toko)||'',
+      tanggal:cariTanggal(baris),
+      items:items,
+      total:total,
+      cocok: total>0 && jumlahItem>0 && Math.abs(total-jumlahItem)/total<0.05
+    };
+  }
+  function rapikanNama(s){
+    return String(s||'').replace(/\s{2,}/g,' ').replace(/^[.\-*: ]+|[.\-*: ]+$/g,'').trim();
+  }
+
+  /* ================= OCR TESSERACT ================= */
+  async function ocrTesseract(dataURL, onStatus){
+    var w=await siapkanTesseract(onStatus);
+    onStatus('Membaca teks...');
+    var hasil=await w.recognize(dataURL);
+    var teks=(hasil && hasil.data && hasil.data.text)||'';
+    if(!teks.trim()) throw new Error('tidak ada teks terbaca');
+    var u=urai(teks);
+    return {
+      sumber:'ocr-lokal',
+      toko:u.toko, tanggal:u.tanggal, total:u.total, items:u.items,
+      cocok:u.cocok, teksMentah:teks
+    };
+  }
+
+  /* ================= STATUS KECIL DI LAYAR ================= */
+  function tampilkanStatusOCR(teks){
+    var el=document.getElementById('ocrStatus');
+    if(!el){
+      el=document.createElement('div');
+      el.id='ocrStatus';
+      el.style.cssText='position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 90px);transform:translateX(-50%);z-index:90;background:rgba(0,0,0,.75);color:#fff;font-size:12px;font-weight:600;padding:8px 16px;border-radius:18px;white-space:nowrap';
+      document.body.appendChild(el);
+    }
+    el.textContent=teks; el.style.display='block';
+  }
+  function sembunyikanStatusOCR(){
+    var el=document.getElementById('ocrStatus');
+    if(el) el.style.display='none';
+  }
+
+  /* ================= ALUR UTAMA ================= */
+  window.scanStrukPintar=async function(dataURL){
+    /* 1) Gemini dulu */
+    try{
+      tampilkanStatusOCR('Menganalisis struk (AI)...');
+      var hasilG=await PANGGIL_GEMINI(dataURL);
+      sembunyikanStatusOCR();
+      if(hasilG){
+        hasilG.sumber=hasilG.sumber||'gemini';
+        TERAPKAN_HASIL(hasilG);
+        return;
+      }
+      throw new Error('hasil kosong');
+    }catch(e){
+      /* 2) jatuh ke OCR lokal */
+      try{
+        tampilkanStatusOCR('AI tidak tersedia, memakai OCR lokal...');
+        var hasilT=await ocrTesseract(dataURL, tampilkanStatusOCR);
+        sembunyikanStatusOCR();
+        if(!hasilT.items.length && !hasilT.total){
+          toast('Teks struk tidak terbaca jelas, coba foto ulang lebih dekat dan terang');
+          return;
+        }
+        if(!hasilT.cocok && hasilT.items.length){
+          toast('Hasil OCR lokal, mohon periksa kembali item dan nominal');
+        }
+        TERAPKAN_HASIL(hasilT);
+      }catch(e2){
+        sembunyikanStatusOCR();
+        toast('Scan gagal: '+(e2 && e2.message ? e2.message : 'periksa koneksi atau foto ulang'));
+      }
+    }
+  };
+
+})();
+</script>
+
 </body>
 </html>
