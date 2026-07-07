@@ -4515,8 +4515,8 @@ function actAdd(kind){
    yang sama-sama salah baca menghasilkan nominal jutaan. */
 (function(){
 
-  var KUNCI_GEMINI='AQ.Ab8RN6KwxJx158lS6yCmCrKO41GGWRjTdOtM5VuBSVtweL2I3Q';
-  var MODEL_GEMINI='gemini-2.5-flash';
+  var KUNCI_GEMINI='';
+  var MODEL_GEMINI='gemini-2.0-flash';
   var BATAS_TUNGGU_AI=20000;
 
   /* ============ util ============ */
@@ -4699,15 +4699,7 @@ function actAdd(kind){
         contents:[{parts:[{text:prompt},{inline_data:{mime_type:'image/jpeg',data:b64}}]}],
         generationConfig:{temperature:0.1, response_mime_type:'application/json'}
       })
-    })}).then(function(r){
-      if(!r.ok){
-        return r.json().then(function(j){
-          var d=(j&&j.error&&j.error.message)||'';
-          throw new Error('status '+r.status+': '+d.slice(0,160));
-        },function(){ throw new Error('AI status '+r.status); });
-      }
-      return r.json();
-    })
+    }).then(function(r){ if(!r.ok) throw new Error('AI status '+r.status); return r.json(); })
     .then(function(j){
       var t=j&&j.candidates&&j.candidates[0]&&j.candidates[0].content&&
             j.candidates[0].content.parts&&j.candidates[0].content.parts[0]&&
@@ -4724,10 +4716,7 @@ function actAdd(kind){
                total:Math.round(+o.total||0), items:items, dikoreksi:0, ditaksir:0, dibuang:0 };
     });
     var timeout=new Promise(function(res){ setTimeout(function(){ res(null); }, BATAS_TUNGGU_AI); });
-    return Promise.race([panggil, timeout]).catch(function(e){
-      toast('Gemini gagal: '+((e&&e.message)||'tanpa pesan'));
-      return null;
-    });
+    return Promise.race([panggil, timeout]).catch(function(){ return null; });
   }
 
   /* ============ tombol debug teks OCR ============ */
