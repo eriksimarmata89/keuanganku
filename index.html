@@ -4699,8 +4699,13 @@ function actAdd(kind){
         contents:[{parts:[{text:prompt},{inline_data:{mime_type:'image/jpeg',data:b64}}]}],
         generationConfig:{temperature:0.1, response_mime_type:'application/json'}
       })
-    }).then(function(r){
-      if(!r.ok){ toast('Gemini gagal: status '+r.status); throw new Error('AI status '+r.status); }
+    })}).then(function(r){
+      if(!r.ok){
+        return r.json().then(function(j){
+          var d=(j&&j.error&&j.error.message)||'';
+          throw new Error('status '+r.status+': '+d.slice(0,160));
+        },function(){ throw new Error('AI status '+r.status); });
+      }
       return r.json();
     })
     .then(function(j){
