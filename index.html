@@ -3999,8 +3999,8 @@ function actAdd(kind){
     div.innerHTML=
       '<div id="kamWrap" style="position:absolute;inset:0;overflow:hidden;touch-action:none">'+
         '<video id="kamVideo" autoplay playsinline muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;transform-origin:center center"></video>'+
-        '<div id="kamGelap" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">'+
-          '<div id="kamBingkai" style="width:72%;max-width:340px;aspect-ratio:3/4.6;border:2.5px solid rgba(255,255,255,.95);border-radius:14px;box-shadow:0 0 0 4000px rgba(0,0,0,.45)"></div>'+
+        '<div id="kamGelap" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;padding:calc(env(safe-area-inset-top,0px) + 70px) 0 calc(env(safe-area-inset-bottom,0px) + 215px);box-sizing:border-box">'+
+          '<div id="kamBingkai" style="width:72%;max-width:340px;aspect-ratio:3/4.6;max-height:100%;border:2.5px solid rgba(255,255,255,.95);border-radius:14px;box-shadow:0 0 0 4000px rgba(0,0,0,.45)"></div>'+
         '</div>'+
         '<div id="kamRing" style="position:absolute;width:64px;height:64px;border:2px solid #ffd54a;border-radius:50%;pointer-events:none;display:none;transform:translate(-50%,-50%);transition:opacity .3s"></div>'+
       '</div>'+
