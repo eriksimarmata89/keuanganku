@@ -4503,21 +4503,16 @@ function actAdd(kind){
 </script>
 
 <script>
-/* PATCH SCAN OTOMATIS v5. Menggantikan seluruh v4.
+/* PATCH SCAN OTOMATIS v6. Menggantikan seluruh v5.
    Tempel sebelum </body>, setelah PATCH KAMERA v6.
 
-   Disetel dari data OCR nyata (struk Alfamart Tlogomas):
-   - Qty bertitik ("1.", "2.") kini dikenali, nama item tidak lagi
-     membawa sisa qty/harga.
-   - Koreksi aritmetika: bila qty >= 2 dan qty x harga satuan jauh
-     berbeda dari kolom total, nominal diperbaiki memakai qty x satuan
-     (menambal salah baca digit pada kolom total).
-   - Item yang seluruh angkanya rusak ditaksir dari selisih HARGA JUAL
-     dikurangi jumlah item lain (hanya bila tepat 1 item rusak).
-   - Total struk dideteksi lebih tangguh: gabungan digit setelah kata
-     TOTAL, diverifikasi silang dengan TUNAI - KEMBALI dan HARGA JUAL.
-   - Tombol debug "Teks OCR" dipertahankan.
-   - Gemini opsional dipertahankan (KUNCI_GEMINI). */
+   Perbaikan inti dari v5: koreksi qty x satuan kini dipagari total
+   struk. Tidak ada nominal item (baik dari kolom total maupun dari
+   qty x satuan) yang boleh melebihi total struk; kandidat yang
+   melebihi langsung gugur. Bila kedua kandidat gugur (semua angka
+   di baris itu rusak), item ditaksir dari selisih HARGA JUAL
+   dikurangi item lain. Ini mencegah kasus v5 di mana qty dan satuan
+   yang sama-sama salah baca menghasilkan nominal jutaan. */
 (function(){
 
   var KUNCI_GEMINI='';
@@ -4558,24 +4553,22 @@ function actAdd(kind){
     return String(s||'').replace(/\s{2,}/g,' ').replace(/^[.\-*:| ]+|[.\-*:| ]+$/g,'').trim();
   }
   function bersihkanNama(nama){
-    nama=rapikan(String(nama).replace(/\s[\d.,]{4,}$/,'')); /* harga menempel */
-    nama=rapikan(nama.replace(/\s\d[.,]?$/,''));            /* sisa qty 1 digit */
+    nama=rapikan(String(nama).replace(/\s[\d.,]{4,}$/,''));
+    nama=rapikan(nama.replace(/\s\d[.,]?$/,''));
     return nama;
   }
 
-  /* ============ ekstraksi item per baris ============ */
+  /* ============ ekstraksi item ============ */
   function ekstrakItem(b, items){
-    /* Pola A: NAMA  QTY[.]  SATUAN[.]  TOTAL */
     var m4=b.match(/^(.{3,}?)\s+(\d{1,3})[.,]?\s+([\d.,]{2,})\s+([\d.,]{3,})$/);
     if(m4){
       var tot=angkaDari(m4[4]);
       if(tot>=50){
         items.push({keterangan:bersihkanNama(m4[1]).slice(0,80), nominal:tot,
-                    kategori:'Belanja', _qty:+m4[2], _unit:angkaDari(m4[3])});
+                    kategori:'Belanja', _qty:+m4[2], _unit:angkaDari(m4[3])||0});
         return true;
       }
     }
-    /* Pola A2: NAMA  QTY[.]  TOTAL */
     var m3=b.match(/^(.{3,}?)\s+(\d{1,3})[.,]?\s+([\d.,]{3,})$/);
     if(m3){
       var tot3=angkaDari(m3[3]);
@@ -4585,7 +4578,6 @@ function actAdd(kind){
         return true;
       }
     }
-    /* Pola B: NAMA ... TOTAL di ujung */
     var m2=b.match(/^([A-Za-z|].{2,}?)\s+([\d.,]{4,})$/);
     if(m2){
       var tot2=angkaDari(m2[2]);
@@ -4600,7 +4592,7 @@ function actAdd(kind){
 
   var BUKAN_ITEM=/TOTAL|TUNAI|CASH|KEMBALI|CHANGE|PPN|DPP|PAJAK|TAX|HARGA JUAL|ANDA HEMAT|DISKON|DISC|VOUCHER|DEBIT|KREDIT|QRIS|NPWP|TELP|TLP|SMS|WA |LAYANAN|KONSUMEN|KASIR|TERIMA|KASIH|SELAMAT|GRATIS|ONGKIR|MEMBER|POIN|SALDO|NOMOR|KARTU|PEMBAYARAN|DESKRIPSI|JL\.|JLN|JALAN|KEL\.|KEC\.|KAB\.|KOTA/i;
 
-  /* ============ total struk yang tangguh ============ */
+  /* ============ total struk tangguh ============ */
   function cariTotalTangguh(baris){
     var dariTotal=0, tunai=0, kembali=0, hargaJual=0;
     baris.forEach(function(b){
@@ -4613,40 +4605,48 @@ function actAdd(kind){
       if(/TUNAI|CASH/.test(u)){ var tn=digitSetelah(b, /TUNAI/.test(u)?'TUNAI':'CASH'); if(tn>1000) tunai=tn; }
       if(/KEMBALI|CHANGE/.test(u)){ var k=digitSetelah(b, /KEMBALI/.test(u)?'KEMBALI':'CHANGE'); if(k>0) kembali=k; }
     });
-    var dariTunai = (tunai>0 && kembali>=0 && tunai>kembali) ? (tunai-kembali) : 0;
-    /* pilih: bila keduanya ada dan selisih <2%, percaya; bila beda, TUNAI-KEMBALI menang */
+    var dariTunai=(tunai>0 && tunai>kembali)?(tunai-kembali):0;
     var total=0;
     if(dariTotal && dariTunai){
-      total = Math.abs(dariTotal-dariTunai)/dariTunai<0.02 ? dariTotal : dariTunai;
-    } else total = dariTotal || dariTunai || 0;
-    return { total: total, hargaJual: hargaJual||total };
+      total=Math.abs(dariTotal-dariTunai)/dariTunai<0.02 ? dariTotal : dariTunai;
+    } else total=dariTotal||dariTunai||0;
+    return { total:total, hargaJual:hargaJual||total };
   }
 
-  /* ============ koreksi aritmetika + taksiran sisa ============ */
-  function koreksi(items, hargaJual){
+  /* ============ koreksi berpagar total struk ============ */
+  function koreksi(items, hargaJual, totalStruk){
+    var batas=Math.max(hargaJual||0, totalStruk||0) || 10000000;
     var dikoreksi=0, curiga=[];
     items.forEach(function(it){
-      if(it._qty>=2 && it._unit>=100){
-        var hitung=it._qty*it._unit;
-        var beda=Math.abs(hitung-it.nominal)/Math.max(hitung,it.nominal);
-        if(beda>0.1){
-          /* kolom total tidak cocok dengan qty x satuan */
-          if(it._unit<=5000000 && it._qty<=50 && hitung<=50000000){
-            it.nominal=hitung; dikoreksi++;
-          } else curiga.push(it);
-        }
-      } else if(it._qty>50 || it._unit>5000000 || it.nominal>10000000){
-        curiga.push(it);
+      var kol=it.nominal;
+      var hit=(it._qty>=1 && it._unit>=50) ? it._qty*it._unit : 0;
+      var kolOk = kol>0 && kol<=batas;
+      var hitOk = hit>0 && hit<=batas && it._qty<=50;
+      if(kolOk && hitOk){
+        var beda=Math.abs(kol-hit)/Math.max(kol,hit);
+        /* beda jauh: saat qty>=2 kolom total paling sering yang salah baca */
+        if(beda>0.1 && it._qty>=2){ it.nominal=hit; dikoreksi++; }
+        /* qty=1: hit==unit, kolom total (berpemisah ribuan) lebih dipercaya */
+      } else if(kolOk && !hitOk){
+        /* kolom total dipertahankan */
+      } else if(!kolOk && hitOk){
+        it.nominal=hit; dikoreksi++;
+      } else {
+        it._rusak=true; curiga.push(it);
       }
     });
     /* taksiran sisa: hanya bila tepat 1 item rusak dan harga jual diketahui */
     if(curiga.length===1 && hargaJual>0){
       var lain=0;
-      items.forEach(function(it){ if(it!==curiga[0]) lain+=it.nominal; });
+      items.forEach(function(it){ if(!it._rusak) lain+=it.nominal; });
       var sisa=hargaJual-lain;
-      if(sisa>0 && sisa<hargaJual){ curiga[0].nominal=sisa; curiga[0]._taksir=true; }
+      if(sisa>0 && sisa<=batas){ curiga[0].nominal=sisa; curiga[0]._taksir=true; }
     }
-    return { dikoreksi:dikoreksi, curiga:curiga };
+    return {
+      dikoreksi:dikoreksi,
+      ditaksir:curiga.filter(function(c){return c._taksir;}).length,
+      gagal:curiga.filter(function(c){return !c._taksir;}).length
+    };
   }
 
   function cariToko(baris){
@@ -4664,16 +4664,15 @@ function actAdd(kind){
     var items=[];
     baris.forEach(function(b){ if(!BUKAN_ITEM.test(b)) ekstrakItem(b, items); });
     var tt=cariTotalTangguh(baris);
-    /* buang baris pembayaran yang lolos: nominal ~ total */
     if(tt.total>0 && items.length>2){
       items=items.filter(function(it){ return Math.abs(it.nominal-tt.total)/tt.total>0.03; });
     }
-    var hasilKoreksi=koreksi(items, tt.hargaJual);
+    var hk=koreksi(items, tt.hargaJual, tt.total);
+    /* item rusak yang gagal ditaksir dibuang daripada menyimpan angka liar */
+    items=items.filter(function(it){ return !(it._rusak && !it._taksir); });
     items=items.filter(function(it){ return it.keterangan && it.keterangan.length>=2 && it.nominal>0; });
     return { toko:cariToko(baris), tanggal:cariTanggal(baris), total:tt.total,
-             items:items, dikoreksi:hasilKoreksi.dikoreksi,
-             ditaksir:hasilKoreksi.curiga.filter(function(c){return c._taksir;}).length,
-             gagalTaksir:hasilKoreksi.curiga.filter(function(c){return !c._taksir;}).length };
+             items:items, dikoreksi:hk.dikoreksi, ditaksir:hk.ditaksir, dibuang:hk.gagal };
   }
 
   function barisDariKata(kata){
@@ -4714,13 +4713,13 @@ function actAdd(kind){
       if(!items.length) return null;
       return { toko:rapikan(o.toko||'').slice(0,60),
                tanggal:/^\d{4}-\d{2}-\d{2}$/.test(o.tanggal||'')?o.tanggal:'',
-               total:Math.round(+o.total||0), items:items, dikoreksi:0, ditaksir:0, gagalTaksir:0 };
+               total:Math.round(+o.total||0), items:items, dikoreksi:0, ditaksir:0, dibuang:0 };
     });
     var timeout=new Promise(function(res){ setTimeout(function(){ res(null); }, BATAS_TUNGGU_AI); });
     return Promise.race([panggil, timeout]).catch(function(){ return null; });
   }
 
-  /* ============ tombol debug teks OCR (sama seperti v4) ============ */
+  /* ============ tombol debug teks OCR ============ */
   var _barisTerakhir=[];
   function tampilkanTombolDebug(){
     var b=document.getElementById('ocrDbgBtn');
@@ -4762,9 +4761,9 @@ function actAdd(kind){
     if(hasil.tanggal) st.tanggal=hasil.tanggal;
     var jumlah=st.pending.reduce(function(s,p){ return s+(+p.nominal); },0);
     var pesan=st.pending.length+' item terisi otomatis ('+sumber+')';
-    if(hasil.dikoreksi) pesan+=', '+hasil.dikoreksi+' nominal diperbaiki dari qty x harga';
-    if(hasil.ditaksir) pesan+=', '+hasil.ditaksir+' item DITAKSIR dari selisih total, mohon periksa';
-    if(hasil.gagalTaksir) pesan+=', '+hasil.gagalTaksir+' item MERAGUKAN, mohon periksa';
+    if(hasil.dikoreksi) pesan+=', '+hasil.dikoreksi+' nominal dikoreksi';
+    if(hasil.ditaksir) pesan+=', '+hasil.ditaksir+' item DITAKSIR, mohon periksa';
+    if(hasil.dibuang) pesan+=', '+hasil.dibuang+' baris tak terbaca DILEWATI';
     if(hasil.total>0){
       var selisih=Math.abs(hasil.total-jumlah)/hasil.total;
       pesan += selisih<0.05 ? '. Jumlah sesuai total struk'
