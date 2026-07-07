@@ -4503,24 +4503,27 @@ function actAdd(kind){
 </script>
 
 <script>
-/* PATCH SCAN OTOMATIS v2. Menggantikan seluruh PATCH OCR STRUK v1.
+/* PATCH SCAN OTOMATIS v3. Menggantikan seluruh PATCH SCAN OTOMATIS v2.
    Tempel sebelum </body>, setelah PATCH KAMERA v6.
 
-   Cara kerja: alur pindai struk yang ada (ketuk-per-kata) tetap jalan.
-   Setelah OCR selesai membaca seluruh struk, hasil teksnya diurai
-   otomatis: daftar transaksi (nama + nominal), nama toko, dan tanggal
-   langsung terisi. User tinggal memeriksa dan mengoreksi dengan cara
-   yang sudah ada (ketuk kata, ketuk dua kali untuk edit, hapus baris).
-
-   Opsional: isi KUNCI_GEMINI dengan API key dari Google AI Studio
-   (aistudio.google.com) untuk hasil yang lebih akurat via AI. Bila
-   dikosongkan atau gagal (offline/kuota habis), otomatis memakai
-   parser lokal dari hasil OCR yang sama, tanpa unduhan tambahan. */
+   Perbaikan dari v2 (berdasarkan uji struk panjang):
+   - Zona footer: begitu bertemu baris SUB TOTAL / TOTAL / PEMBAYARAN /
+     TUNAI / DEBIT, semua baris setelahnya tidak dianggap item, sehingga
+     baris pembayaran dan nomor kartu tidak ikut masuk daftar.
+   - Zona header: baris sebelum judul kolom (DESKRIPSI/QTY/HARGA) atau
+     sebelum baris tanggal dilewati, mengurangi alamat toko terbaca item.
+   - Penolakan item bernominal hampir sama dengan total struk (>=90%),
+     khas baris total/pembayaran yang tulisannya rusak oleh OCR.
+   - Harga satuan yang menempel di ujung nama dibuang.
+   - Kata terlarang diperluas (PEMBAYARAN, KARTU, BCA/BRI/BNI/MANDIRI,
+     NOMOR, REF, dll).
+   - Pemeriksaan silang lebih ketat: bila jumlah item melenceng >20%
+     dari total struk, peringatan tegas diberikan pada toast. */
 (function(){
 
-  var KUNCI_GEMINI='';                    /* <-- isi API key di sini, atau biarkan kosong */
+  var KUNCI_GEMINI='';                    /* <-- isi API key Google AI Studio, atau kosongkan */
   var MODEL_GEMINI='gemini-2.0-flash';
-  var BATAS_TUNGGU_AI=20000;              /* ms, lewat dari ini jatuh ke parser lokal */
+  var BATAS_TUNGGU_AI=20000;
 
   /* ================= PARSER LOKAL ================= */
   function angkaDari(s){
@@ -4540,62 +4543,88 @@ function actAdd(kind){
       if(m){
         var th=+m[3]; if(th<100) th+=2000;
         var bl=+m[2], tg=+m[1];
-        if(bl>=1&&bl<=12&&tg>=1&&tg<=31 && th>=2000 && th<=2100)
+        if(bl>=1&&bl<=12&&tg>=1&&tg<=31&&th>=2000&&th<=2100)
           return th+'-'+String(bl).padStart(2,'0')+'-'+String(tg).padStart(2,'0');
       }
     }
     return '';
   }
-  function cariTotal(baris){
-    for(var i=0;i<baris.length;i++){
-      var u=baris[i].toUpperCase();
-      if(/TOTAL/.test(u) && !/SUB\s*TOTAL/.test(u)){
-        var m=baris[i].match(/([\d.,]{3,})\s*$/);
-        if(m){ var n=angkaDari(m[1]); if(n>0) return n; }
-      }
-    }
-    for(var j=0;j<baris.length;j++){
-      if(/SUB\s*TOTAL/i.test(baris[j])){
-        var m2=baris[j].match(/([\d.,]{3,})\s*$/);
-        if(m2){ var n2=angkaDari(m2[1]); if(n2>0) return n2; }
-      }
-    }
-    return 0;
-  }
-  var BUKAN_ITEM=/TOTAL|TUNAI|CASH|KEMBALI|CHANGE|PPN|DPP|PAJAK|TAX|HARGA JUAL|DISKON|DISC|VOUCHER|DEBIT|KREDIT|QRIS|NPWP|TELP|SMS|WA |LAYANAN|KONSUMEN|KASIR|TERIMA|KASIH|SELAMAT|GRATIS|ONGKIR|MEMBER|POIN|JL\.|JALAN|KEL\.|KEC\.|KAB\.|KOTA|BELANJA LEBIH/i;
+
+  /* baris yang menandai akhir daftar item (zona footer) */
+  var TANDA_FOOTER=/SUB\s*TOTAL|GRAND\s*TOTAL|^TOTAL|TOTAL\s*(BELANJA|BAYAR)|PEMBAYARAN|BAYAR|TUNAI|CASH|KEMBALI|CHANGE|DEBIT|KREDIT|QRIS/i;
+  /* baris yang bukan item di mana pun posisinya */
+  var BUKAN_ITEM=/PPN|DPP|PAJAK|TAX|HARGA JUAL|DISKON|DISC|VOUCHER|NPWP|TELP|TLP|SMS|WA |LAYANAN|KONSUMEN|KASIR|TERIMA|KASIH|SELAMAT|GRATIS|ONGKIR|MEMBER|POIN|POINT|SALDO|NOMOR|KARTU|BCA|MANDIRI|BRI |BNI |EDC|REF|APPROVAL|TRACE|BATCH|JL\.|JALAN|KEL\.|KEC\.|KAB\.|KOTA|DESKRIPSI|QTY|HARGA\b/i;
+  /* baris yang menandai awal daftar item (judul kolom) */
+  var TANDA_HEADER=/DESKRIPSI|QTY.*(HARGA|TOTAL)|(HARGA|PRICE).*(TOTAL|JUMLAH)/i;
+
   function rapikan(s){
-    return String(s||'').replace(/\s{2,}/g,' ').replace(/^[.\-*: ]+|[.\-*: ]+$/g,'').trim();
+    return String(s||'').replace(/\s{2,}/g,' ').replace(/^[.\-*:| ]+|[.\-*:| ]+$/g,'').trim();
   }
+  /* buang angka harga yang menempel di ujung nama, mis. "SETADINE OMONGK20 6,490" */
+  function buangHargaDiNama(nama){
+    return rapikan(String(nama).replace(/\s[\d.,]{4,}$/,''));
+  }
+
   function uraiTeks(baris){
+    /* tentukan batas zona item */
+    var mulai=0, akhir=baris.length, i;
+    for(i=0;i<baris.length;i++){
+      if(TANDA_HEADER.test(baris[i])){ mulai=i+1; break; }
+    }
+    var totalStruk=0;
+    for(i=mulai;i<baris.length;i++){
+      if(TANDA_FOOTER.test(baris[i])){
+        if(akhir===baris.length) akhir=i;
+        var m=baris[i].match(/([\d.,]{3,})\s*$/);
+        if(m && !totalStruk){ var n=angkaDari(m[1]); if(n>0) totalStruk=n; }
+      }
+    }
+
     var items=[];
-    baris.forEach(function(b){
-      if(BUKAN_ITEM.test(b)) return;
-      /* Pola A: NAMA  QTY  HARGA_SATUAN  TOTAL (Indomaret dkk) */
-      var m=b.match(/^(.{3,}?)\s+(\d{1,4})\s+([\d.,]{2,})\s+([\d.,]{3,})$/);
-      if(m){
-        var tot=angkaDari(m[4]);
-        if(tot>=50){ items.push({keterangan:rapikan(m[1]).slice(0,80), nominal:tot, kategori:'Belanja'}); return; }
+    for(i=mulai;i<akhir;i++){
+      var b=baris[i];
+      if(BUKAN_ITEM.test(b)) continue;
+      /* Pola A: NAMA  QTY  HARGA_SATUAN  TOTAL */
+      var m4=b.match(/^(.{3,}?)\s+(\d{1,4})\s+([\d.,]{2,})\s+([\d.,]{3,})$/);
+      if(m4){
+        var tot=angkaDari(m4[4]);
+        if(tot>=50){ items.push({keterangan:buangHargaDiNama(m4[1]).slice(0,80), nominal:tot, kategori:'Belanja'}); continue; }
       }
-      /* Pola B: NAMA ... TOTAL di ujung baris */
-      m=b.match(/^([A-Za-z].{2,}?)\s+([\d.,]{4,})$/);
-      if(m){
-        var tot2=angkaDari(m[2]);
+      /* Pola A2: NAMA  QTY  TOTAL (tanpa kolom harga satuan) */
+      var m3=b.match(/^(.{3,}?)\s+(\d{1,3})\s+([\d.,]{3,})$/);
+      if(m3){
+        var tot3=angkaDari(m3[3]);
+        if(tot3>=100){ items.push({keterangan:buangHargaDiNama(m3[1]).slice(0,80), nominal:tot3, kategori:'Belanja'}); continue; }
+      }
+      /* Pola B: NAMA ... TOTAL di ujung */
+      var m2=b.match(/^([A-Za-z|].{2,}?)\s+([\d.,]{4,})$/);
+      if(m2){
+        var tot2=angkaDari(m2[2]);
         if(tot2>=100 && tot2<100000000)
-          items.push({keterangan:rapikan(m[1]).slice(0,80), nominal:tot2, kategori:'Belanja'});
+          items.push({keterangan:buangHargaDiNama(m2[1]).slice(0,80), nominal:tot2, kategori:'Belanja'});
       }
-    });
+    }
+
+    /* saringan kewarasan: buang item bernominal hampir sama dengan total
+       struk (>=90%), khas baris total/pembayaran yang rusak oleh OCR,
+       hanya bila item lebih dari 2 */
+    if(totalStruk>0 && items.length>2){
+      items=items.filter(function(it){ return it.nominal < totalStruk*0.9; });
+    }
+    /* buang nama kosong sisa pembersihan */
+    items=items.filter(function(it){ return it.keterangan && it.keterangan.length>=2; });
+
     var toko='';
-    for(var i=0;i<Math.min(6,baris.length);i++){
-      var b2=baris[i];
-      if(BUKAN_ITEM.test(b2)) continue;
+    for(i=0;i<Math.min(mulai||6,6);i++){
+      var b2=baris[i]||'';
+      if(BUKAN_ITEM.test(b2)||TANDA_FOOTER.test(b2)) continue;
       if(/PT\.|CV\.|TOKO|MART|MARET|SWALAYAN|MINIMARKET|INDOMAR|ALFAMAR/i.test(b2)){ toko=b2; break; }
       if(!toko && /^[A-Za-z .,'&-]{4,}$/.test(b2)) toko=b2;
     }
     return { toko:rapikan(toko).slice(0,60), tanggal:cariTanggal(baris),
-             total:cariTotal(baris), items:items };
+             total:totalStruk, items:items };
   }
 
-  /* susun ulang baris teks dari kata-kata hasil OCR yang sudah ada */
   function barisDariKata(kata){
     var peta={};
     (kata||[]).forEach(function(w){ (peta[w.line]=peta[w.line]||[]).push(w); });
@@ -4612,8 +4641,8 @@ function actAdd(kind){
     if(!b64) return Promise.resolve(null);
     var prompt='Baca struk belanja Indonesia pada gambar. Balas HANYA JSON valid tanpa teks lain, format: '+
       '{"toko":"...","tanggal":"YYYY-MM-DD","total":angka,"items":[{"nama":"...","harga":angka}]} . '+
-      'harga = total rupiah per baris item (bulat, tanpa titik/koma). '+
-      'Jangan masukkan baris pajak, tunai, kembalian, atau subtotal sebagai item.';
+      'harga = total rupiah per baris item (bulat). Jangan masukkan baris pajak, subtotal, '+
+      'pembayaran, tunai, kembalian, atau nomor kartu sebagai item.';
     var panggil=fetch('https://generativelanguage.googleapis.com/v1beta/models/'+MODEL_GEMINI+':generateContent?key='+KUNCI_GEMINI,{
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
@@ -4642,31 +4671,33 @@ function actAdd(kind){
     return Promise.race([panggil, timeout]).catch(function(){ return null; });
   }
 
-  /* ================= PENERAPAN KE LAYAR STRUK ================= */
+  /* ================= PENERAPAN ================= */
   function terapkan(hasil, sumber){
     var st=strukState;
     if(!hasil || !hasil.items || !hasil.items.length){
       toast('Tidak ada item terdeteksi otomatis. Silakan pilih dengan mengetuk kata.');
       return;
     }
-    if(st.pending.length) return; /* jangan timpa pekerjaan user */
+    if(st.pending.length) return;
     hasil.items.forEach(function(it){ st.pending.push(it); });
     if(!st.toko && hasil.toko) st.toko=hasil.toko;
     if(hasil.tanggal) st.tanggal=hasil.tanggal;
     var jumlah=st.pending.reduce(function(s,p){ return s+(+p.nominal); },0);
-    var cocok=hasil.total>0 && Math.abs(hasil.total-jumlah)/hasil.total<0.05;
-    toast(st.pending.length+' item terisi otomatis ('+sumber+')'+
-      (hasil.total? (cocok?', jumlah cocok dengan total struk':', jumlah BEDA dengan total struk, mohon periksa') : ''));
+    var pesan=st.pending.length+' item terisi otomatis ('+sumber+')';
+    if(hasil.total>0){
+      var selisih=Math.abs(hasil.total-jumlah)/hasil.total;
+      if(selisih<0.05) pesan+=', jumlah cocok dengan total struk';
+      else pesan+='. PERHATIAN: jumlah daftar '+rp(jumlah)+' beda dengan total struk '+rp(hasil.total)+', mohon periksa';
+    }
+    toast(pesan);
     renderStruk();
   }
 
-  /* bungkus startScanOCR: OCR lama tetap jalan (untuk lapisan ketuk kata),
-     lalu hasilnya diurai otomatis; Gemini berjalan paralel bila ada kunci */
   var _startLama=window.startScanOCR;
   window.startScanOCR=async function(){
     var st=strukState;
-    var pAI=janjiGemini(st.fotoData);     /* mulai lebih awal, paralel dengan OCR */
-    await _startLama();                   /* OCR + render layar ketuk kata seperti biasa */
+    var pAI=janjiGemini(st.fotoData);
+    await _startLama();
     var hasilAI=null;
     try{ hasilAI=await pAI; }catch(e){}
     if(hasilAI){ terapkan(hasilAI,'AI'); return; }
