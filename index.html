@@ -1918,7 +1918,7 @@ function renderStruk(){
       '<select class="psel" onchange="setKatPending('+i+',this.value)">'+KAT_PENGELUARAN.map(function(k){return '<option '+(p.kategori===k?'selected':'')+'>'+k+'</option>';}).join('')+'</select></div>'+
       nomHtml+'<button class="delbtn" onclick="hapusPending('+i+')">&times;</button></div>'; }).join('')
       :'<div class="empty" style="padding:14px">Belum ada transaksi. Pilih nama barang, lalu tandai nominalnya.</div>')+
-    (st.pending.length?('<div class="draftbox" style="background:#E6F1FB;margin-top:4px">'+
+    (st.pending.length?('<div class="draftbox" style="background:rgba(59,130,189,.16);border:.5px solid rgba(59,130,189,.35);margin-top:4px">'+
       '<div class="slot"><span>Jumlah transaksi</span><b>'+st.pending.length+'</b></div>'+
       (st.pending.reduce(function(s,p){return s+(+(p.diskon||0));},0)?('<div class="slot"><span>Total potongan</span><b style="color:#BA7517">- '+rp(st.pending.reduce(function(s,p){return s+(+(p.diskon||0));},0))+'</b></div>'):'')+
       '<div class="slot" style="font-size:15px;border-top:.5px solid var(--line);padding-top:8px;margin-top:2px"><span style="font-weight:600">Total daftar</span><b>'+rp(st.pending.reduce(function(s,p){return s+(+p.nominal);},0))+'</b></div>'+
@@ -4743,8 +4743,21 @@ function actAdd(kind){
     }
     b.style.display='block';
     clearTimeout(b._t);
-    b._t=setTimeout(function(){ b.style.display='none'; var p=document.getElementById('ocrDbgPanel'); if(p) p.remove(); }, 60000);
+    b._t=setTimeout(sembunyikanTombolDebug, 60000);
   }
+  function sembunyikanTombolDebug(){
+    var b=document.getElementById('ocrDbgBtn');
+    if(b){ b.style.display='none'; clearTimeout(b._t); }
+    var p=document.getElementById('ocrDbgPanel');
+    if(p) p.remove();
+  }
+  /* sembunyikan tombol debug begitu keluar dari tampilan pindai struk */
+  var _goViewLamaDbg=window.goView;
+  window.goView=function(v){
+    var hasil=_goViewLamaDbg.apply(this, arguments);
+    if(v!=='struk') sembunyikanTombolDebug();
+    return hasil;
+  };
 
   /* ============ penerapan ============ */
   function terapkan(hasil, sumber){
@@ -4779,7 +4792,7 @@ function actAdd(kind){
     var pAI=janjiGemini(st.fotoData);
     await _startLama();
     _barisTerakhir = st.kata && st.kata.length ? barisDariKata(st.kata) : [];
-    if(_barisTerakhir.length) tampilkanTombolDebug();
+    //if(_barisTerakhir.length) tampilkanTombolDebug();
     var hasilAI=null;
     try{ hasilAI=await pAI; }catch(e){}
     if(hasilAI){ terapkan(hasilAI,'AI'); return; }
