@@ -4803,6 +4803,111 @@ function actAdd(kind){
 
 })();
 </script>
+
+<script>
+/* PATCH DAFTAR & NAV v1. Tempel sebelum </body>, setelah patch lain.
+   1. Riwayat transaksi dan riwayat perpindahan saldo di detail
+      penampung kini punya filter jumlah 10/25/50/100/Semua
+      (memakai komponen limitChips yang sama dengan Beranda).
+   2. Nama tab "Kirim" di footer diganti "Cadangan" (mencakup kirim
+      pencadangan dan tarik pencadangan). Ubah teksnya di NAMA_TAB
+      bila ingin nama lain.
+   3. Daftar Hutang & Piutang juga diberi filter jumlah yang sama. */
+(function(){
+
+  var NAMA_TAB='Pencadangan';   /* <-- nama tab pengganti "Kirim" */
+
+  /* ============ 2) GANTI NAMA TAB FOOTER ============ */
+  function gantiNamaTab(){
+    var btn=document.querySelector('.nav [data-nav="sinkron"]');
+    if(!btn) return;
+    for(var i=0;i<btn.childNodes.length;i++){
+      var n=btn.childNodes[i];
+      if(n.nodeType===3 && n.nodeValue.trim()){ n.nodeValue=NAMA_TAB; return; }
+    }
+  }
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded', gantiNamaTab);
+  } else gantiNamaTab();
+
+  /* ============ 1) DETAIL PENAMPUNG: FILTER JUMLAH ============ */
+  var akunTxLimit=10, akunTrLimit=10;
+  window.setAkunTxLimit=function(n){ akunTxLimit=n; render(); };
+  window.setAkunTrLimit=function(n){ akunTrLimit=n; render(); };
+
+  /* reset ke 10 setiap kali membuka penampung lain */
+  var _bukaAkunLama=window.bukaAkun;
+  window.bukaAkun=function(id){ akunTxLimit=10; akunTrLimit=10; _bukaAkunLama(id); };
+
+  window.renderAkunDetail=function(){
+    var a=cariAkun(akunDetail);
+    if(!a){ goView('akunList'); return; }
+    var saldo=saldoAkunSaatIni(a.id);
+    var aid=String(a.id);
+    var riwayat=TX.filter(function(t){return String(t.akunId)===aid;})
+      .slice().sort(function(x,y){return (y.tanggal+(y.createdAt||'')).localeCompare(x.tanggal+(x.createdAt||''));});
+    var trGab=TR.filter(function(t){return String(t.keAkunId)===aid;})
+        .map(function(t){return {t:t, masuk:true};})
+      .concat(TR.filter(function(t){return String(t.dariAkunId)===aid;})
+        .map(function(t){return {t:t, masuk:false};}))
+      .sort(function(x,y){return String(y.t.tanggal).localeCompare(String(x.t.tanggal));});
+
+    S().innerHTML=
+      '<div class="fhead"><button class="bk" onclick="goView(\'akunList\')">&#8592;</button><div class="ti">'+esc(a.nama)+'</div></div>'+
+      '<div class="set">'+
+      '<div class="udetail p"><div class="udlbl">'+akunIconHTML(a,15)+' '+akunLabelJenis(a.jenis)+'</div><div class="udname">'+esc(a.nama)+'</div>'+
+      '<div class="udsisa">'+fmtRp(saldo)+'</div><div class="udcap">saldo saat ini</div></div>'+
+      (a.catatan?('<div class="panel" style="margin:12px 0 0"><div style="font-size:13px;color:var(--tx2);line-height:1.5">'+esc(a.catatan)+'</div></div>'):'')+
+
+      '<div class="sec-head" style="padding:18px 0 4px"><div class="t">Riwayat transaksi</div>'+
+        (riwayat.length?('<div style="font-size:11px;color:var(--tx3)">'+riwayat.length+' catatan</div>'):'')+'</div>'+
+      (riwayat.length? limitChips(akunTxLimit,'setAkunTxLimit') : '')+
+      '<div class="list">'+(riwayat.length
+        ? riwayat.slice(0, akunTxLimit||riwayat.length).map(txRow).join('')
+        : '<div class="empty" style="padding:20px 0">Belum ada transaksi di penampung ini.</div>')+'</div>'+
+
+      (trGab.length?('<div class="sec-head" style="padding:14px 0 4px"><div class="t">Riwayat perpindahan saldo</div>'+
+        '<div style="font-size:11px;color:var(--tx3)">'+trGab.length+' catatan</div></div>'+
+        limitChips(akunTrLimit,'setAkunTrLimit')+
+        '<div class="list">'+trGab.slice(0, akunTrLimit||trGab.length)
+          .map(function(x){return transferRow(x.t, x.masuk);}).join('')+'</div>'):'')+
+
+      '<button class="btn-danger" onclick="hapusAkun(\''+a.id+'\')">Hapus penampung saldo</button>'+
+      '</div>';
+  };
+
+  /* ============ 3) HUTANG & PIUTANG: FILTER JUMLAH ============ */
+  var utLimit=10;
+  window.setUtLimit=function(n){ utLimit=n; render(); };
+
+  window.renderUtang=function(){
+    var piut=UT.filter(function(u){return u.jenis==='piutang';});
+    var hut=UT.filter(function(u){return u.jenis==='hutang';});
+    var piutSisa=piut.reduce(function(s,u){return s+utSisa(u);},0);
+    var hutSisa=hut.reduce(function(s,u){return s+utSisa(u);},0);
+    var telat=UT.filter(utTelatKah).length;
+    var list = utFilter==='piutang'?piut : utFilter==='hutang'?hut : UT;
+    var tersambung=!!getGasUrl();
+    var belumCadang=UT.filter(function(u){return !u.terkirim;}).length;
+    S().innerHTML=
+      appBar()+
+      '<div class="fhead"><div class="ti">Hutang &amp; Piutang</div></div>'+
+      '<div class="rep-cards">'+
+        '<div class="rep-card"><div class="l">Piutang berjalan</div><div class="v" style="color:var(--hijau-tx)">'+fmtRp(piutSisa)+'</div></div>'+
+        '<div class="rep-card"><div class="l">Hutang berjalan</div><div class="v" style="color:var(--merah-tx)">'+fmtRp(hutSisa)+'</div></div>'+
+      '</div>'+
+      (telat?'<div class="panel" style="margin-top:10px;background:var(--kuning-bg)"><div style="font-size:13px;color:var(--kuning-tx);line-height:1.5">'+telat+' catatan telah melewati jatuh tempo.</div></div>':'')+
+      '<div class="chips" style="padding-top:12px">'+[['semua','Semua'],['piutang','Piutang'],['hutang','Hutang']].map(function(c){return '<button class="chip '+(utFilter===c[0]?'on':'')+'" onclick="setUtFilter(\''+c[0]+'\')">'+c[1]+'</button>';}).join('')+'</div>'+
+      (tersambung&&belumCadang?'<div class="set" style="padding-top:4px;padding-bottom:0"><button class="btn-line" style="margin-top:6px" onclick="cadangkanUtang()">Cadangkan '+belumCadang+' catatan</button></div>':'')+
+      '<div class="sec-head" style="padding:12px 0 0"><div class="t"></div><div style="font-size:11px;color:var(--tx3)">'+list.length+' catatan</div></div>'+
+      limitChips(utLimit,'setUtLimit')+
+      '<div class="list" style="padding-top:8px;padding-bottom:14px">'+
+        (list.length? list.slice(0, utLimit||list.length).map(utRow).join('') : '<div class="empty">Belum ada transaksi.<br>Ketuk tombol + untuk menambahkan.</div>')+
+      '</div>';
+  };
+
+})();
+</script>
   
 </body>
 </html>
