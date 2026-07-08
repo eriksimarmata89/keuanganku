@@ -1640,7 +1640,7 @@ function renderAdd(){
     '<div class="form"><div class="tipe2">'+
       '<button class="peng '+(peng?'on':'')+'" onclick="setTipe(\'pengeluaran\')">Pengeluaran</button>'+
       '<button class="pem '+(!peng?'on':'')+'" onclick="setTipe(\'pemasukan\')">Pemasukan</button></div>'+
-    '<label class="fl">Penampung saldo</label><select class="field" onchange="addState.akunId=this.value;renderAdd()">'+akunOptionsHTML(a.akunId)+'</select>'+
+    '<label class="fl">Asal Dana</label><select class="field" onchange="addState.akunId=this.value;renderAdd()">'+akunOptionsHTML(a.akunId)+'</select>'+
     (akunTerpilih?('<div style="font-size:11px;margin:-8px 2px 14px;color:'+(akunTerpilih.jenis==='kartu'?'var(--kuning-tx)':(saldoAkunSaatIni(akunTerpilih.id)>0?'var(--tx2)':'var(--merah-tx)'))+'">'+
       (akunTerpilih.jenis==='kartu'
         ? 'Kartu kredit: pengeluaran boleh melebihi saldo dan akan menjadi tagihan berjalan.'
@@ -2631,7 +2631,7 @@ function renderSinkron(){
     '<div class="set"><div class="t" style="font-weight:600;font-size:14px;margin:0 2px 6px">Pemulihan data</div>'+
       '<p class="hint">Memulihkan seluruh transaksi dari pencadangan ke perangkat ini, misalnya setelah berganti perangkat atau memasang ulang aplikasi. Data digabungkan dengan aman.</p>'+
       '<button class="btn-line" id="btnTarik" '+(tersambung?'':'disabled')+' onclick="tarikDariSheet()">Pulihkan data cadangan</button></div>'+
-    '<div class="sec-head" style="padding-top:6px"><div class="t">Catatan pada rentang ('+gab.length+')</div></div>'+
+    '<div class="sec-head" style="padding-top:6px"><div class="t">Transaksi pada rentang ('+gab.length+')</div></div>'+
     limitChips(syncLimit,'setSyncLimit')+
     '<div class="list" style="padding-top:6px;padding-bottom:10px">'+(gab.length?gab.slice(0,syncLimit||gab.length).map(barisGabungan).join(''):'<div class="empty">Tidak ada catatan pada rentang ini.</div>')+'</div>';
 }
@@ -2735,7 +2735,7 @@ function renderProfAbout(){
         '<div class="about-line"><span>Cadangan</span><b>Pencadangan pribadi (Google Drive)</b></div>'+
         '<div class="about-line"><span>Login</span><b>Nomor Telepon</b></div>'+
       '</div>'+
-      '<p class="hint">KeuanganKu mencatat pemasukan dan pengeluaran, menyimpannya di perangkat agar tetap dapat digunakan tanpa internet, dan mencadangkannya ke layanan pribadi milik Anda. Pemindai struk hanya memproses teks langsung di perangkat sehingga foto tidak dikirim ke mana pun.</p>'+
+      '<p class="hint">Aplikasi KeuanganKu mencatat pemasukan dan pengeluaran, lalu menyimpannya secara lokal di perangkat sehingga tetap dapat digunakan tanpa koneksi internet. Data juga dapat dicadangkan ke layanan penyimpanan pribadi milik Anda. Fitur pemindai struk memproses teks langsung di perangkat, sehingga foto struk tidak dikirim ke server mana pun. Informasi saldo sepenuhnya berada di bawah kendali Anda, karena aplikasi KeuanganKu tidak menyimpan data saldo pengguna. Seluruh data dan pengelolaannya tetap berada di bawah kendali Anda sepenuhnya. Demi keamanan, jangan pernah mencantumkan nomor rekening maupun informasi sensitif lainnya di dalam aplikasi atau pada kolom yang tidak diperlukan.</p>'+
     '</div>';
 }
 function formatBytes(n){
