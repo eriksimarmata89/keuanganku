@@ -2734,9 +2734,20 @@ function renderProfAbout(){
         '<div class="about-line"><span>Penyimpanan</span><b>Di perangkat (offline)</b></div>'+
         '<div class="about-line"><span>Cadangan</span><b>Pencadangan pribadi (Google Drive)</b></div>'+
         '<div class="about-line"><span>Login</span><b>Nomor Telepon</b></div>'+
-      '</div>'+
-      '<p class="hint">Aplikasi KeuanganKu mencatat pemasukan dan pengeluaran, lalu menyimpannya secara lokal di perangkat sehingga tetap dapat digunakan tanpa koneksi internet. Data juga dapat dicadangkan ke layanan penyimpanan pribadi milik Anda. Fitur pemindai struk memproses teks langsung di perangkat, sehingga foto struk tidak dikirim ke server mana pun. Informasi saldo sepenuhnya berada di bawah kendali Anda, karena aplikasi KeuanganKu tidak menyimpan data saldo pengguna. Seluruh data dan pengelolaannya tetap berada di bawah kendali Anda sepenuhnya. Demi keamanan, jangan pernah mencantumkan nomor rekening maupun informasi sensitif lainnya di dalam aplikasi atau pada kolom yang tidak diperlukan.</p>'+
-    '</div>';
+        '</div>'+
+        '<div class="sec-head" style="padding:2px 0 8px"><div class="t">Privasi dan Keamanan Data</div></div>'+
+        '<div class="panel" style="margin-bottom:14px">'+
+          [
+            'KeuanganKu dirancang dengan mengutamakan privasi dan kendali pengguna atas data pribadi. Aplikasi mencatat pemasukan dan pengeluaran, kemudian menyimpannya secara lokal di perangkat sehingga tetap dapat digunakan meskipun tanpa koneksi internet.',
+            'Untuk menjaga keamanan dan kemandirian data, cadangan hanya disimpan pada layanan penyimpanan pribadi yang Anda gunakan. KeuanganKu tidak menyimpan maupun mengelola data keuangan Anda di server aplikasi.',
+            'Fitur pemindai struk memproses teks langsung di perangkat, sehingga foto atau gambar struk tidak dikirim ke server mana pun selama proses pemindaian berlangsung.',
+            'Informasi saldo, riwayat transaksi, dan data keuangan lainnya sepenuhnya berada di bawah kendali Anda. KeuanganKu tidak menyimpan data saldo pengguna.',
+            'Sebagai langkah keamanan tambahan, jangan pernah mencantumkan nomor rekening, PIN, kata sandi, kode OTP, atau informasi sensitif lainnya pada kolom yang tidak diperlukan.'
+          ].map(function(p){
+            return '<p style="font-size:12.5px;color:var(--tx2);line-height:1.65;margin:0 0 12px">'+p+'</p>';
+          }).join('').replace(/margin:0 0 12px">([^<]*)<\/p>$/,'margin:0">$1</p>')+
+        '</div>'+
+      '</div>';
 }
 function formatBytes(n){
   n=Number(n)||0;
@@ -2943,7 +2954,18 @@ function actAdd(kind){
           '<div class="about-line"><span>Cadangan</span><b>Pencadangan pribadi (Google Drive)</b></div>'+
           '<div class="about-line"><span>Login</span><b>Nomor Telepon</b></div>'+
         '</div>'+
-        '<p class="hint">Aplikasi KeuanganKu mencatat pemasukan dan pengeluaran, lalu menyimpannya secara lokal di perangkat sehingga tetap dapat digunakan tanpa koneksi internet. Data juga dapat dicadangkan ke layanan penyimpanan pribadi milik Anda. Fitur pemindai struk memproses teks langsung di perangkat, sehingga foto struk tidak dikirim ke server mana pun. Informasi saldo sepenuhnya berada di bawah kendali Anda, karena aplikasi KeuanganKu tidak menyimpan data saldo pengguna. Seluruh data dan pengelolaannya tetap berada di bawah kendali Anda sepenuhnya. Demi keamanan, jangan pernah mencantumkan nomor rekening maupun informasi sensitif lainnya di dalam aplikasi atau pada kolom yang tidak diperlukan.</p>'+
+        '<div class="sec-head" style="padding:2px 0 8px"><div class="t">Privasi dan Keamanan Data</div></div>'+
+        '<div class="panel" style="margin-bottom:14px">'+
+          [
+            'KeuanganKu dirancang dengan mengutamakan privasi dan kendali pengguna atas data pribadi. Aplikasi mencatat pemasukan dan pengeluaran, kemudian menyimpannya secara lokal di perangkat sehingga tetap dapat digunakan meskipun tanpa koneksi internet.',
+            'Untuk menjaga keamanan dan kemandirian data, cadangan hanya disimpan pada layanan penyimpanan pribadi yang Anda gunakan. KeuanganKu tidak menyimpan maupun mengelola data keuangan Anda di server aplikasi.',
+            'Fitur pemindai struk memproses teks langsung di perangkat, sehingga foto atau gambar struk tidak dikirim ke server mana pun selama proses pemindaian berlangsung.',
+            'Informasi saldo, riwayat transaksi, dan data keuangan lainnya sepenuhnya berada di bawah kendali Anda. KeuanganKu tidak menyimpan data saldo pengguna.',
+            'Sebagai langkah keamanan tambahan, jangan pernah mencantumkan nomor rekening, PIN, kata sandi, kode OTP, atau informasi sensitif lainnya pada kolom yang tidak diperlukan.'
+          ].map(function(p){
+            return '<p style="font-size:12.5px;color:var(--tx2);line-height:1.65;margin:0 0 12px">'+p+'</p>';
+          }).join('').replace(/margin:0 0 12px">([^<]*)<\/p>$/,'margin:0">$1</p>')+
+        '</div>'+
       '</div>';
   };
 
