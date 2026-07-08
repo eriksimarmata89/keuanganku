@@ -2984,6 +2984,12 @@ function actAdd(kind){
 
   /* ===== pengunduh blob (browser dan APK) ===== */
   function unduhBlob(blob, nama){
+    /* Tambah jam-menit-detik pada nama supaya selalu unik. DownloadBlob
+       gagal diam-diam bila file bernama sama sudah ada di folder tujuan,
+       sehingga dialog "berhasil" tidak pernah muncul. */
+    var w=new Date(), pad=function(x){ return String(x).padStart(2,'0'); };
+    nama=nama.replace(/(\.[A-Za-z0-9]+)$/,
+      '-'+pad(w.getHours())+pad(w.getMinutes())+pad(w.getSeconds())+'$1');
     if(window.AppInventor && window.AppInventor.setWebViewString){
       try{ window.AppInventor.setWebViewString('SIMPAN|'+nama); }catch(e){}
     }
