@@ -1902,7 +1902,7 @@ function renderStruk(){
       '<div class="slot"><span>Keterangan</span><b>'+(st.draft.keterangan?esc(st.draft.keterangan):'<i>ketuk kata</i>')+'</b></div>'+
       '<div class="slot"><span>Nominal</span><b>'+(st.draft.nominal?rp(+st.draft.nominal):'<i>ketuk kata angka</i>')+'</b></div></div>'+
     '<label class="fl">Nama toko (opsional, berlaku untuk semua)</label><input class="field" value="'+esc(st.toko)+'" oninput="strukState.toko=this.value" placeholder="ketuk di foto atau ketik">'+
-    '<label class="fl">Penampung saldo</label><select class="field" onchange="strukState.akunId=this.value;renderStruk()">'+akunOptionsHTML(st.akunId)+'</select>'+
+    '<label class="fl">Asal Dana</label><select class="field" onchange="strukState.akunId=this.value;renderStruk()">'+akunOptionsHTML(st.akunId)+'</select>'+
     (function(){ var ak=cariAkun(st.akunId); return (ak&&ak.jenis==='kartu')?('<label class="cklabel"><input type="checkbox" '+(st.jadiHutang?'checked':'')+' onchange="strukState.jadiHutang=this.checked"> Catat juga sebagai hutang (tagihan '+esc(ak.nama)+' yang perlu dibayar nanti)</label>'):''; })()+
     '<div class="duo"><div><label class="fl">Catatan (opsional)</label><input class="field" value="'+esc(st.catatan)+'" oninput="strukState.catatan=this.value" placeholder="opsional"></div>'+
       '<div><label class="fl">Tanggal</label><input class="field" type="date" value="'+st.tanggal+'" onchange="strukState.tanggal=this.value"></div></div>'+
