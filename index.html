@@ -4938,49 +4938,165 @@ function actAdd(kind){
 </script>
 
 <script>
-/* PATCH TAMBAH TRANSAKSI v1. Tempel sebelum </body>, setelah patch lain.
-   1. Ketik manual (pengeluaran): kolom dipisah menjadi Nama barang,
-      Nama toko (opsional), Harga, Diskon/potongan (opsional), Catatan
-      (opsional). Nominal yang disimpan = harga - diskon, dan diskon
-      dicatat pada catatan ("Diskon Rp X") mengikuti format alur struk.
-      Form pemasukan tidak berubah.
-   2. Layar pindai struk: formulir kecil "Tambah item manual" untuk
-      barang yang tidak terbaca OCR, muncul di atas tombol simpan. */
+/* PATCH TAMBAH TRANSAKSI v2. Menggantikan seluruh PATCH TAMBAH TRANSAKSI v1.
+   Tempel sebelum </body>. PATCH KATEGORI KUSTOM dan PATCH DISKON MANDIRI
+   tetap dipertahankan.
+
+   Ketik manual (pengeluaran) kini berdaftar seperti pindai struk:
+   - Modal "Tambah barang": nama, harga, diskon per barang (opsional),
+     kategori. Bisa menambah banyak barang sebelum disimpan.
+   - Diskon per barang langsung memotong harga barang itu.
+   - "Diskon total belanja" (mis. potongan minimum belanja) menjadi
+     baris tersendiri di bawah total pembayaran, tersimpan sebagai
+     transaksi pengurang (nominal minus).
+   - Nama toko dan catatan menjadi data bersama (opsional).
+   Pindai struk memakai modal yang SAMA untuk item yang tidak terbaca,
+   tombol "Diskon total belanja" yang sama, dan tombol edit (pensil)
+   pada tiap baris untuk mengubah barang / memberi diskon per barang. */
 (function(){
 
-  /* ============ 1) KETIK MANUAL ============ */
+  /* ============ STATE ============ */
   var _blankAddLama=window.blankAdd;
   window.blankAdd=function(){
     var a=_blankAddLama();
-    a.toko=''; a.diskon='';
+    a.toko=''; a.items=[]; a.potongan=[];
     return a;
   };
-  /* pastikan state yang sedang aktif ikut punya kolom baru */
-  if(window.addState){ if(addState.toko===undefined) addState.toko=''; if(addState.diskon===undefined) addState.diskon=''; }
-
-  window.onNominalV2=function(el){
-    var d=el.value.replace(/\D/g,'');
-    addState.nominal=d;
-    el.value=d?(+d).toLocaleString('id-ID'):'';
-    perbaruiNetInfo();
-  };
-  window.onDiskonAdd=function(el){
-    var d=el.value.replace(/\D/g,'');
-    addState.diskon=d;
-    el.value=d?(+d).toLocaleString('id-ID'):'';
-    perbaruiNetInfo();
-  };
-  function perbaruiNetInfo(){
-    var el=document.getElementById('netInfo'); if(!el) return;
-    var n=+(addState.nominal||0), d=+(addState.diskon||0);
-    if(d>0 && n>0){
-      el.style.display='block';
-      el.style.color = d>=n ? 'var(--merah-tx)' : 'var(--tx2)';
-      el.textContent = d>=n ? 'Diskon melebihi atau menyamai harga, periksa kembali'
-                            : 'Dibayar setelah diskon: '+rp(n-d);
-    } else el.style.display='none';
+  if(window.addState){
+    if(addState.toko===undefined) addState.toko='';
+    if(!addState.items) addState.items=[];
+    if(!addState.potongan) addState.potongan=[];
   }
 
+  /* ============ MODAL BARANG (dipakai manual & struk) ============ */
+  var _mi={ctx:'manual', idx:null};
+  function fmtIn(el){ var d=el.value.replace(/\D/g,''); el.value=d?(+d).toLocaleString('id-ID'):''; }
+  window._fmtIn=fmtIn;
+  function pastikanModalItem(){
+    if(document.getElementById('miMask')) return;
+    var div=document.createElement('div');
+    div.id='miMask'; div.className='cmask';
+    div.innerHTML=
+      '<div class="cmcard">'+
+        '<div class="cmtitle" id="miTitle">Tambah barang</div>'+
+        '<label class="fl">Nama barang</label>'+
+        '<input class="field" id="miKet" placeholder="mis. Pop Mie Ayam 75g">'+
+        '<label class="fl">Harga</label>'+
+        '<div class="nominal-wrap"><span class="rp">Rp</span><input id="miNom" inputmode="numeric" placeholder="0" oninput="_fmtIn(this)"></div>'+
+        '<label class="fl">Diskon barang ini (opsional)</label>'+
+        '<div class="nominal-wrap"><span class="rp">Rp</span><input id="miDisk" inputmode="numeric" placeholder="0" oninput="_fmtIn(this)"></div>'+
+        '<label class="fl">Kategori</label>'+
+        '<select class="field" id="miKat"></select>'+
+        '<div class="cmbtns" style="margin-top:6px">'+
+          '<button class="cmbtn cancel" onclick="tutupItemManual()">Batal</button>'+
+          '<button class="cmbtn ok" id="miOk" onclick="simpanItemManual()">Tambah</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(div);
+    div.addEventListener('click', function(e){ if(e.target===div) tutupItemManual(); });
+  }
+  window.tutupItemManual=function(){ var m=document.getElementById('miMask'); if(m) m.classList.remove('show'); };
+  window.bukaItemManual=function(ctx, idx){
+    _mi.ctx=ctx||'struk'; _mi.idx=(idx===undefined||idx===null)?null:idx;
+    pastikanModalItem();
+    var it=null;
+    if(_mi.idx!=null){
+      var arr=(_mi.ctx==='manual'?addState.items:strukState.pending);
+      it=arr[_mi.idx]||null;
+    }
+    var kat=document.getElementById('miKat');
+    var pilih=it?it.kategori:'Belanja';
+    kat.innerHTML=KAT_PENGELUARAN.map(function(k){return '<option'+(k===pilih?' selected':'')+'>'+k+'</option>';}).join('');
+    document.getElementById('miTitle').textContent=it?'Ubah barang':'Tambah barang';
+    document.getElementById('miOk').textContent=it?'Simpan':'Tambah';
+    document.getElementById('miKet').value=it?it.keterangan:'';
+    var harga=it?((+it.nominal)+(+(it.diskon||0))):0;
+    document.getElementById('miNom').value=harga?(+harga).toLocaleString('id-ID'):'';
+    document.getElementById('miDisk').value=(it&&it.diskon)?(+it.diskon).toLocaleString('id-ID'):'';
+    document.getElementById('miMask').classList.add('show');
+    setTimeout(function(){ var k=document.getElementById('miKet'); if(k) k.focus(); }, 80);
+  };
+  window.simpanItemManual=function(){
+    var ket=(document.getElementById('miKet').value||'').trim();
+    var harga=+((document.getElementById('miNom').value||'').replace(/\D/g,''))||0;
+    var disk=+((document.getElementById('miDisk').value||'').replace(/\D/g,''))||0;
+    var kat=document.getElementById('miKat').value||'Belanja';
+    if(!ket){ toast('Isi nama barangnya dahulu'); return; }
+    if(harga<=0){ toast('Isi harga barangnya'); return; }
+    if(disk>0 && disk>=harga){ toast('Diskon melebihi atau menyamai harga barang'); return; }
+    var obj={keterangan:ket.slice(0,80), nominal:harga-disk, kategori:kat};
+    if(disk>0) obj.diskon=disk;
+    var arr=(_mi.ctx==='manual'?addState.items:strukState.pending);
+    if(_mi.idx!=null && arr[_mi.idx]){
+      var lama=arr[_mi.idx];
+      arr[_mi.idx]=Object.assign({}, lama, obj);
+      if(disk<=0) delete arr[_mi.idx].diskon;
+    } else arr.push(obj);
+    tutupItemManual();
+    if(_mi.ctx==='manual') renderAdd(); else renderStruk();
+  };
+
+  /* ============ MODAL DISKON TOTAL (dipakai manual & struk) ============ */
+  var _dt={ctx:'manual', idx:null};
+  function pastikanModalDiskon(){
+    if(document.getElementById('dtMask')) return;
+    var div=document.createElement('div');
+    div.id='dtMask'; div.className='cmask';
+    div.innerHTML=
+      '<div class="cmcard">'+
+        '<div class="cmtitle">Diskon total belanja</div>'+
+        '<div class="cmtext" style="margin-bottom:12px">Potongan atas keseluruhan belanja (mis. diskon minimum pembelian), tidak dibebankan ke barang tertentu.</div>'+
+        '<label class="fl">Keterangan</label>'+
+        '<input class="field" id="dtKet" placeholder="mis. Diskon min. belanja 100rb">'+
+        '<label class="fl">Nominal potongan</label>'+
+        '<div class="nominal-wrap"><span class="rp">Rp</span><input id="dtNom" inputmode="numeric" placeholder="0" oninput="_fmtIn(this)" onkeydown="if(event.key===\'Enter\')simpanDiskonTotal()"></div>'+
+        '<div class="cmbtns" style="margin-top:6px">'+
+          '<button class="cmbtn cancel" onclick="document.getElementById(\'dtMask\').classList.remove(\'show\')">Batal</button>'+
+          '<button class="cmbtn ok" onclick="simpanDiskonTotal()">Simpan</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(div);
+    div.addEventListener('click', function(e){ if(e.target===div) div.classList.remove('show'); });
+  }
+  window.bukaDiskonTotal=function(ctx, idx){
+    _dt.ctx=ctx||'struk'; _dt.idx=(idx===undefined||idx===null)?null:idx;
+    pastikanModalDiskon();
+    var p=null;
+    if(_dt.idx!=null){
+      p=(_dt.ctx==='manual'?addState.potongan:strukState.pending)[_dt.idx]||null;
+    }
+    document.getElementById('dtKet').value=p?p.keterangan:'Diskon total belanja';
+    var n=p?Math.abs(+p.nominal):0;
+    document.getElementById('dtNom').value=n?(+n).toLocaleString('id-ID'):'';
+    document.getElementById('dtMask').classList.add('show');
+    setTimeout(function(){ var el=document.getElementById('dtNom'); if(el) el.focus(); }, 80);
+  };
+  window.simpanDiskonTotal=function(){
+    var ket=(document.getElementById('dtKet').value||'').trim()||'Diskon total belanja';
+    var n=+((document.getElementById('dtNom').value||'').replace(/\D/g,''))||0;
+    if(n<=0){ toast('Isi nominal potongannya'); return; }
+    if(_dt.ctx==='manual'){
+      var obj={keterangan:ket.slice(0,80), nominal:n};
+      if(_dt.idx!=null && addState.potongan[_dt.idx]) addState.potongan[_dt.idx]=obj;
+      else addState.potongan.push(obj);
+      document.getElementById('dtMask').classList.remove('show');
+      renderAdd();
+    } else {
+      var row={keterangan:ket.slice(0,80), nominal:-n, kategori:'Belanja', isDiskon:true};
+      if(_dt.idx!=null && strukState.pending[_dt.idx]) strukState.pending[_dt.idx]=row;
+      else strukState.pending.push(row);
+      document.getElementById('dtMask').classList.remove('show');
+      renderStruk();
+    }
+  };
+
+  window.hapusItemManual=function(i){ addState.items.splice(i,1); renderAdd(); };
+  window.hapusPotonganManual=function(i){ addState.potongan.splice(i,1); renderAdd(); };
+
+  /* ============ FORM TAMBAH TRANSAKSI ============ */
+  function opsiKat(pilih){
+    return KAT_PENGELUARAN.map(function(k){return '<option '+(pilih===k?'selected':'')+'>'+k+'</option>';}).join('');
+  }
   window.renderAdd=function(){
     if(!AK.length){
       S().innerHTML=
@@ -4990,142 +5106,153 @@ function actAdd(kind){
       return;
     }
     var a=addState, peng=a.tipe==='pengeluaran';
-    if(a.toko===undefined) a.toko='';
-    if(a.diskon===undefined) a.diskon='';
+    if(!a.items) a.items=[]; if(!a.potongan) a.potongan=[]; if(a.toko===undefined) a.toko='';
     if(!a.akunId) a.akunId=AK[0].id;
     var akunTerpilih=cariAkun(a.akunId);
     var isKK=peng && akunTerpilih && akunTerpilih.jenis==='kartu';
-    S().innerHTML=
+    var kepala=
       '<div class="fhead"><button class="bk" onclick="goView(\'home\')">&#8592;</button><div class="ti">Tambah transaksi</div></div>'+
       '<div class="form"><div class="tipe2">'+
         '<button class="peng '+(peng?'on':'')+'" onclick="setTipe(\'pengeluaran\')">Pengeluaran</button>'+
         '<button class="pem '+(!peng?'on':'')+'" onclick="setTipe(\'pemasukan\')">Pemasukan</button></div>'+
-      '<label class="fl">Asal Dana</label><select class="field" onchange="addState.akunId=this.value;renderAdd()">'+akunOptionsHTML(a.akunId)+'</select>'+
+      '<label class="fl">Penampung saldo</label><select class="field" onchange="addState.akunId=this.value;renderAdd()">'+akunOptionsHTML(a.akunId)+'</select>'+
       (akunTerpilih?('<div style="font-size:11px;margin:-8px 2px 14px;color:'+(akunTerpilih.jenis==='kartu'?'var(--kuning-tx)':(saldoAkunSaatIni(akunTerpilih.id)>0?'var(--tx2)':'var(--merah-tx)'))+'">'+
         (akunTerpilih.jenis==='kartu'
           ? 'Kartu kredit: pengeluaran boleh melebihi saldo dan akan menjadi tagihan berjalan.'
           : 'Saldo tersedia: '+rp(saldoAkunSaatIni(akunTerpilih.id)))+'</div>'):'')+
       (isKK?('<label class="cklabel"><input type="checkbox" '+(a.jadiHutang?'checked':'')+' onchange="addState.jadiHutang=this.checked"> Catat juga sebagai hutang (tagihan '+esc(akunTerpilih.nama)+' yang perlu dibayar nanti)</label>'):'')+
       (peng?'<div class="metode"><button class="'+(a.metode==='manual'?'on':'')+'" onclick="setMetode(\'manual\')">&#9998; Ketik manual</button>'+
-        '<button class="'+(a.metode==='struk'?'on':'')+'" onclick="setMetode(\'struk\')">&#128247; Foto struk</button></div>':'')+
-      (peng&&a.metode==='struk'?strukPicker():'')+
-      (peng&&a.metode==='struk'?'':(
-        (peng
-          ? '<label class="fl">Nama barang / keterangan</label>'+
-            '<input class="field" id="inKet" placeholder="mis. Pop Mie Ayam 75g" value="'+esc(a.keterangan)+'" oninput="addState.keterangan=this.value">'+
-            '<label class="fl">Nama toko (opsional)</label>'+
-            '<input class="field" placeholder="mis. Indomaret" value="'+esc(a.toko)+'" oninput="addState.toko=this.value">'
-          : '<label class="fl">Sumber / keterangan</label>'+
-            '<input class="field" id="inKet" placeholder="mis. Gaji bulanan" value="'+esc(a.keterangan)+'" oninput="addState.keterangan=this.value">')+
-        '<label class="fl">'+(peng?'Harga':'Nominal')+'</label><div class="nominal-wrap"><span class="rp">Rp</span>'+
-          '<input id="inNominal" inputmode="numeric" placeholder="0" value="'+(a.nominal?(+a.nominal).toLocaleString('id-ID'):'')+'" oninput="onNominalV2(this)"></div>'+
-        (peng
-          ? '<label class="fl">Diskon / potongan (opsional)</label><div class="nominal-wrap"><span class="rp">Rp</span>'+
-            '<input inputmode="numeric" placeholder="0" value="'+(a.diskon?(+a.diskon).toLocaleString('id-ID'):'')+'" oninput="onDiskonAdd(this)"></div>'+
-            '<div id="netInfo" style="display:none;font-size:11.5px;margin:-8px 2px 14px"></div>'
-          : '')+
+        '<button class="'+(a.metode==='struk'?'on':'')+'" onclick="setMetode(\'struk\')">&#128247; Foto struk</button></div>':'');
+
+    /* --- pemasukan: form tunggal seperti semula --- */
+    if(!peng){
+      S().innerHTML=kepala+
+        '<label class="fl">Nominal</label><div class="nominal-wrap"><span class="rp">Rp</span>'+
+          '<input id="inNominal" inputmode="numeric" placeholder="0" value="'+(a.nominal?(+a.nominal).toLocaleString('id-ID'):'')+'" oninput="onNominal(this)"></div>'+
+        '<label class="fl">Sumber / keterangan</label>'+
+        '<input class="field" placeholder="mis. Gaji bulanan" value="'+esc(a.keterangan)+'" oninput="addState.keterangan=this.value">'+
         '<div class="duo"><div><label class="fl">Kategori</label><select class="field" onchange="addState.kategori=this.value">'+
-          (peng?KAT_PENGELUARAN:KAT_PEMASUKAN).map(function(k){return '<option '+(a.kategori===k?'selected':'')+'>'+k+'</option>';}).join('')+'</select></div>'+
+          KAT_PEMASUKAN.map(function(k){return '<option '+(a.kategori===k?'selected':'')+'>'+k+'</option>';}).join('')+'</select></div>'+
           '<div><label class="fl">Tanggal</label><input class="field" type="date" value="'+a.tanggal+'" onchange="addState.tanggal=this.value"></div></div>'+
         '<label class="fl">Catatan (opsional)</label><input class="field" placeholder="Tambah catatan" value="'+esc(a.catatan)+'" oninput="addState.catatan=this.value">'+
-        '<button class="save '+(peng?'':'pem')+'" onclick="onSimpan()">Simpan '+(peng?'pengeluaran':'pemasukan')+'</button>'))+
+        '<button class="save pem" onclick="onSimpan()">Simpan pemasukan</button>'+
+        '</div>';
+      return;
+    }
+    /* --- pengeluaran via struk: picker seperti semula --- */
+    if(a.metode==='struk'){ S().innerHTML=kepala+strukPicker()+'</div>'; return; }
+
+    /* --- pengeluaran manual: daftar barang --- */
+    var sub=a.items.reduce(function(s,it){return s+(+it.nominal);},0);
+    var pot=a.potongan.reduce(function(s,p){return s+(+p.nominal);},0);
+    S().innerHTML=kepala+
+      '<label class="fl">Nama toko (opsional)</label>'+
+      '<input class="field" placeholder="mis. Indomaret" value="'+esc(a.toko)+'" oninput="addState.toko=this.value">'+
+      '<div class="duo"><div><label class="fl">Catatan (opsional)</label><input class="field" placeholder="opsional" value="'+esc(a.catatan)+'" oninput="addState.catatan=this.value"></div>'+
+        '<div><label class="fl">Tanggal</label><input class="field" type="date" value="'+a.tanggal+'" onchange="addState.tanggal=this.value"></div></div>'+
+      '<div class="dl" style="margin:4px 2px 6px">Daftar barang ('+a.items.length+')</div>'+
+      (a.items.length? a.items.map(function(it,i){
+        return '<div class="pend"><div class="pmid">'+
+          '<div class="pnm">'+esc(it.keterangan)+(it.diskon?' <span style="color:#BA7517;font-weight:600">(disk '+rp(it.diskon)+')</span>':'')+'</div>'+
+          '<select class="psel" onchange="addState.items['+i+'].kategori=this.value">'+opsiKat(it.kategori)+'</select></div>'+
+          '<div class="pamt">'+rp(it.nominal)+'</div>'+
+          '<button class="delbtn" onclick="bukaItemManual(\'manual\','+i+')">&#9998;</button>'+
+          '<button class="delbtn" onclick="hapusItemManual('+i+')">&times;</button></div>';
+      }).join('') : '<div class="empty" style="padding:14px">Belum ada barang. Ketuk tombol di bawah untuk menambahkan.</div>')+
+      '<button class="btn-line" style="margin-top:6px;width:100%" onclick="bukaItemManual(\'manual\')">+ Tambah barang</button>'+
+      (a.items.length?(
+        '<div class="draftbox" style="background:rgba(59,130,189,.16);border:.5px solid rgba(59,130,189,.35);margin-top:10px">'+
+          '<div class="slot"><span>Subtotal barang</span><b>'+rp(sub)+'</b></div>'+
+          (pot?('<div class="slot"><span>Diskon total belanja</span><b style="color:#BA7517">- '+rp(pot)+'</b></div>'):'')+
+          '<div class="slot" style="font-size:15px;border-top:.5px solid var(--line);padding-top:8px;margin-top:2px"><span style="font-weight:600">Total dibayar</span><b>'+rp(sub-pot)+'</b></div>'+
+        '</div>'+
+        (a.potongan.length?('<div class="dl" style="margin:8px 2px 6px">Diskon / potongan total</div>'+
+          a.potongan.map(function(p,i){
+            return '<div class="pend"><div class="pmid"><div class="pnm">'+esc(p.keterangan)+'</div></div>'+
+              '<div class="pamt" style="color:#BA7517">- '+rp(p.nominal)+'</div>'+
+              '<button class="delbtn" onclick="bukaDiskonTotal(\'manual\','+i+')">&#9998;</button>'+
+              '<button class="delbtn" onclick="hapusPotonganManual('+i+')">&times;</button></div>';
+          }).join('')):'')+
+        '<button class="btn-line" style="margin-top:6px;width:100%" onclick="bukaDiskonTotal(\'manual\')">+ Diskon total belanja</button>'
+      ):'')+
+      '<button class="save" '+(a.items.length?'':'disabled')+' onclick="onSimpan()">Simpan '+(a.items.length+a.potongan.length)+' transaksi</button>'+
       '</div>';
-    perbaruiNetInfo();
   };
 
-  window.onSimpan=function(){
+  /* ============ SIMPAN ============ */
+  window.onSimpan=async function(){
     var a=addState;
     if(!a.akunId){ toast('Pilih penampung saldo terlebih dahulu'); return; }
-    if(!a.nominal||+a.nominal<=0){ toast('Nominal belum diisi'); return; }
-    var peng=a.tipe==='pengeluaran';
-    var diskon=peng?+(a.diskon||0):0;
-    if(diskon>0 && diskon>=+a.nominal){ toast('Diskon melebihi atau menyamai harga, periksa kembali'); return; }
-    var net=+a.nominal-diskon;
-    if(peng){
-      var cek=bolehKeluar(a.akunId, net);
-      if(!cek.ok){ toast(cek.alasan); return; }
+    if(a.tipe==='pemasukan'){
+      if(!a.nominal||+a.nominal<=0){ toast('Nominal belum diisi'); return; }
+      simpanTx({tanggal:a.tanggal,tipe:'pemasukan',kategori:a.kategori,nominal:+a.nominal,keterangan:a.keterangan.trim(),catatan:a.catatan.trim(),akunId:a.akunId,createdAt:new Date().toISOString()});
+      addState=blankAdd(); return;
     }
-    var akunTerpilih=cariAkun(a.akunId);
-    var buatHutang=peng && a.jadiHutang && akunTerpilih && akunTerpilih.jenis==='kartu';
-    /* format catatan mengikuti alur struk: "Toko: X | catatan | Diskon Rp Y" */
-    var cat=[ (peng&&a.toko.trim())?('Toko: '+a.toko.trim()):'',
-              a.catatan.trim(),
-              diskon>0?('Diskon '+rp(diskon)):'' ].filter(Boolean).join(' | ');
-    simpanTx({tanggal:a.tanggal,tipe:a.tipe,kategori:a.kategori,nominal:net,keterangan:a.keterangan.trim(),catatan:cat,akunId:a.akunId,createdAt:new Date().toISOString()});
-    if(buatHutang) catatHutangKartuKredit(net, a.keterangan.trim(), a.tanggal, akunTerpilih.nama, akunTerpilih.id);
+    if(!a.items.length){ toast('Tambahkan barang terlebih dahulu'); return; }
+    var sub=a.items.reduce(function(s,it){return s+(+it.nominal);},0);
+    var pot=a.potongan.reduce(function(s,p){return s+(+p.nominal);},0);
+    var net=sub-pot;
+    if(net<=0){ toast('Diskon total melebihi atau menyamai subtotal, periksa kembali'); return; }
+    var cek=bolehKeluar(a.akunId, net);
+    if(!cek.ok){ toast(cek.alasan); return; }
+    var akun=cariAkun(a.akunId);
+    var buatHutang=a.jadiHutang && akun && akun.jenis==='kartu';
+    var cat=[a.toko.trim()?('Toko: '+a.toko.trim()):'', a.catatan.trim()].filter(Boolean).join(' | ');
+    var i, it, item;
+    for(i=0;i<a.items.length;i++){
+      it=a.items[i];
+      var catItem=[cat, it.diskon?('Diskon '+rp(it.diskon)):''].filter(Boolean).join(' | ');
+      item={ id:uid(), tanggal:a.tanggal, tipe:'pengeluaran', kategori:it.kategori, nominal:+it.nominal, keterangan:it.keterangan, catatan:catItem, akunId:a.akunId, createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
+      TX.unshift(item); await idbPut(item);
+    }
+    for(i=0;i<a.potongan.length;i++){
+      var p=a.potongan[i];
+      item={ id:uid(), tanggal:a.tanggal, tipe:'pengeluaran', kategori:'Belanja', nominal:-(+p.nominal), keterangan:p.keterangan, catatan:cat, akunId:a.akunId, createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
+      TX.unshift(item); await idbPut(item);
+    }
+    sortTX(); updatePip();
+    if(buatHutang) await catatHutangKartuKredit(net, a.toko.trim()||(a.items.length+' barang'), a.tanggal, akun.nama, akun.id);
+    var n=a.items.length+a.potongan.length;
     addState=blankAdd();
+    toast(n+' transaksi tersimpan'); goView('home');
   };
 
-  /* ============ 2) TAMBAH ITEM MANUAL DI LAYAR STRUK (MODAL) ============ */
-  function pastikanModalItem(){
-    if(document.getElementById('miMask')) return;
-    var div=document.createElement('div');
-    div.id='miMask';
-    div.className='cmask';
-    div.innerHTML=
-      '<div class="cmcard">'+
-        '<div class="cmtitle">Tambah item manual</div>'+
-        '<div class="cmtext" style="margin-bottom:12px">Untuk barang yang tidak terbaca saat pemindaian.</div>'+
-        '<label class="fl">Nama barang</label>'+
-        '<input class="field" id="miKet" placeholder="mis. Pop Mie Ayam 75g">'+
-        '<label class="fl">Harga</label>'+
-        '<div class="nominal-wrap"><span class="rp">Rp</span>'+
-          '<input id="miNom" inputmode="numeric" placeholder="0" '+
-            'oninput="this.value=this.value.replace(/\\D/g,\'\')?(+this.value.replace(/\\D/g,\'\')).toLocaleString(\'id-ID\'):\'\'" '+
-            'onkeydown="if(event.key===\'Enter\')simpanItemManual()"></div>'+
-        '<label class="fl">Kategori</label>'+
-        '<select class="field" id="miKat">'+KAT_PENGELUARAN.map(function(k){return '<option'+(k==='Belanja'?' selected':'')+'>'+k+'</option>';}).join('')+'</select>'+
-        '<div class="cmbtns" style="margin-top:6px">'+
-          '<button class="cmbtn cancel" onclick="tutupItemManual()">Batal</button>'+
-          '<button class="cmbtn ok" onclick="simpanItemManual()">Tambah</button>'+
-        '</div>'+
-      '</div>';
-    document.body.appendChild(div);
-    div.addEventListener('click', function(e){ if(e.target===div) tutupItemManual(); });
-  }
-  window.bukaItemManual=function(){
-    pastikanModalItem();
-    document.getElementById('miKet').value='';
-    document.getElementById('miNom').value='';
-    document.getElementById('miKat').value='Belanja';
-    document.getElementById('miMask').classList.add('show');
-    setTimeout(function(){ var k=document.getElementById('miKet'); if(k) k.focus(); }, 80);
-  };
-  window.tutupItemManual=function(){
-    var m=document.getElementById('miMask');
-    if(m) m.classList.remove('show');
-  };
-  window.simpanItemManual=function(){
-    var ket=(document.getElementById('miKet').value||'').trim();
-    var nom=+((document.getElementById('miNom').value||'').replace(/\D/g,''))||0;
-    var kat=document.getElementById('miKat').value||'Belanja';
-    if(!ket){ toast('Isi nama barangnya dahulu'); return; }
-    if(nom<=0){ toast('Isi harga barangnya'); return; }
-    strukState.pending.push({keterangan:ket.slice(0,80), nominal:nom, kategori:kat});
-    tutupItemManual();
-    toast('Item ditambahkan: '+ket);
-    renderStruk();
-  };
-
-  function suntikTombolManual(){
+  /* ============ SUNTIKAN DI LAYAR PINDAI STRUK ============ */
+  function suntikStruk(){
     if(!strukState || !strukState.img) return;
     var wadah=S(); if(!wadah) return;
-    if(document.getElementById('miBtn')) return;
     var btnSimpan=wadah.querySelector('button.save');
-    if(!btnSimpan) return;
-    var b=document.createElement('button');
-    b.id='miBtn';
-    b.className='btn-line';
-    b.style.cssText='margin-top:8px;width:100%';
-    b.innerHTML='+ Tambah item manual (bila ada yang tidak terbaca)';
-    b.onclick=bukaItemManual;
-    btnSimpan.parentNode.insertBefore(b, btnSimpan);
+    if(!btnSimpan || document.getElementById('skBtnRow')) return;
+    /* dua tombol: tambah barang & diskon total */
+    var row=document.createElement('div');
+    row.id='skBtnRow';
+    row.style.cssText='display:flex;gap:8px;margin-top:8px';
+    row.innerHTML=
+      '<button class="btn-line" style="margin:0;flex:1" onclick="bukaItemManual(\'struk\')">+ Tambah barang</button>'+
+      '<button class="btn-line" style="margin:0;flex:1" onclick="bukaDiskonTotal(\'struk\')">+ Diskon total</button>';
+    btnSimpan.parentNode.insertBefore(row, btnSimpan);
+    /* tombol edit (pensil) pada tiap baris daftar */
+    var rows=wadah.querySelectorAll('.pend');
+    for(var i=0;i<rows.length && i<strukState.pending.length;i++){
+      (function(idx, rowEl){
+        var del=rowEl.querySelector('.delbtn');
+        if(!del) return;
+        var b=document.createElement('button');
+        b.className='delbtn';
+        b.innerHTML='&#9998;';
+        b.onclick=function(){
+          var p=strukState.pending[idx];
+          if(p && (p.isDiskon || (+p.nominal)<0)) bukaDiskonTotal('struk', idx);
+          else bukaItemManual('struk', idx);
+        };
+        rowEl.insertBefore(b, del);
+      })(i, rows[i]);
+    }
   }
-
   var _renderStrukLama=window.renderStruk;
   window.renderStruk=function(){
     _renderStrukLama.apply(this, arguments);
-    try{ suntikTombolManual(); }catch(e){}
+    try{ suntikStruk(); }catch(e){}
   };
 
 })();
