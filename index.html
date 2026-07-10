@@ -5056,48 +5056,76 @@ function actAdd(kind){
     addState=blankAdd();
   };
 
-  /* ============ 2) TAMBAH ITEM MANUAL DI LAYAR STRUK ============ */
-  window.tambahItemManual=function(){
-    var st=strukState;
-    var ket=(st._manKet||'').trim();
-    var nom=+((st._manNom||'').replace(/\D/g,''))||0;
+  /* ============ 2) TAMBAH ITEM MANUAL DI LAYAR STRUK (MODAL) ============ */
+  function pastikanModalItem(){
+    if(document.getElementById('miMask')) return;
+    var div=document.createElement('div');
+    div.id='miMask';
+    div.className='cmask';
+    div.innerHTML=
+      '<div class="cmcard">'+
+        '<div class="cmtitle">Tambah item manual</div>'+
+        '<div class="cmtext" style="margin-bottom:12px">Untuk barang yang tidak terbaca saat pemindaian.</div>'+
+        '<label class="fl">Nama barang</label>'+
+        '<input class="field" id="miKet" placeholder="mis. Pop Mie Ayam 75g">'+
+        '<label class="fl">Harga</label>'+
+        '<div class="nominal-wrap"><span class="rp">Rp</span>'+
+          '<input id="miNom" inputmode="numeric" placeholder="0" '+
+            'oninput="this.value=this.value.replace(/\\D/g,\'\')?(+this.value.replace(/\\D/g,\'\')).toLocaleString(\'id-ID\'):\'\'" '+
+            'onkeydown="if(event.key===\'Enter\')simpanItemManual()"></div>'+
+        '<label class="fl">Kategori</label>'+
+        '<select class="field" id="miKat">'+KAT_PENGELUARAN.map(function(k){return '<option'+(k==='Belanja'?' selected':'')+'>'+k+'</option>';}).join('')+'</select>'+
+        '<div class="cmbtns" style="margin-top:6px">'+
+          '<button class="cmbtn cancel" onclick="tutupItemManual()">Batal</button>'+
+          '<button class="cmbtn ok" onclick="simpanItemManual()">Tambah</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(div);
+    div.addEventListener('click', function(e){ if(e.target===div) tutupItemManual(); });
+  }
+  window.bukaItemManual=function(){
+    pastikanModalItem();
+    document.getElementById('miKet').value='';
+    document.getElementById('miNom').value='';
+    document.getElementById('miKat').value='Belanja';
+    document.getElementById('miMask').classList.add('show');
+    setTimeout(function(){ var k=document.getElementById('miKet'); if(k) k.focus(); }, 80);
+  };
+  window.tutupItemManual=function(){
+    var m=document.getElementById('miMask');
+    if(m) m.classList.remove('show');
+  };
+  window.simpanItemManual=function(){
+    var ket=(document.getElementById('miKet').value||'').trim();
+    var nom=+((document.getElementById('miNom').value||'').replace(/\D/g,''))||0;
+    var kat=document.getElementById('miKat').value||'Belanja';
     if(!ket){ toast('Isi nama barangnya dahulu'); return; }
     if(nom<=0){ toast('Isi harga barangnya'); return; }
-    st.pending.push({keterangan:ket.slice(0,80), nominal:nom, kategori:'Belanja'});
-    st._manKet=''; st._manNom='';
+    strukState.pending.push({keterangan:ket.slice(0,80), nominal:nom, kategori:kat});
+    tutupItemManual();
     toast('Item ditambahkan: '+ket);
     renderStruk();
   };
-  window.onManKet=function(el){ strukState._manKet=el.value; };
-  window.onManNom=function(el){
-    var d=el.value.replace(/\D/g,'');
-    strukState._manNom=d;
-    el.value=d?(+d).toLocaleString('id-ID'):'';
-  };
 
-  function suntikFormManual(){
+  function suntikTombolManual(){
     if(!strukState || !strukState.img) return;
     var wadah=S(); if(!wadah) return;
-    if(document.getElementById('manItemBox')) return;
+    if(document.getElementById('miBtn')) return;
     var btnSimpan=wadah.querySelector('button.save');
     if(!btnSimpan) return;
-    var st=strukState;
-    var div=document.createElement('div');
-    div.id='manItemBox';
-    div.innerHTML=
-      '<div class="dl" style="margin:10px 2px 6px">Item tidak terbaca? Tambahkan manual</div>'+
-      '<div style="display:flex;gap:8px;align-items:stretch">'+
-        '<input class="field" style="flex:1.5;margin:0" placeholder="Nama barang" value="'+esc(st._manKet||'')+'" oninput="onManKet(this)">'+
-        '<input class="field" style="flex:1;margin:0" inputmode="numeric" placeholder="Harga" value="'+(st._manNom?(+st._manNom).toLocaleString('id-ID'):'')+'" oninput="onManNom(this)">'+
-        '<button class="btn-line" style="margin:0;flex:0 0 auto;padding:0 16px" onclick="tambahItemManual()">+</button>'+
-      '</div>';
-    btnSimpan.parentNode.insertBefore(div, btnSimpan);
+    var b=document.createElement('button');
+    b.id='miBtn';
+    b.className='btn-line';
+    b.style.cssText='margin-top:8px;width:100%';
+    b.innerHTML='+ Tambah item manual (bila ada yang tidak terbaca)';
+    b.onclick=bukaItemManual;
+    btnSimpan.parentNode.insertBefore(b, btnSimpan);
   }
 
   var _renderStrukLama=window.renderStruk;
   window.renderStruk=function(){
     _renderStrukLama.apply(this, arguments);
-    try{ suntikFormManual(); }catch(e){}
+    try{ suntikTombolManual(); }catch(e){}
   };
 
 })();
