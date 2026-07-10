@@ -443,7 +443,7 @@
     <button class="acts-btn" onclick="actAdd('pindah')"><span class="acts-ic" style="background:#7F77DD">&#8646;</span><div class="acts-tx"><div class="at">Pindah Saldo</div><div class="as">Perpindahan antar penampung saldo</div></div></button>
     <button class="acts-btn" onclick="actAdd('piutang')"><span class="acts-ic" style="background:var(--hijau)">&#8599;</span><div class="acts-tx"><div class="at">Piutang</div><div class="as">Uang Anda yang ada pada pihak lain</div></div></button>
     <button class="acts-btn" onclick="actAdd('hutang')"><span class="acts-ic" style="background:var(--merah)">&#8600;</span><div class="acts-tx"><div class="at">Hutang</div><div class="as">Kewajiban Anda kepada pihak lain</div></div></button>
-    <button class="acts-btn" onclick="actAdd('akun')"><span class="acts-ic" style="background:#BA7517">&#128176;</span><div class="acts-tx"><div class="at">Asal Dana</div><div class="as">Bank, kartu kredit, atau dompet digital</div></div></button>
+    <button class="acts-btn" onclick="actAdd('akun')"><span class="acts-ic" style="background:#BA7517">&#128176;</span><div class="acts-tx"><div class="at">Penampung Saldo</div><div class="as">Bank, kartu kredit, atau dompet digital</div></div></button>
     <button class="acts-cancel" onclick="closeSheet()">Batal</button>
   </div>
 </div>
@@ -5000,7 +5000,7 @@ function actAdd(kind){
       '<div class="form"><div class="tipe2">'+
         '<button class="peng '+(peng?'on':'')+'" onclick="setTipe(\'pengeluaran\')">Pengeluaran</button>'+
         '<button class="pem '+(!peng?'on':'')+'" onclick="setTipe(\'pemasukan\')">Pemasukan</button></div>'+
-      '<label class="fl">Penampung saldo</label><select class="field" onchange="addState.akunId=this.value;renderAdd()">'+akunOptionsHTML(a.akunId)+'</select>'+
+      '<label class="fl">Asal Dana</label><select class="field" onchange="addState.akunId=this.value;renderAdd()">'+akunOptionsHTML(a.akunId)+'</select>'+
       (akunTerpilih?('<div style="font-size:11px;margin:-8px 2px 14px;color:'+(akunTerpilih.jenis==='kartu'?'var(--kuning-tx)':(saldoAkunSaatIni(akunTerpilih.id)>0?'var(--tx2)':'var(--merah-tx)'))+'">'+
         (akunTerpilih.jenis==='kartu'
           ? 'Kartu kredit: pengeluaran boleh melebihi saldo dan akan menjadi tagihan berjalan.'
