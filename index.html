@@ -5130,6 +5130,164 @@ function actAdd(kind){
 
 })();
 </script>
+
+<script>
+/* PATCH KATEGORI KUSTOM v1. Tempel sebelum </body>, setelah patch lain.
+   Menambah pengelolaan kategori lewat Profil -> Kategori Transaksi:
+   - Kategori tambahan disimpan di localStorage dan disisipkan ke
+     KAT_PENGELUARAN / KAT_PEMASUKAN sebelum "Lainnya", sehingga
+     otomatis muncul di semua form (ketik manual, struk, modal item).
+   - Kategori bawaan terkunci; kategori tambahan bisa dihapus.
+   - Menghapus kategori tidak mengubah transaksi lama (label tetap). */
+(function(){
+
+  var KUNCI='kk_kat_custom_v1';
+  var BASE_K=KAT_PENGELUARAN.slice();
+  var BASE_M=KAT_PEMASUKAN.slice();
+
+  function bacaKustom(){
+    try{
+      var o=JSON.parse(localStorage.getItem(KUNCI)||'{}');
+      return { keluar:Array.isArray(o.keluar)?o.keluar:[], masuk:Array.isArray(o.masuk)?o.masuk:[] };
+    }catch(e){ return {keluar:[],masuk:[]}; }
+  }
+  function tulisKustom(k){ try{ localStorage.setItem(KUNCI, JSON.stringify(k)); }catch(e){} }
+
+  function bangunUlang(arr, base, tambahan){
+    arr.length=0;
+    var adaLain=base[base.length-1]==='Lainnya';
+    (adaLain?base.slice(0,-1):base).forEach(function(x){ arr.push(x); });
+    tambahan.forEach(function(x){ arr.push(x); });
+    if(adaLain) arr.push('Lainnya');
+  }
+  function terapkanKustom(){
+    var k=bacaKustom();
+    bangunUlang(KAT_PENGELUARAN, BASE_K, k.keluar);
+    bangunUlang(KAT_PEMASUKAN,  BASE_M, k.masuk);
+  }
+  terapkanKustom();
+
+  /* ============ HALAMAN KELOLA KATEGORI ============ */
+  function chipKat(nama, tipe, kustom){
+    return '<span style="display:inline-flex;align-items:center;gap:6px;background:var(--card);border:.5px solid var(--line);border-radius:16px;padding:7px 12px;font-size:12.5px;margin:0 6px 8px 0">'+
+      esc(nama)+
+      (kustom?('<button onclick="hapusKategori(\''+tipe+'\',\''+esc(nama).replace(/'/g,"\\'")+'\')" style="border:none;background:none;color:var(--merah-tx);font-size:15px;line-height:1;padding:0 0 0 2px">&times;</button>'):'')+
+      '</span>';
+  }
+  window.renderProfKategori=function(){
+    var k=bacaKustom();
+    function bagian(judul, base, tambahan, tipe){
+      var adaLain=base[base.length-1]==='Lainnya';
+      var bawaan=adaLain?base.slice(0,-1):base.slice();
+      return '<div class="grp-label">'+judul+'</div>'+
+        '<div class="panel" style="margin:0 0 6px">'+
+          '<div style="font-size:11px;color:var(--tx3);margin-bottom:10px">Kategori bawaan (tetap)</div>'+
+          '<div>'+bawaan.map(function(n){return chipKat(n,tipe,false);}).join('')+(adaLain?chipKat('Lainnya',tipe,false):'')+'</div>'+
+          '<div style="font-size:11px;color:var(--tx3);margin:10px 0">Kategori tambahan Anda'+(tambahan.length?'':' (belum ada)')+'</div>'+
+          (tambahan.length?('<div>'+tambahan.map(function(n){return chipKat(n,tipe,true);}).join('')+'</div>'):'')+
+          '<button class="btn-line" style="margin-top:8px;width:100%" onclick="bukaTambahKategori(\''+tipe+'\')">+ Tambah kategori '+(tipe==='keluar'?'pengeluaran':'pemasukan')+'</button>'+
+        '</div>';
+    }
+    S().innerHTML=
+      '<div class="fhead"><button class="bk" onclick="backProf()">&#8592;</button><div class="ti">Kategori Transaksi</div></div>'+
+      '<div class="set">'+
+        '<p class="hint">Kategori tambahan otomatis muncul di semua form pencatatan. Menghapus kategori tidak mengubah transaksi yang sudah tercatat dengan kategori tersebut.</p>'+
+        bagian('Pengeluaran', BASE_K, k.keluar, 'keluar')+
+        bagian('Pemasukan',  BASE_M, k.masuk,  'masuk')+
+      '</div>';
+  };
+
+  /* ============ MODAL TAMBAH ============ */
+  var _tipeModal='keluar';
+  function pastikanModalKat(){
+    if(document.getElementById('kaMask')) return;
+    var div=document.createElement('div');
+    div.id='kaMask'; div.className='cmask';
+    div.innerHTML=
+      '<div class="cmcard">'+
+        '<div class="cmtitle" id="kaTitle">Tambah kategori</div>'+
+        '<label class="fl">Nama kategori</label>'+
+        '<input class="field" id="kaNama" maxlength="24" placeholder="mis. Zakat &amp; Sedekah" '+
+          'onkeydown="if(event.key===\'Enter\')simpanKategori()">'+
+        '<div class="cmbtns" style="margin-top:6px">'+
+          '<button class="cmbtn cancel" onclick="document.getElementById(\'kaMask\').classList.remove(\'show\')">Batal</button>'+
+          '<button class="cmbtn ok" onclick="simpanKategori()">Tambah</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(div);
+    div.addEventListener('click', function(e){ if(e.target===div) div.classList.remove('show'); });
+  }
+  window.bukaTambahKategori=function(tipe){
+    _tipeModal=tipe;
+    pastikanModalKat();
+    document.getElementById('kaTitle').textContent='Tambah kategori '+(tipe==='keluar'?'pengeluaran':'pemasukan');
+    document.getElementById('kaNama').value='';
+    document.getElementById('kaMask').classList.add('show');
+    setTimeout(function(){ var el=document.getElementById('kaNama'); if(el) el.focus(); }, 80);
+  };
+  window.simpanKategori=function(){
+    var nama=(document.getElementById('kaNama').value||'').replace(/\s{2,}/g,' ').trim();
+    if(!nama){ toast('Isi nama kategorinya dahulu'); return; }
+    if(nama.length<2){ toast('Nama kategori terlalu pendek'); return; }
+    var k=bacaKustom();
+    var semua=(_tipeModal==='keluar'?KAT_PENGELUARAN:KAT_PEMASUKAN);
+    var ada=semua.some(function(x){ return x.toLowerCase()===nama.toLowerCase(); });
+    if(ada){ toast('Kategori "'+nama+'" sudah ada'); return; }
+    (_tipeModal==='keluar'?k.keluar:k.masuk).push(nama);
+    tulisKustom(k); terapkanKustom();
+    document.getElementById('kaMask').classList.remove('show');
+    toast('Kategori "'+nama+'" ditambahkan');
+    renderProfKategori();
+  };
+  window.hapusKategori=async function(tipe, nama){
+    var dipakai=TX.filter(function(t){ return t.kategori===nama; }).length;
+    var pesan='Hapus kategori "'+nama+'"?'+
+      (dipakai?(' '+dipakai+' transaksi lama memakai kategori ini; catatannya tidak berubah dan tetap tampil di laporan.'):'');
+    if(!await confirmModal(pesan, {danger:true, okText:'Hapus'})) return;
+    var k=bacaKustom();
+    var arr=(tipe==='keluar'?k.keluar:k.masuk);
+    var i=arr.indexOf(nama);
+    if(i>-1) arr.splice(i,1);
+    tulisKustom(k); terapkanKustom();
+    if(addState && addState.kategori===nama){
+      addState.kategori=(addState.tipe==='pengeluaran'?KAT_PENGELUARAN:KAT_PEMASUKAN)[0];
+    }
+    toast('Kategori dihapus');
+    renderProfKategori();
+  };
+
+  /* ============ SAMBUNGAN KE TAB PROFIL ============ */
+  var _renderSettingsLama=window.renderSettings;
+  window.renderSettings=function(){
+    if(profSub==='kategori'){ renderProfKategori(); return; }
+    _renderSettingsLama.apply(this, arguments);
+    if(profSub) return;
+    /* sisipkan baris menu ke grup Data & Pencadangan */
+    var menus=S().querySelectorAll('.menu');
+    if(menus.length && !document.getElementById('mrKat')){
+      var k=bacaKustom(), n=k.keluar.length+k.masuk.length;
+      var html=menuRow('&#127991;','Kategori Transaksi', n?(n+' kategori tambahan'):'Kelola kategori', "openProf('kategori')");
+      menus[0].insertAdjacentHTML('beforeend', html.replace('<','<div id="mrKat" style="display:contents">$&').replace(/$/,'</div>').replace('<div id="mrKat" style="display:contents"><','<div id="mrKat" style="display:contents"><'));
+      /* penanda sederhana agar tidak dobel */
+      if(!document.getElementById('mrKat')) menus[0].insertAdjacentHTML('beforeend','<span id="mrKat" style="display:none"></span>');
+    }
+  };
+
+  /* modal item manual struk: segarkan pilihan kategori tiap dibuka */
+  if(window.bukaItemManual){
+    var _bukaItemLama=window.bukaItemManual;
+    window.bukaItemManual=function(){
+      _bukaItemLama.apply(this, arguments);
+      var sel=document.getElementById('miKat');
+      if(sel){
+        var v=sel.value;
+        sel.innerHTML=KAT_PENGELUARAN.map(function(x){return '<option'+(x===v?' selected':'')+'>'+x+'</option>';}).join('');
+      }
+    };
+  }
+
+})();
+</script>
   
 </body>
 </html>
