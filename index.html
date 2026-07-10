@@ -5288,6 +5288,64 @@ function actAdd(kind){
 
 })();
 </script>
+
+<script>
+/* PATCH DISKON MANDIRI v1. Tempel sebelum </body>, setelah patch lain.
+   Mengubah perilaku peran "Diskon" di pemindai struk: potongan tidak
+   lagi dikurangkan dari item terakhir, melainkan menjadi BARIS
+   TERSENDIRI pada daftar (nama + nominal minus), bisa diganti nama
+   (ketuk dua kali), diganti kategori, dan dihapus seperti item lain.
+   Saat disimpan, diskon menjadi transaksi pengeluaran bernilai negatif
+   (pengurang), sehingga total, saldo, dan laporan tetap akurat.
+   Tampilan transaksi bernilai negatif dirapikan menjadi "+ Rp X"
+   hijau di seluruh daftar riwayat. */
+(function(){
+
+  /* 1) Peran diskon: buat baris tersendiri, jangan sentuh item lain */
+  var _terapkanLama=window.terapkanPeran;
+  window.terapkanPeran=function(role, txt, idx){
+    if(role!=='diskon') return _terapkanLama.apply(this, arguments);
+    var st=strukState;
+    var dd=angkaDariTeks(txt);
+    if(!dd){ toast('Teks yang dipilih bukan nominal'); return; }
+    var disk=+dd;
+    st.pending.push({keterangan:'Diskon / potongan', nominal:-disk, kategori:'Belanja', isDiskon:true});
+    if(idx!=null) st.kataRole[idx]='diskon';
+    toast('Diskon '+rp(disk)+' ditambahkan sebagai baris tersendiri');
+    renderStruk();
+  };
+
+  /* 2) Teks petunjuk peran diskon disesuaikan */
+  var _infoLama=window.infoPeran;
+  window.infoPeran=function(r){
+    if(r==='diskon') return 'Ketuk angka potongan pada foto. Potongan menjadi baris tersendiri pada daftar (bisa diganti nama dengan ketuk dua kali).';
+    return _infoLama.apply(this, arguments);
+  };
+
+  /* 3) Edit nominal baris diskon: pertahankan tanda minus */
+  window.savePendNom=function(i,val){
+    var p=strukState.pending[i]; if(!p){ strukState.editPend=null; renderStruk(); return; }
+    var d=String(val).replace(/\D/g,'');
+    var n=d?+d:0;
+    p.nominal=(p.isDiskon || p.nominal<0) ? -n : n;
+    strukState.editPend=null; renderStruk();
+  };
+
+  /* 4) Tampilan transaksi bernilai negatif: "+ Rp X" hijau (pengurang) */
+  window.txRow=function(t){
+    var minus=(+t.nominal)<0;
+    var pos=t.tipe==='pemasukan' || minus;
+    var bg=t.tipe==='pemasukan'?'var(--hijau-bg)':'var(--merah-bg)';
+    var status=t.terkirim?'<span class="sdot kirim" title="Tercadang"></span>':'<span class="sdot belum" title="Belum tercadang"></span>';
+    return '<div class="item"><div class="ic" style="background:'+bg+'">'+(IKON[t.kategori]||'\uD83D\uDCB3')+'</div>'+
+      '<div class="mid"><div class="nm">'+esc(t.keterangan||t.kategori)+'</div>'+
+      '<div class="dt">'+status+labelTanggal(t.tanggal)+' &middot; '+t.kategori+(minus?' &middot; pengurang':'')+'</div></div>'+
+      '<div class="amt '+(pos?'pos':'neg')+'">'+(pos?'+ ':'- ')+fmtRp(Math.abs(+t.nominal))+'</div>'+
+      '<button class="delbtn" onclick="hapusTx(\''+t.id+'\')">&times;</button></div>';
+  };
+
+})();
+</script>
   
 </body>
 </html>
