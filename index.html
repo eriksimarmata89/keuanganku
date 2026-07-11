@@ -1646,9 +1646,6 @@ function renderAdd(){
         ? 'Kartu kredit: pengeluaran boleh melebihi saldo dan akan menjadi tagihan berjalan.'
         : 'Saldo tersedia: '+rp(saldoAkunSaatIni(akunTerpilih.id)))+'</div>'):'')+
     (isKK?('<label class="cklabel"><input type="checkbox" '+(a.jadiHutang?'checked':'')+' onchange="addState.jadiHutang=this.checked"> Catat juga sebagai hutang (tagihan '+esc(akunTerpilih.nama)+' yang perlu dibayar nanti)</label>'):'')+
-    (peng && akunTerpilih && akunTerpilih.jenis!=='kartu' ?
-        ('<label class="cklabel"><input type="checkbox" '+(a.jadiPiutang?'checked':'')+' onchange="addState.jadiPiutang=this.checked;renderAdd()"> Catat juga sebagai piutang (dana ini akan dikembalikan pihak lain)</label>'+
-         (a.jadiPiutang?('<label class="fl">Pihak yang berhutang</label><input class="field" placeholder="mis. Budi / Kantor" value="'+esc(a.piutangPihak)+'" oninput="addState.piutangPihak=this.value">'):'')) : '')+
     (peng?'<div class="metode"><button class="'+(a.metode==='manual'?'on':'')+'" onclick="setMetode(\'manual\')">&#9998; Ketik manual</button>'+
       '<button class="'+(a.metode==='struk'?'on':'')+'" onclick="setMetode(\'struk\')">&#128247; Foto struk</button></div>':'')+
     (peng&&a.metode==='struk'?strukPicker():'')+
@@ -1989,11 +1986,6 @@ async function simpanSemua(){
   if(!st.akunId){ toast('Pilih penampung saldo terlebih dahulu'); return; }
   var akunTerpilih=cariAkun(st.akunId);
   var buatHutang=st.jadiHutang && akunTerpilih && akunTerpilih.jenis==='kartu';
-  var pihakPiutang='';
-    if(a.jadiPiutang && akun && akun.jenis!=='kartu'){
-      pihakPiutang=(a.piutangPihak||'').trim();
-      if(!pihakPiutang){ toast('Isi nama pihak yang berhutang'); return; }
-    }
   var totalPengeluaran=st.pending.reduce(function(s,p){ return s+(+p.nominal); },0);
   var cek=bolehKeluar(st.akunId, totalPengeluaran);
   if(!cek.ok){ toast(cek.alasan); return; }
@@ -5131,6 +5123,9 @@ function actAdd(kind){
           ? 'Kartu kredit: pengeluaran boleh melebihi saldo dan akan menjadi tagihan berjalan.'
           : 'Saldo tersedia: '+rp(saldoAkunSaatIni(akunTerpilih.id)))+'</div>'):'')+
       (isKK?('<label class="cklabel"><input type="checkbox" '+(a.jadiHutang?'checked':'')+' onchange="addState.jadiHutang=this.checked"> Catat juga sebagai hutang (tagihan '+esc(akunTerpilih.nama)+' yang perlu dibayar nanti)</label>'):'')+
+      (peng && akunTerpilih && akunTerpilih.jenis!=='kartu' ?
+        ('<label class="cklabel"><input type="checkbox" '+(a.jadiPiutang?'checked':'')+' onchange="addState.jadiPiutang=this.checked;renderAdd()"> Catat juga sebagai piutang (dana ini akan dikembalikan pihak lain)</label>'+
+         (a.jadiPiutang?('<label class="fl">Pihak yang berhutang</label><input class="field" placeholder="mis. Budi / Kantor" value="'+esc(a.piutangPihak)+'" oninput="addState.piutangPihak=this.value">'):'')) : '')+
       (peng?'<div class="metode"><button class="'+(a.metode==='manual'?'on':'')+'" onclick="setMetode(\'manual\')">&#9998; Ketik manual</button>'+
         '<button class="'+(a.metode==='struk'?'on':'')+'" onclick="setMetode(\'struk\')">&#128247; Foto struk</button></div>':'');
 
