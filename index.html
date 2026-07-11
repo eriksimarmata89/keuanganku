@@ -1646,6 +1646,9 @@ function renderAdd(){
         ? 'Kartu kredit: pengeluaran boleh melebihi saldo dan akan menjadi tagihan berjalan.'
         : 'Saldo tersedia: '+rp(saldoAkunSaatIni(akunTerpilih.id)))+'</div>'):'')+
     (isKK?('<label class="cklabel"><input type="checkbox" '+(a.jadiHutang?'checked':'')+' onchange="addState.jadiHutang=this.checked"> Catat juga sebagai hutang (tagihan '+esc(akunTerpilih.nama)+' yang perlu dibayar nanti)</label>'):'')+
+    (peng && akunTerpilih && akunTerpilih.jenis!=='kartu' ?
+        ('<label class="cklabel"><input type="checkbox" '+(a.jadiPiutang?'checked':'')+' onchange="addState.jadiPiutang=this.checked;renderAdd()"> Catat juga sebagai piutang (dana ini akan dikembalikan pihak lain)</label>'+
+         (a.jadiPiutang?('<label class="fl">Pihak yang berhutang</label><input class="field" placeholder="mis. Budi / Kantor" value="'+esc(a.piutangPihak)+'" oninput="addState.piutangPihak=this.value">'):'')) : '')+
     (peng?'<div class="metode"><button class="'+(a.metode==='manual'?'on':'')+'" onclick="setMetode(\'manual\')">&#9998; Ketik manual</button>'+
       '<button class="'+(a.metode==='struk'?'on':'')+'" onclick="setMetode(\'struk\')">&#128247; Foto struk</button></div>':'')+
     (peng&&a.metode==='struk'?strukPicker():'')+
@@ -1986,6 +1989,11 @@ async function simpanSemua(){
   if(!st.akunId){ toast('Pilih penampung saldo terlebih dahulu'); return; }
   var akunTerpilih=cariAkun(st.akunId);
   var buatHutang=st.jadiHutang && akunTerpilih && akunTerpilih.jenis==='kartu';
+  var pihakPiutang='';
+    if(a.jadiPiutang && akun && akun.jenis!=='kartu'){
+      pihakPiutang=(a.piutangPihak||'').trim();
+      if(!pihakPiutang){ toast('Isi nama pihak yang berhutang'); return; }
+    }
   var totalPengeluaran=st.pending.reduce(function(s,p){ return s+(+p.nominal); },0);
   var cek=bolehKeluar(st.akunId, totalPengeluaran);
   if(!cek.ok){ toast(cek.alasan); return; }
@@ -2001,6 +2009,7 @@ async function simpanSemua(){
   sortTX(); updatePip();
   var n=st.pending.length; cleanupWorker(); strukState=blankStruk();
   if(buatHutang) await catatHutangKartuKredit(totalNominal, st.toko||(n+' transaksi struk'), st.tanggal, akunTerpilih.nama, akunTerpilih.id);
+  if(pihakPiutang) await catatPiutangDariPengeluaran(net, a.toko.trim()||(a.items.length+' barang'), a.tanggal, pihakPiutang, a.akunId);
   toast(n+' transaksi tersimpan'); goView('home');
 }
 
@@ -4960,6 +4969,7 @@ function actAdd(kind){
   window.blankAdd=function(){
     var a=_blankAddLama();
     a.toko=''; a.items=[]; a.potongan=[];
+    a.jadiPiutang=false; a.piutangPihak='';
     return a;
   };
   if(window.addState){
@@ -5197,6 +5207,11 @@ function actAdd(kind){
     if(!cek.ok){ toast(cek.alasan); return; }
     var akun=cariAkun(a.akunId);
     var buatHutang=a.jadiHutang && akun && akun.jenis==='kartu';
+    var pihakPiutang='';
+    if(a.jadiPiutang && akun && akun.jenis!=='kartu'){
+      pihakPiutang=(a.piutangPihak||'').trim();
+      if(!pihakPiutang){ toast('Isi nama pihak yang berhutang'); return; }
+    }
     var cat=[a.toko.trim()?('Toko: '+a.toko.trim()):'', a.catatan.trim()].filter(Boolean).join(' | ');
     var i, it, item;
     for(i=0;i<a.items.length;i++){
@@ -5212,6 +5227,7 @@ function actAdd(kind){
     }
     sortTX(); updatePip();
     if(buatHutang) await catatHutangKartuKredit(net, a.toko.trim()||(a.items.length+' barang'), a.tanggal, akun.nama, akun.id);
+    if(pihakPiutang) await catatPiutangDariPengeluaran(net, a.toko.trim()||(a.items.length+' barang'), a.tanggal, pihakPiutang, a.akunId);
     var n=a.items.length+a.potongan.length;
     addState=blankAdd();
     toast(n+' transaksi tersimpan'); goView('home');
@@ -5469,6 +5485,66 @@ function actAdd(kind){
       '<div class="dt">'+status+labelTanggal(t.tanggal)+' &middot; '+t.kategori+(minus?' &middot; pengurang':'')+'</div></div>'+
       '<div class="amt '+(pos?'pos':'neg')+'">'+(pos?'+ ':'- ')+fmtRp(Math.abs(+t.nominal))+'</div>'+
       '<button class="delbtn" onclick="hapusTx(\''+t.id+'\')">&times;</button></div>';
+  };
+
+})();
+</script>
+
+<script>
+/* PATCH PIUTANG PENGELUARAN v1. Tempel setelah PATCH TAMBAH TRANSAKSI v2.
+   Pengeluaran dari penampung NON kartu kredit dapat dicentang sebagai
+   piutang: pengeluaran tercatat normal (saldo berkurang), plus catatan
+   piutang otomatis atas nama pihak yang akan mengembalikan, cermin dari
+   mekanisme hutang kartu kredit. Berlaku di ketik manual dan pindai struk. */
+(function(){
+
+  window.catatPiutangDariPengeluaran=async function(nominal, keterangan, tanggal, pihak, akunId){
+    var item={ id:uid(), jenis:'piutang', pihak:pihak, pokok:nominal, tanggal:tanggal,
+      jatuhTempo:'', catatan:'Otomatis dari transaksi pengeluaran'+(keterangan?(': '+keterangan):''),
+      pembayaran:[], akunId:akunId||'', createdAt:new Date().toISOString(),
+      terkirim:false, user:emailUser() };
+    UT.unshift(item); await uPut(item);
+  };
+
+  /* ===== layar pindai struk: checkbox + kolom pihak ===== */
+  function suntikPiutangStruk(){
+    var st=strukState; if(!st || !st.img) return;
+    var wadah=S(); if(!wadah) return;
+    if(document.getElementById('pgBox')) return;
+    var anchor=document.getElementById('skBtnRow') || wadah.querySelector('button.save');
+    if(!anchor) return;
+    var akun=cariAkun(st.akunId);
+    if(!akun || akun.jenis==='kartu') return;
+    var div=document.createElement('div');
+    div.id='pgBox';
+    div.innerHTML=
+      '<label class="cklabel"><input type="checkbox" '+(st.jadiPiutang?'checked':'')+' onchange="strukState.jadiPiutang=this.checked;renderStruk()"> Catat juga sebagai piutang (dana akan dikembalikan pihak lain)</label>'+
+      (st.jadiPiutang?('<label class="fl">Pihak yang berhutang</label><input class="field" placeholder="mis. Budi / Kantor" value="'+esc(st.piutangPihak||'')+'" oninput="strukState.piutangPihak=this.value">'):'');
+    anchor.parentNode.insertBefore(div, anchor);
+  }
+  var _renderStrukLamaPg=window.renderStruk;
+  window.renderStruk=function(){
+    _renderStrukLamaPg.apply(this, arguments);
+    try{ suntikPiutangStruk(); }catch(e){}
+  };
+
+  /* ===== bungkus simpanSemua: buat piutang bila tersimpan sukses ===== */
+  var _simpanSemuaLama=window.simpanSemua;
+  window.simpanSemua=async function(){
+    var st=strukState;
+    var akun=st?cariAkun(st.akunId):null;
+    var mauPiutang=!!(st && st.jadiPiutang && akun && akun.jenis!=='kartu');
+    var pihak=((st && st.piutangPihak)||'').trim();
+    if(mauPiutang && !pihak){ toast('Isi nama pihak yang berhutang'); return; }
+    var total=st?st.pending.reduce(function(s,p){return s+(+p.nominal);},0):0;
+    var tanggal=st?st.tanggal:'', toko=st?st.toko:'', akunId=st?st.akunId:'';
+    var sebelum=TX.length;
+    await _simpanSemuaLama.apply(this, arguments);
+    /* hanya bila penyimpanan asli benar-benar terjadi (TX bertambah) */
+    if(mauPiutang && TX.length>sebelum && total>0){
+      await catatPiutangDariPengeluaran(total, toko, tanggal, pihak, akunId);
+      toast('Piutang '+rp(total)+' atas nama '+pihak+' tercatat');
+    }
   };
 
 })();
