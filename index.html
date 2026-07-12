@@ -5543,6 +5543,72 @@ function actAdd(kind){
 
 })();
 </script>
+
+<script>
+/* PATCH HAPUS DATA LOKAL v1. Tempel sebelum </body>, setelah patch lain.
+   Menu di Profil (grup baru "Zona Berbahaya") untuk mengosongkan seluruh
+   data lokal di IndexedDB: transaksi, hutang/piutang, penampung saldo,
+   dan perpindahan saldo. Foto profil (avatars) TIDAK dihapus karena
+   tidak pernah tercadang ke server. localStorage (login, koneksi GAS,
+   kategori kustom) juga tidak disentuh, jadi setelah reset bisa
+   langsung tarik pencadangan. Konfirmasi dua lapis. */
+(function(){
+
+  function kosongkanStore(nama){
+    return new Promise(function(res,rej){
+      try{
+        var t=DB.transaction(nama,'readwrite');
+        t.objectStore(nama).clear();
+        t.oncomplete=function(){ res(); };
+        t.onerror=function(){ rej(t.error); };
+      }catch(e){ rej(e); }
+    });
+  }
+
+  window.hapusSemuaDataLokal=async function(){
+    var jumlah=TX.length+UT.length+AK.length+TR.length;
+    var ok1=await confirmModal(
+      'Hapus SEMUA data lokal di perangkat ini? Mencakup transaksi, hutang/piutang, penampung saldo, dan perpindahan saldo (termasuk data tersembunyi sisa error). Foto profil dan pengaturan tidak ikut terhapus.',
+      {danger:true, okText:'Lanjut'});
+    if(!ok1) return;
+    var ok2=await confirmModal(
+      'Konfirmasi terakhir: data yang belum tercadang ke server akan hilang PERMANEN. Saat ini tercatat '+jumlah+' entri di memori (data tersembunyi mungkin lebih). Pastikan pencadangan terakhir sudah dilakukan. Hapus sekarang?',
+      {danger:true, okText:'Hapus semua'});
+    if(!ok2) return;
+    try{
+      await kosongkanStore('transaksi');
+      await kosongkanStore('utang');
+      await kosongkanStore('akun');
+      await kosongkanStore('transfer');
+      TX=[]; UT=[]; AK=[]; TR=[];
+      try{ updatePip(); }catch(e){}
+      toast('Semua data lokal terhapus. Buka tab Cadangan untuk menarik data dari server.');
+      goView('home');
+    }catch(e){
+      toast('Gagal menghapus: '+((e&&e.message)||'kesalahan tak dikenal'));
+    }
+  };
+
+  /* sisipkan grup menu di halaman Profil */
+  var _renderSettingsHapus=window.renderSettings;
+  window.renderSettings=function(){
+    _renderSettingsHapus.apply(this, arguments);
+    if(profSub) return;
+    var wadah=S(); if(!wadah) return;
+    if(wadah.querySelector('[data-zona-bahaya]')) return;
+    var div=document.createElement('div');
+    div.setAttribute('data-zona-bahaya','1');
+    div.innerHTML=
+      '<div class="grp-label" style="color:var(--merah-tx)">Zona Berbahaya</div>'+
+      '<div class="menu">'+
+        menuRow('&#128465;','Hapus Semua Data Lokal','Transaksi, hutang, penampung, transfer','hapusSemuaDataLokal()')+
+      '</div>';
+    var akhir=wadah.querySelector('.set');
+    if(akhir) akhir.appendChild(div); else wadah.appendChild(div);
+  };
+
+})();
+</script>
   
 </body>
 </html>
