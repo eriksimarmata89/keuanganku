@@ -2001,7 +2001,6 @@ async function simpanSemua(){
   sortTX(); updatePip();
   var n=st.pending.length; cleanupWorker(); strukState=blankStruk();
   if(buatHutang) await catatHutangKartuKredit(totalNominal, st.toko||(n+' transaksi struk'), st.tanggal, akunTerpilih.nama, akunTerpilih.id);
-  if(pihakPiutang) await catatPiutangDariPengeluaran(net, a.toko.trim()||(a.items.length+' barang'), a.tanggal, pihakPiutang, a.akunId);
   toast(n+' transaksi tersimpan'); goView('home');
 }
 
