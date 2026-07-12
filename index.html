@@ -5568,11 +5568,11 @@ function actAdd(kind){
   window.hapusSemuaDataLokal=async function(){
     var jumlah=TX.length+UT.length+AK.length+TR.length;
     var ok1=await confirmModal(
-      'Hapus SEMUA data lokal di perangkat ini? Mencakup transaksi, hutang/piutang, penampung saldo, dan perpindahan saldo (termasuk data tersembunyi sisa error). Foto profil dan pengaturan tidak ikut terhapus.',
+      'Seluruh data di perangkat ini akan dihapus, meliputi transaksi, hutang/piutang, penampung saldo, dan riwayat perpindahan saldo. Foto profil serta pengaturan aplikasi tetap tersimpan.',
       {danger:true, okText:'Lanjut'});
     if(!ok1) return;
     var ok2=await confirmModal(
-      'Konfirmasi terakhir: data yang belum tercadang ke server akan hilang PERMANEN. Saat ini tercatat '+jumlah+' entri di memori (data tersembunyi mungkin lebih). Pastikan pencadangan terakhir sudah dilakukan. Hapus sekarang?',
+      'Data yang belum dicadangkan tidak dapat dipulihkan. Pastikan pencadangan terakhir telah berhasil sebelum melanjutkan.',
       {danger:true, okText:'Hapus semua'});
     if(!ok2) return;
     try{
@@ -5582,7 +5582,7 @@ function actAdd(kind){
       await kosongkanStore('transfer');
       TX=[]; UT=[]; AK=[]; TR=[];
       try{ updatePip(); }catch(e){}
-      toast('Semua data lokal terhapus. Buka tab Cadangan untuk menarik data dari server.');
+      toast('Data lokal telah dihapus. Gunakan menu Cadangan untuk memulihkan data dari server.');
       goView('home');
     }catch(e){
       toast('Gagal menghapus: '+((e&&e.message)||'kesalahan tak dikenal'));
@@ -5601,7 +5601,7 @@ function actAdd(kind){
     div.innerHTML=
       '<div class="grp-label" style="color:var(--merah-tx)">Zona Berbahaya</div>'+
       '<div class="menu">'+
-        menuRow('&#128465;','Hapus Semua Data Lokal','Transaksi, hutang, penampung, transfer','hapusSemuaDataLokal()')+
+        menuRow('&#128465;','Hapus Semua Data Lokal','Transaksi, hutang/piutang, penampung, transfer','hapusSemuaDataLokal()')+
       '</div>';
     var tombolKeluar=wadah.querySelector('.btn-logout');
     if(tombolKeluar && tombolKeluar.parentNode){
