@@ -5603,8 +5603,13 @@ function actAdd(kind){
       '<div class="menu">'+
         menuRow('&#128465;','Hapus Semua Data Lokal','Transaksi, hutang, penampung, transfer','hapusSemuaDataLokal()')+
       '</div>';
-    var akhir=wadah.querySelector('.set');
-    if(akhir) akhir.appendChild(div); else wadah.appendChild(div);
+    var tombolKeluar=wadah.querySelector('.btn-logout');
+    if(tombolKeluar && tombolKeluar.parentNode){
+      tombolKeluar.parentNode.insertBefore(div, tombolKeluar);
+    } else {
+      var akhir=wadah.querySelector('.set');
+      if(akhir) akhir.appendChild(div); else wadah.appendChild(div);
+    }
   };
 
 })();
