@@ -5831,6 +5831,166 @@ function actAdd(kind){
 
 })();
 </script>
+
+<script>
+/* PATCH BAHASA v1 (Indonesia / English). Tempel sebelum </body>, paling akhir.
+   - Pengaturan bahasa muncul di tab Profil, di atas tombol Keluar akun.
+   - Bahasa tersimpan di localStorage, berlaku setelah render berikutnya.
+   - Terjemahan bekerja dengan kamus: teks Indonesia di layar diganti
+     padanan Inggrisnya setiap selesai render. Teks yang belum ada di
+     kamus tetap tampil dalam Bahasa Indonesia; tambahkan sendiri ke
+     KAMUS / ATURAN bila ingin melengkapi. */
+(function(){
+
+  var LS_LANG='kk_lang';
+  window.LANG=localStorage.getItem(LS_LANG)||'id';
+  window.setLang=function(v){
+    LANG=v; localStorage.setItem(LS_LANG,v);
+    render(); terjemahkanNav();
+  };
+
+  /* ============ KAMUS: teks persis (setelah trim) ============ */
+  var KAMUS={
+    /* nav & umum */
+    'Beranda':'Home','Laporan':'Reports','Pencadangan':'Backup','Profil':'Profile',
+    'Halo,':'Hello,','Saldo':'Balance','Batal':'Cancel','Simpan':'Save','Hapus':'Delete',
+    'OK':'OK','Semua':'All','Tutup':'Close','Konfirmasi':'Confirm','Hapus data?':'Delete data?',
+    /* beranda */
+    'Total saldo':'Total balance','Pemasukan':'Income','Pengeluaran':'Expenses',
+    'Sisa saldo periode ini':'Net this period','Piutang berjalan':'Outstanding receivables',
+    'Hutang berjalan':'Outstanding debts','Harian':'Daily','Mingguan':'Weekly',
+    'Bulanan':'Monthly','Tahunan':'Yearly','Hari ini':'Today','Kemarin':'Yesterday',
+    'Transaksi harian':'Daily transactions','Transaksi mingguan':'Weekly transactions',
+    'Transaksi bulanan':'Monthly transactions','Pindah saldo':'Transfer',
+    'Belum ada catatan untuk periode ini.':'No records for this period yet.',
+    'Ketuk tombol + untuk menambahkan.':'Tap the + button to add one.',
+    /* profil */
+    'Tampilan':'Appearance','Data & Pencadangan':'Data & Backup','Tentang':'About',
+    'Tentang aplikasi':'About the app','Keluar akun':'Sign out',
+    'Penampung Saldo':'Accounts','Koneksi Pencadangan':'Backup Connection',
+    'Tersambung':'Connected','Belum tersambung':'Not connected',
+    'Kategori Transaksi':'Transaction Categories','Kelola kategori':'Manage categories',
+    'Zona Berbahaya':'Danger Zone','Hapus Semua Data Lokal':'Delete All Local Data',
+    'Transaksi, hutang/piutang, penampung, transfer':'Transactions, debts/receivables, accounts, transfers',
+    'Bahasa':'Language','KeuanganKu':'KeuanganKu',
+    'Keluar dari akun ini?':'Sign out of this account?',
+    /* pencadangan */
+    'Cadangkan Data':'Back Up Data','Pemulihan data':'Data recovery',
+    'Pulihkan data cadangan':'Restore backup data','transaksi pada rentang':'transactions in range',
+    'belum tercadang':'not backed up','Hari ini':'Today','Minggu ini':'This week',
+    'Bulan ini':'This month','Tahun ini':'This year','Kustom':'Custom',
+    'Dari':'From','Sampai':'To','Tanggal':'Date',
+    /* laporan */
+    'Unduh laporan':'Download report','Daftar transaksi':'Transaction list',
+    'Pengeluaran per kategori':'Expenses by category','Pemasukan per kategori':'Income by category',
+    'Insight & Saran Keuangan':'Financial Insights & Tips','analisis bulan berjalan':'current-month analysis',
+    'Ringkasan kondisi':'Summary','Pola yang terdeteksi':'Detected patterns',
+    'Jika kondisi ini dipertahankan':'If this continues','Saran perbaikan ke depan':'Suggestions',
+    'Hutang & piutang berjalan':'Outstanding debts & receivables',
+    '7 hari terakhir':'Last 7 days','12 bulan terakhir':'Last 12 months',
+    /* hutang piutang */
+    'Hutang & Piutang':'Debts & Receivables','Piutang':'Receivable','Hutang':'Debt',
+    'Lunas':'Paid off','Sebagian':'Partial','Berjalan':'Ongoing','Jatuh tempo':'Overdue',
+    /* form umum */
+    'Tambah transaksi':'Add transaction','Nominal':'Amount','Kategori':'Category',
+    'Catatan (opsional)':'Notes (optional)','Nama toko (opsional)':'Store name (optional)',
+    'Tambah barang':'Add item','Diskon total belanja':'Total discount',
+    'Simpan pemasukan':'Save income','Ketik manual':'Type manually','Foto struk':'Scan receipt'
+  };
+
+  /* ============ ATURAN: pola berisi angka/variabel ============ */
+  var ATURAN=[
+    [/^(\d+) catatan$/, '$1 records'],
+    [/^(\d+) hari lalu$/, '$1 days ago'],
+    [/^Transaksi pada rentang \((\d+)\)$/, 'Transactions in range ($1)'],
+    [/^Cadangkan (\d+) transaksi$/, 'Back up $1 transactions'],
+    [/^Cadangkan (\d+) catatan$/, 'Back up $1 records'],
+    [/^Daftar barang \((\d+)\)$/, 'Item list ($1)'],
+    [/^Simpan (\d+) transaksi$/, 'Save $1 transactions'],
+    [/^(\d+) penampung tercatat$/, '$1 accounts recorded'],
+    [/^(\d+) kategori tambahan$/, '$1 custom categories'],
+    [/^Pemasukan \((.+)\)$/, 'Income ($1)'],
+    [/^Pengeluaran \((.+)\)$/, 'Expenses ($1)']
+  ];
+
+  function terjemah(t){
+    if(KAMUS[t]) return KAMUS[t];
+    for(var i=0;i<ATURAN.length;i++){
+      if(ATURAN[i][0].test(t)) return t.replace(ATURAN[i][0], ATURAN[i][1]);
+    }
+    return null;
+  }
+
+  function terjemahkanNode(root){
+    if(!root) return;
+    var walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+    var node;
+    while((node=walker.nextNode())){
+      var asli=node.nodeValue, t=asli.trim();
+      if(!t) continue;
+      var hasil=terjemah(t);
+      if(hasil!=null) node.nodeValue=asli.replace(t, hasil);
+    }
+    /* placeholder pada input */
+    root.querySelectorAll('input[placeholder]').forEach(function(el){
+      var hasil=terjemah(el.getAttribute('placeholder').trim());
+      if(hasil!=null) el.setAttribute('placeholder', hasil);
+    });
+  }
+
+  function terjemahkanNav(){
+    if(LANG!=='en') return;
+    terjemahkanNode(document.querySelector('.nav'));
+  }
+
+  /* ============ SISIPKAN PENGATURAN DI PROFIL ============ */
+  function langBtn(val,label){
+    return '<button class="'+(LANG===val?'on':'')+'" onclick="setLang(\''+val+'\')">'+label+'</button>';
+  }
+  function suntikPengaturanBahasa(){
+    var wadah=S(); if(!wadah) return;
+    if(profSub) return;
+    if(wadah.querySelector('[data-lang-set]')) return;
+    var div=document.createElement('div');
+    div.setAttribute('data-lang-set','1');
+    div.innerHTML=
+      '<div class="grp-label">'+(LANG==='en'?'Language':'Bahasa')+'</div>'+
+      '<div class="seg" style="margin:0 0 4px">'+
+        langBtn('id','\uD83C\uDDEE\uD83C\uDDE9 Indonesia')+
+        langBtn('en','\uD83C\uDDEC\uD83C\uDDE7 English')+
+      '</div>';
+    /* letakkan di atas tombol Keluar akun (dan di atas Zona Berbahaya bila ada) */
+    var zona=wadah.querySelector('[data-zona-bahaya]');
+    var logout=wadah.querySelector('.btn-logout');
+    var anchor=zona||logout;
+    if(anchor && anchor.parentNode) anchor.parentNode.insertBefore(div, anchor);
+  }
+
+  /* ============ BUNGKUS render() ============ */
+  var _renderLama=window.render;
+  window.render=function(){
+    _renderLama.apply(this, arguments);
+    try{
+      if(view==='settings') suntikPengaturanBahasa();
+      if(LANG==='en'){ terjemahkanNode(S()); terjemahkanNav(); }
+    }catch(e){}
+  };
+
+  /* toast juga diterjemahkan bila cocok kamus */
+  var _toastLama=window.toast;
+  window.toast=function(m){
+    if(LANG==='en'){
+      var hasil=terjemah(String(m).trim());
+      if(hasil!=null) m=hasil;
+    }
+    _toastLama(m);
+  };
+
+  /* terapkan sekali saat mulai */
+  setTimeout(function(){ if(LANG==='en'){ try{ render(); terjemahkanNav(); }catch(e){} } }, 300);
+
+})();
+</script>
   
 </body>
 </html>
