@@ -5745,6 +5745,92 @@ function actAdd(kind){
 
 })();
 </script>
+
+<script>
+/* PATCH POSISI CAROUSEL v1. Tempel sebelum </body>, setelah patch lain.
+   Mengingat kartu saldo terakhir yang dilihat di Beranda, sehingga
+   setelah refresh (termasuk tarik-untuk-menyegarkan) carousel kembali
+   ke kartu yang sama, bukan melompat ke kartu pertama. */
+(function(){
+
+  window._saldoIdx = window._saldoIdx || 0;
+
+  window.wireSaldoCarousel = function(){
+    var car=document.getElementById('saldoCarousel');
+    if(!car) return;
+
+    function keSlide(i, mulus){
+      var s=car.children[i]; if(!s) return;
+      car.scrollTo({ left:Math.max(0, s.offsetLeft-18), behavior:mulus?'smooth':'auto' });
+    }
+
+    /* Pulihkan posisi terakhir (dibatasi jumlah slide yang ada,
+       misalnya bila sebuah penampung baru saja dihapus). */
+    var idx=Math.max(0, Math.min(window._saldoIdx||0, car.children.length-1));
+    window._saldoIdx=idx;
+    if(idx>0){
+      keSlide(idx, false);
+      /* jaring pengaman bila layout belum final saat baris di atas berjalan */
+      requestAnimationFrame(function(){ keSlide(idx, false); });
+    } else {
+      car.scrollLeft=0;
+    }
+    document.querySelectorAll('#saldoDots .saldo-dot').forEach(function(d,i){
+      d.classList.toggle('on', i===idx);
+    });
+
+    /* Sinkronkan titik indikator + catat indeks terakhir */
+    car.addEventListener('scroll', function(){
+      var slide=car.firstElementChild; if(!slide) return;
+      var w=slide.getBoundingClientRect().width+12;
+      var i=Math.round(car.scrollLeft/w);
+      window._saldoIdx=i;
+      document.querySelectorAll('.saldo-dot').forEach(function(d,j){ d.classList.toggle('on', j===i); });
+    }, {passive:true});
+
+    /* Titik indikator bisa diklik */
+    document.querySelectorAll('#saldoDots .saldo-dot').forEach(function(d,i){
+      d.onclick=function(){ keSlide(i, true); };
+    });
+
+    /* Geser kartu dengan mouse di komputer (sama seperti aslinya) */
+    window._caroDrag={ car:car, turun:false, geser:false, x0:0, s0:0 };
+    car.addEventListener('mousedown', function(e){
+      var st=window._caroDrag;
+      st.turun=true; st.geser=false; st.x0=e.pageX; st.s0=car.scrollLeft;
+      car.classList.add('men-drag');
+      e.preventDefault();
+    });
+    car.addEventListener('click', function(e){
+      var st=window._caroDrag;
+      if(st && st.geser){ e.stopPropagation(); e.preventDefault(); st.geser=false; }
+    }, true);
+    if(!window._caroDragGlobal){
+      window._caroDragGlobal=true;
+      window.addEventListener('mousemove', function(e){
+        var st=window._caroDrag;
+        if(!st || !st.turun || !document.body.contains(st.car)) return;
+        var dx=e.pageX-st.x0;
+        if(Math.abs(dx)>5) st.geser=true;
+        st.car.scrollLeft=st.s0-dx;
+      });
+      window.addEventListener('mouseup', function(){
+        var st=window._caroDrag;
+        if(!st || !st.turun) return;
+        st.turun=false;
+        st.car.classList.remove('men-drag');
+        if(st.geser && st.car.firstElementChild && document.body.contains(st.car)){
+          var w=st.car.firstElementChild.getBoundingClientRect().width+12;
+          var idx=Math.max(0, Math.min(st.car.children.length-1, Math.round(st.car.scrollLeft/w)));
+          var s=st.car.children[idx];
+          if(s) st.car.scrollTo({ left:Math.max(0, s.offsetLeft-18), behavior:'smooth' });
+        }
+      });
+    }
+  };
+
+})();
+</script>
   
 </body>
 </html>
