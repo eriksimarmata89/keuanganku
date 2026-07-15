@@ -5833,21 +5833,23 @@ function actAdd(kind){
 </script>
 
 <script>
-/* PATCH BAHASA v3 (Indonesia / English). GANTIKAN patch bahasa v2 sepenuhnya.
+/* PATCH BAHASA v4 (Indonesia / English). GANTIKAN patch bahasa v3 sepenuhnya.
    Tempel sebelum </body>, paling akhir.
-   Perbaikan crash dari v2:
-   - Observer DIPUTUS saat menulis teks lalu disambung lagi, sehingga
-     penggantian teks tidak memicu observer lagi (loop tak berujung).
-   - Debounce requestAnimationFrame: banyak mutasi digabung jadi SATU
-     lintasan terjemahan per frame, ringan untuk perangkat spek rendah.
-   - Tidak menulis bila hasil terjemahan sama dengan aslinya.
-   - Hanya mengamati childList (bukan characterData). */
+   Baru di v4:
+   - KAMUS dilengkapi dari hasil lihatBelumTerjemah() (panduan Sheet,
+     pindah saldo, foto profil, insight, hutang/piutang, dll).
+   - FRASA: penggantian frasa DI DALAM kalimat, untuk node gabungan
+     seperti "2 hari lalu . Makan & Minum" atau "Masuk Rp X . Keluar Rp Y".
+   - Awalan emoji/ikon: "xx Kartu Kredit" dikenali dengan membuang awalan
+     non-huruf lalu mencari sisanya di kamus.
+   - Data pengguna (nama penampung, catatan, nama orang) TIDAK disentuh.
+   - Debug lihatBelumTerjemah() tidak lagi mencatat hasil terjemahan sendiri. */
 (function(){
 
   var LS_LANG='kk_lang';
   window.LANG=localStorage.getItem(LS_LANG)||'id';
 
-  /* ================= KAMUS ================= */
+  /* ================= KAMUS (cocokan persis) ================= */
   var KAMUS={
     /* nav & umum */
     'Beranda':'Home','Laporan':'Reports','Pencadangan':'Backup','Profil':'Profile',
@@ -5855,6 +5857,10 @@ function actAdd(kind){
     'Ya':'Yes','Tidak':'No','Semua':'All','Tutup':'Close','Lanjut':'Continue',
     'Konfirmasi':'Confirm','Pilih':'Select','Ubah':'Edit','Tambah':'Add','Cari':'Search',
     'Selesai':'Done','Kembali':'Back','Muat ulang':'Reload','Coba lagi':'Try again',
+    'Kirim':'Send','Klik':'Click','dan':'and','opsional':'optional','Baru':'New',
+    'Masuk':'In','Keluar':'Out','Nama':'Name','Jenis':'Type','Harga':'Price',
+    'Panduan':'Guide','Cadangan':'Backup','Penyimpanan':'Storage','Transaksi':'Transactions',
+    'Hapus data?':'Delete data?','Memproses...':'Processing...',
     /* beranda */
     'Total saldo':'Total balance','Pemasukan':'Income','Pengeluaran':'Expenses',
     'Sisa saldo periode ini':'Net this period','Piutang berjalan':'Outstanding receivables',
@@ -5863,33 +5869,93 @@ function actAdd(kind){
     'Minggu ini':'This week','Bulan ini':'This month','Tahun ini':'This year',
     'Transaksi harian':'Daily transactions','Transaksi mingguan':'Weekly transactions',
     'Transaksi bulanan':'Monthly transactions','Transaksi tahunan':'Yearly transactions',
-    'Pindah saldo':'Transfer','Riwayat transfer':'Transfer history',
+    'Pindah saldo':'Transfer','Pindah Saldo':'Transfer','Riwayat transfer':'Transfer history',
+    'Riwayat transaksi':'Transaction history','Riwayat perpindahan saldo':'Transfer history',
+    'Perpindahan antar penampung saldo':'Transfers between accounts',
+    'Total semua saldo':'Total of all balances','saldo saat ini':'current balance',
     'Belum ada catatan untuk periode ini.':'No records for this period yet.',
     'Ketuk tombol + untuk menambahkan.':'Tap the + button to add one.',
+    'Tampilkan atau sembunyikan saldo':'Show or hide balances','Buka profil':'Open profile',
+    /* pindah saldo */
+    'Dari penampung':'From account','Ke penampung':'To account',
+    'Sumber / keterangan':'Source / description','Simpan perpindahan':'Save transfer',
     /* profil */
     'Tampilan':'Appearance','Tema gelap':'Dark theme','Tema terang':'Light theme',
+    'Otomatis':'Auto','Terang':'Light','Gelap':'Dark',
     'Data & Pencadangan':'Data & Backup','Tentang':'About','Bahasa':'Language',
     'Tentang aplikasi':'About the app','Keluar akun':'Sign out','Versi':'Version',
     'Penampung Saldo':'Accounts','Kelola penampung':'Manage accounts',
+    'Penampung saldo':'Account','Tambah penampung saldo':'Add account',
+    '+ Tambah penampung saldo':'+ Add account','Simpan penampung saldo':'Save account',
+    'Hapus penampung saldo':'Delete account','Saldo awal (opsional)':'Opening balance (optional)',
+    'Logo (opsional)':'Logo (optional)','Bank, kartu kredit, atau dompet digital':'Bank, credit card, or e-wallet',
+    'mis. BCA, OVO, Kartu Kredit BNI':'e.g. BCA, OVO, BNI Credit Card',
+    'Kartu Kredit':'Credit Card','Dompet Digital':'E-Wallet','Tunai':'Cash',
     'Koneksi Pencadangan':'Backup Connection','Tersambung':'Connected',
     'Belum tersambung':'Not connected','Sambungkan':'Connect','Putuskan':'Disconnect',
     'Kategori Transaksi':'Transaction Categories','Kelola kategori':'Manage categories',
     'Tambah kategori':'Add category','Nama kategori':'Category name',
+    '+ Tambah kategori pemasukan':'+ Add income category',
+    '+ Tambah kategori pengeluaran':'+ Add expense category',
+    'Kategori bawaan (tetap)':'Default categories (fixed)',
+    'Kategori tambahan Anda':'Your custom categories',
+    'Kategori tambahan Anda (belum ada)':'Your custom categories (none yet)',
     'Zona Berbahaya':'Danger Zone','Hapus Semua Data Lokal':'Delete All Local Data',
     'Transaksi, hutang/piutang, penampung, transfer':'Transactions, debts/receivables, accounts, transfers',
     'Keluar dari akun ini?':'Sign out of this account?',
     'Sembunyikan nominal':'Hide amounts','Tampilkan nominal':'Show amounts',
-    /* pencadangan */
+    'Foto profil':'Profile photo','Ubah foto profil':'Change profile photo',
+    'Hapus foto':'Remove photo','Kembali ke inisial nama':'Back to name initials',
+    'Pilih dari galeri':'Choose from gallery','Ambil foto baru':'Take a new photo',
+    'Kamera':'Camera','Galeri':'Gallery','Nomor Telepon':'Phone Number',
+    'Status Aplikasi':'App Status','Pencatat keuangan pribadi':'Personal finance tracker',
+    'Privasi dan Keamanan Data':'Data Privacy & Security',
+    /* pencadangan & panduan */
     'Cadangkan Data':'Back Up Data','Pemulihan data':'Data recovery',
     'Pulihkan data cadangan':'Restore backup data','Memulihkan...':'Restoring...',
-    'Mencadangkan...':'Backing up...','belum tercadang':'not backed up',
+    'Mencadangkan...':'Backing up...','belum tercadang':'not backed up','Tercadang':'Backed up',
     'Kustom':'Custom','Dari':'From','Sampai':'To','Tanggal':'Date','Rentang':'Range',
     'Data berhasil dicadangkan':'Data backed up successfully',
     'Data berhasil dipulihkan':'Data restored successfully',
-    /* laporan */
+    'Memulihkan data':'Restoring data','Mencadangkan data':'Backing up data',
+    'Memverifikasi data...':'Verifying data...','Mengirim data...':'Sending data...',
+    'Mengambil transaksi...':'Fetching transactions...',
+    'Mengambil hutang & piutang...':'Fetching debts & receivables...',
+    'Mengambil perpindahan saldo...':'Fetching transfers...',
+    'Pulihkan semua data cadangan ke perangkat ini?':'Restore all backup data to this device?',
+    'Di perangkat (offline)':'On device (offline)',
+    'Pencadangan pribadi (Google Drive)':'Personal backup (Google Drive)',
+    'Pencadangan ulang aman. Semua data di bawah kendali anda.':'Re-backing up is safe. All data stays under your control.',
+    'Seluruh transaksi tersimpan di perangkat dan tetap dapat diakses tanpa internet. Pencadangan pada aplikasi ini memakai':'All transactions are stored on this device and remain accessible offline. Backup in this app uses',
+    'pribadi yang dijalankan lewat':'of your own, run through',
+    'milik Anda sendiri, data disimpan di dalam':'of your own; the data is stored inside',
+    'Hubungkan ke aplikasi':'Connect to the app',
+    'Alamat Web App Google Apps Script':'Google Apps Script Web App address',
+    'Simpan & sambungkan':'Save & connect','Salin URL Web App':'Copy the Web App URL',
+    'Salin kode':'Copy code','Tempel kode di bawah':'Paste the code below',
+    'Terbitkan sebagai Web App':'Publish as a Web App','Siapkan akun Google':'Prepare a Google account',
+    'Buat Google Sheet baru':'Create a new Google Sheet',
+    'Buka Apps Script dari dalam Sheet':'Open Apps Script from within the Sheet',
+    'Berikan izin akses Google':'Grant Google access permission',
+    'Buka drive.google.com, klik':'Open drive.google.com, click',
+    'Di dalam Google Sheet tadi, klik menu':'Inside that Google Sheet, click the menu',
+    'Ekstensi':'Extensions','Sembunyikan panduan':'Hide guide','Lihat panduan lengkap':'View full guide',
+    'Setelah berhasil diterbitkan, Google menampilkan sebuah tautan yang diakhiri':'Once published successfully, Google shows a link ending with',
+    'Kembali ke halaman ini, tempel alamat tadi pada kolom di atas, lalu tekan':'Return to this page, paste that address into the field above, then press',
+    'Jika suatu saat kode diperbarui, buka kembali Apps Script, lalu':'If the code is ever updated, reopen Apps Script, then',
+    'di atas dengan alamat Web App yang baru, dan tekan':'above with the new Web App address, then press',
+    'lalu lanjutkan; ini wajar karena skripnya dibuat oleh Anda sendiri.':'then continue; this is normal because the script was created by you.',
+    '. Atur':'. Set','. Pilih jenis':'. Choose the type','. Salin tautan tersebut.':'. Copy that link.',
+    '. Sebuah tab editor kode Google Apps Script akan terbuka.':'. A Google Apps Script code editor tab will open.',
+    '. Beri nama, misalnya KeuanganKu. Lembar tidak perlu diisi apa pun, kolomnya akan dibuat otomatis oleh kode.':'. Give it a name, e.g. KeuanganKu. The sheet does not need any content; the columns are created automatically by the code.',
+    ', lalu klik':', then click',
+    ', supaya perubahan diterapkan ke Google Sheet Anda.':', so the changes are applied to your Google Sheet.',
+    /* laporan & insight */
     'Unduh laporan':'Download report','Unduh PDF':'Download PDF','Unduh Excel':'Download Excel',
-    'Daftar transaksi':'Transaction list','Grafik':'Charts','Ringkasan':'Summary',
-    'Pengeluaran per kategori':'Expenses by category','Pemasukan per kategori':'Income by category',
+    'Menyiapkan PDF...':'Preparing PDF...','Menyiapkan Excel...':'Preparing Excel...',
+    'Menyiapkan...':'Preparing...','Daftar transaksi':'Transaction list','Grafik':'Charts',
+    'Ringkasan':'Summary','Pengeluaran per kategori':'Expenses by category',
+    'Pemasukan per kategori':'Income by category',
     'Insight & Saran Keuangan':'Financial Insights & Tips',
     'analisis bulan berjalan':'current-month analysis',
     'Ringkasan kondisi':'Summary','Pola yang terdeteksi':'Detected patterns',
@@ -5897,17 +5963,41 @@ function actAdd(kind){
     'Hutang & piutang berjalan':'Outstanding debts & receivables',
     'Arus kas':'Cash flow','Perbandingan periode':'Period comparison',
     '7 hari terakhir':'Last 7 days','12 bulan terakhir':'Last 12 months',
+    'Proyeksi akhir bulan':'End-of-month projection','Data terbatas':'Limited data',
+    'Di bawah rata-rata':'Below average','Rata-rata pengeluaran harian':'Average daily expenses',
+    'Pengeluaran terbesar (bulan ini)':'Largest expenses (this month)',
+    'Per penampung saldo (bulan ini)':'Per account (this month)',
+    'Tren transaksi bulan ini (per tanggal)':'This month\'s transaction trend (by date)',
+    'Tidak ada catatan pada rentang ini.':'No records in this range.',
+    'Dengan laju ini, pengeluaran bulan ini berpotensi melebihi pemasukan.':'At this pace, this month\'s expenses may exceed this month\'s income.',
+    'Prioritaskan pelunasan hutang, mulai dari yang jatuh temponya paling dekat, untuk mengurangi beban kewajiban ke depan.':'Prioritize paying off debts, starting with the nearest due date, to reduce future obligations.',
+    'Tetapkan anggaran bulanan khusus untuk kategori "Lainnya" agar proporsinya lebih terkendali.':'Set a dedicated monthly budget for the "Others" category to keep its share under control.',
+    'Catat setiap transaksi sesegera mungkin (termasuk pemasukan) agar data lebih lengkap dan insight lebih akurat.':'Record every transaction as soon as possible (including income) so the data is more complete and insights more accurate.',
+    'Laporan dibuat langsung di perangkat dan tersimpan di folder Download/KeuanganKu.':'Reports are generated on the device and saved in the Download/KeuanganKu folder.',
     /* hutang piutang */
     'Hutang & Piutang':'Debts & Receivables','Piutang':'Receivable','Hutang':'Debt',
     'Lunas':'Paid off','Sebagian':'Partial','Berjalan':'Ongoing','Jatuh tempo':'Overdue',
     'Tambah hutang':'Add debt','Tambah piutang':'Add receivable','Bayar':'Pay',
     'Nama pihak':'Party name','Sisa':'Remaining','Terbayar':'Paid',
+    'Simpan hutang':'Save debt','Simpan piutang':'Save receivable',
+    'Nama pemberi pinjaman':'Lender name','Nama peminjam':'Borrower name',
+    'Jatuh tempo (opsional)':'Due date (optional)','Tambah catatan':'Add note',
+    'Hutang adalah kewajiban Anda kepada pihak lain.':'A debt is your obligation to another party.',
+    'Piutang adalah uang milik Anda yang berada pada pihak lain.':'A receivable is your money held by another party.',
+    'Kewajiban Anda kepada pihak lain':'Your obligations to other parties',
+    'Uang Anda yang ada pada pihak lain':'Your money held by other parties',
+    'Catat juga sebagai piutang (dana ini akan dikembalikan pihak lain)':'Also record as a receivable (this money will be returned by the other party)',
     /* form transaksi */
-    'Tambah transaksi':'Add transaction','Ubah transaksi':'Edit transaction',
-    'Nominal':'Amount','Kategori':'Category','Penampung':'Account',
-    'Catatan (opsional)':'Notes (optional)','Nama toko (opsional)':'Store name (optional)',
-    'Tambah barang':'Add item','Daftar barang':'Item list','Nama barang':'Item name',
-    'Diskon total belanja':'Total discount','Subtotal':'Subtotal','Total':'Total',
+    'Tambah transaksi':'Add transaction','Tambah Transaksi':'Add Transaction',
+    'Ubah transaksi':'Edit transaction','Nominal':'Amount','Kategori':'Category',
+    'Penampung':'Account','Catatan (opsional)':'Notes (optional)',
+    'Nama toko (opsional)':'Store name (optional)','Pemasukan atau pengeluaran':'Income or expense',
+    'Tambah barang':'Add item','+ Tambah barang':'+ Add item','Daftar barang':'Item list',
+    'Nama barang':'Item name','Diskon total belanja':'Total discount',
+    'Diskon barang ini (opsional)':'Discount for this item (optional)',
+    'Belum ada barang. Ketuk tombol di bawah untuk menambahkan.':'No items yet. Tap the button below to add one.',
+    'mis. Gaji bulanan':'e.g. Monthly salary','mis. Indomaret':'e.g. Indomaret',
+    'mis. Pop Mie Ayam 75g':'e.g. Pop Mie Ayam 75g',
     'Simpan pemasukan':'Save income','Simpan pengeluaran':'Save expense',
     'Ketik manual':'Type manually','Foto struk':'Scan receipt','Kalkulator':'Calculator',
     'Ambil foto':'Take photo','Ambil ulang':'Retake','Gunakan foto':'Use photo',
@@ -5917,16 +6007,19 @@ function actAdd(kind){
     'Nominal belum diisi':'Amount is required','Kategori belum dipilih':'Please select a category'
   };
 
+  /* ============ ATURAN: pola utuh (anchored) dengan angka ============ */
   var ATURAN=[
     [/^(\d+) catatan$/,'$1 records'],
     [/^(\d+) transaksi$/,'$1 transactions'],
     [/^(\d+) hari lalu$/,'$1 days ago'],
     [/^(\d+) hari lagi$/,'in $1 days'],
+    [/^Langkah (\d+)$/,'Step $1'],
     [/^Transaksi pada rentang \((\d+)\)$/,'Transactions in range ($1)'],
     [/^Cadangkan (\d+) transaksi$/,'Back up $1 transactions'],
     [/^Cadangkan (\d+) catatan$/,'Back up $1 records'],
     [/^Daftar barang \((\d+)\)$/,'Item list ($1)'],
     [/^Simpan (\d+) transaksi$/,'Save $1 transactions'],
+    [/^Menyimpan (\d+) transaksi\.\.\.$/,'Saving $1 transactions...'],
     [/^(\d+) penampung tercatat$/,'$1 accounts recorded'],
     [/^(\d+) kategori tambahan$/,'$1 custom categories'],
     [/^(\d+) barang$/,'$1 items'],
@@ -5935,7 +6028,54 @@ function actAdd(kind){
     [/^(\d+) transaksi pada rentang ini$/,'$1 transactions in this range']
   ];
 
+  /* ============ FRASA: penggantian DI DALAM kalimat/node gabungan ============
+     Untuk teks seperti "2 hari lalu . Makan & Minum" atau
+     "Masuk Rp 100 . Keluar Rp 50 . rata-rata harian Rp 10". Hanya frasa
+     yang khas & aman; catatan pribadi pengguna tidak akan cocok. */
+  var FRASA=[
+    [/(\d+)\s+hari lalu/g,'$1 days ago'],
+    [/(\d+)\s+hari lagi/g,'in $1 days'],
+    [/(\d+) catatan belum lunas/g,'$1 unsettled records'],
+    [/(\d+) transaksi berhasil dicadangkan/g,'$1 transactions backed up'],
+    [/(\d+) transaksi milik Anda tersedia di perangkat/g,'$1 of your transactions are on this device'],
+    [/transaksi pada rentang/g,'transactions in range'],
+    [/Masuk Rp/g,'In Rp'],
+    [/Keluar Rp/g,'Out Rp'],
+    [/rata-rata harian/g,'daily average'],
+    [/vs bulan lalu \(s\.d\. tgl sama\)/g,'vs last month (to same date)'],
+    [/belum ada data/g,'no data yet'],
+    [/\(bulan ini\)/g,'(this month)'],
+    [/\(bulan lalu\)/g,'(last month)'],
+    [/Saldo tersedia:/g,'Available balance:'],
+    [/saldo saat ini/g,'current balance'],
+    [/ikon pensil/g,'pencil icon'],
+    [/^Hutang(\s+\S\s+)/,'Debt$1'],
+    [/^Piutang(\s+\S\s+)/,'Receivable$1'],
+    [/^Ke /,'To '],
+    [/^Dari /,'From '],
+    [/\bKemarin\b/g,'Yesterday'],
+    [/\bMei\b/g,'May'],[/\bAgu\b/g,'Aug'],[/\bOkt\b/g,'Oct'],[/\bDes\b/g,'Dec'],
+    /* kategori bawaan (muncul di baris transaksi gabungan) */
+    [/Makan & Minum/g,'Food & Drinks'],
+    [/Listrik & Air/g,'Electricity & Water'],
+    [/Pulsa & Internet/g,'Phone & Internet'],
+    [/Peralatan & Perkakas/g,'Tools & Equipment'],
+    [/Dana Sosial/g,'Social Fund'],
+    [/\bTransportasi\b/g,'Transportation'],
+    [/\bKesehatan\b/g,'Health'],
+    [/\bPendidikan\b/g,'Education'],
+    [/\bHiburan\b/g,'Entertainment'],
+    [/\bPakaian\b/g,'Clothing'],
+    [/\bBelanja\b/g,'Shopping'],
+    [/\bLainnya\b/g,'Others'],
+    [/\bGaji\b/g,'Salary'],
+    [/\bHadiah\b/g,'Gift'],
+    [/\bUsaha\b/g,'Business']
+  ];
+
   /* ====== debug: kumpulkan teks yang belum ada di kamus ====== */
+  var VALSET={};
+  Object.keys(KAMUS).forEach(function(k){ VALSET[KAMUS[k]]=1; });
   window._belumTerjemah=window._belumTerjemah||{};
   var _jmlBelum=0;
   window.lihatBelumTerjemah=function(){
@@ -5946,14 +6086,29 @@ function actAdd(kind){
   };
 
   function terjemah(t){
-    if(KAMUS.hasOwnProperty(t)){
-      var h=KAMUS[t];
-      return (h && h!==t)?h:null;       /* sama dengan asli = tidak perlu ditulis */
+    var h=null;
+    /* 1. cocokan persis */
+    if(KAMUS.hasOwnProperty(t)) h=KAMUS[t];
+    /* 2. awalan emoji/ikon: buang awalan non-huruf, cari sisanya */
+    if(h==null){
+      var m=t.match(/^[^A-Za-z0-9]+\s*/);
+      if(m){
+        var core=t.slice(m[0].length).trim();
+        if(KAMUS.hasOwnProperty(core)) h=m[0]+KAMUS[core];
+      }
     }
-    for(var i=0;i<ATURAN.length;i++){
-      if(ATURAN[i][0].test(t)) return t.replace(ATURAN[i][0],ATURAN[i][1]);
+    /* 3. pola utuh */
+    if(h==null){
+      for(var i=0;i<ATURAN.length;i++){
+        if(ATURAN[i][0].test(t)){ h=t.replace(ATURAN[i][0],ATURAN[i][1]); break; }
+      }
     }
-    if(_jmlBelum<400 && /[A-Za-z]/.test(t) && !/^Rp/.test(t) && t.length<120){
+    /* 4. frasa di dalam kalimat (juga merapikan sisa dari langkah 3) */
+    var s=(h!=null?h:t);
+    for(var j=0;j<FRASA.length;j++) s=s.replace(FRASA[j][0],FRASA[j][1]);
+    if(s!==t && s) return s;
+    /* 5. catat kandidat kamus (abaikan hasil terjemahan sendiri) */
+    if(_jmlBelum<400 && !VALSET[t] && /[A-Za-z]/.test(t) && !/^Rp/.test(t) && t.length<120){
       if(!_belumTerjemah[t]){ _belumTerjemah[t]=1; _jmlBelum++; }
     }
     return null;
@@ -5961,7 +6116,6 @@ function actAdd(kind){
 
   var ATTR=['placeholder','title','aria-label'];
 
-  /* satu lintasan penerjemahan atas sebuah elemen (dan seluruh anaknya) */
   function lintasan(root){
     if(!root || root.nodeType!==1) return;
     var walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{
@@ -5976,7 +6130,6 @@ function actAdd(kind){
       var t=n.nodeValue.trim(), h=terjemah(t);
       if(h!=null) tulis.push([n, n.nodeValue.replace(t,h)]);
     }
-    /* kumpulkan dulu, tulis belakangan: TreeWalker tidak terganggu */
     tulis.forEach(function(p){ p[0].nodeValue=p[1]; });
 
     root.querySelectorAll('[placeholder],[title],[aria-label],option,input[type=button],input[type=submit]')
@@ -5998,7 +6151,7 @@ function actAdd(kind){
       });
   }
 
-  /* ============ inti anti-crash: putus-sambung + debounce ============ */
+  /* ============ anti-crash: putus-sambung + debounce (sama seperti v3) ============ */
   var obs=null, tundaan=null;
 
   function amati(){
@@ -6011,7 +6164,7 @@ function actAdd(kind){
     obs.observe(document.body,{childList:true,subtree:true});
   }
   function jadwalkan(){
-    if(tundaan) return;                      /* sudah antre, gabungkan */
+    if(tundaan) return;
     tundaan=requestAnimationFrame(function(){
       tundaan=null;
       jalankanTerjemahan();
@@ -6020,10 +6173,10 @@ function actAdd(kind){
   function jalankanTerjemahan(){
     if(LANG!=='en') return;
     try{
-      obs && obs.disconnect();               /* JANGAN amati tulisan sendiri */
+      obs && obs.disconnect();
       lintasan(document.body);
     }catch(e){}
-    finally{ amati(); }                       /* sambung kembali */
+    finally{ amati(); }
   }
   window.terjemahkanSemua=jalankanTerjemahan;
 
