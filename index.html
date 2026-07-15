@@ -5833,32 +5833,26 @@ function actAdd(kind){
 </script>
 
 <script>
-/* PATCH BAHASA v2 (Indonesia / English). GANTIKAN patch bahasa v1.
-   Tempel sebelum </body>, paling akhir setelah semua patch lain.
-   Perubahan dari v1:
-   - MutationObserver: SEMUA elemen baru di document.body ikut
-     diterjemahkan (modal, bottom sheet, toast, dropdown, dsb),
-     bukan hanya hasil render().
-   - Menerjemahkan juga: placeholder, title, aria-label, <option>,
-     value pada input tombol.
-   - Mode debug: ketik lihatBelumTerjemah() di console untuk melihat
-     daftar teks yang belum ada di kamus, siap disalin. */
+/* PATCH BAHASA v3 (Indonesia / English). GANTIKAN patch bahasa v2 sepenuhnya.
+   Tempel sebelum </body>, paling akhir.
+   Perbaikan crash dari v2:
+   - Observer DIPUTUS saat menulis teks lalu disambung lagi, sehingga
+     penggantian teks tidak memicu observer lagi (loop tak berujung).
+   - Debounce requestAnimationFrame: banyak mutasi digabung jadi SATU
+     lintasan terjemahan per frame, ringan untuk perangkat spek rendah.
+   - Tidak menulis bila hasil terjemahan sama dengan aslinya.
+   - Hanya mengamati childList (bukan characterData). */
 (function(){
 
   var LS_LANG='kk_lang';
   window.LANG=localStorage.getItem(LS_LANG)||'id';
-  window.setLang=function(v){
-    LANG=v; localStorage.setItem(LS_LANG,v);
-    render();
-    if(v==='en') terjemahkanSemua();
-  };
 
   /* ================= KAMUS ================= */
   var KAMUS={
     /* nav & umum */
     'Beranda':'Home','Laporan':'Reports','Pencadangan':'Backup','Profil':'Profile',
     'Halo,':'Hello,','Saldo':'Balance','Batal':'Cancel','Simpan':'Save','Hapus':'Delete',
-    'Ya':'Yes','Tidak':'No','OK':'OK','Semua':'All','Tutup':'Close','Lanjut':'Continue',
+    'Ya':'Yes','Tidak':'No','Semua':'All','Tutup':'Close','Lanjut':'Continue',
     'Konfirmasi':'Confirm','Pilih':'Select','Ubah':'Edit','Tambah':'Add','Cari':'Search',
     'Selesai':'Done','Kembali':'Back','Muat ulang':'Reload','Coba lagi':'Try again',
     /* beranda */
@@ -5923,7 +5917,6 @@ function actAdd(kind){
     'Nominal belum diisi':'Amount is required','Kategori belum dipilih':'Please select a category'
   };
 
-  /* ============ ATURAN: pola dengan angka/variabel ============ */
   var ATURAN=[
     [/^(\d+) catatan$/,'$1 records'],
     [/^(\d+) transaksi$/,'$1 transactions'],
@@ -5942,87 +5935,103 @@ function actAdd(kind){
     [/^(\d+) transaksi pada rentang ini$/,'$1 transactions in this range']
   ];
 
-  /* ====== pengumpul teks yang belum diterjemahkan (debug) ====== */
+  /* ====== debug: kumpulkan teks yang belum ada di kamus ====== */
   window._belumTerjemah=window._belumTerjemah||{};
+  var _jmlBelum=0;
   window.lihatBelumTerjemah=function(){
     var arr=Object.keys(_belumTerjemah).sort();
-    console.log("Teks belum ada di kamus ("+arr.length+"), salin format siap tempel:\n");
+    console.log("Teks belum ada di kamus ("+arr.length+"):\n");
     arr.forEach(function(t){ console.log("'"+t.replace(/'/g,"\\'")+"':'',"); });
     return arr;
   };
 
   function terjemah(t){
-    if(KAMUS.hasOwnProperty(t)) return KAMUS[t];
+    if(KAMUS.hasOwnProperty(t)){
+      var h=KAMUS[t];
+      return (h && h!==t)?h:null;       /* sama dengan asli = tidak perlu ditulis */
+    }
     for(var i=0;i<ATURAN.length;i++){
       if(ATURAN[i][0].test(t)) return t.replace(ATURAN[i][0],ATURAN[i][1]);
     }
-    /* catat sebagai kandidat kamus: mengandung huruf, bukan angka/rupiah murni */
-    if(/[A-Za-z]/.test(t) && !/^Rp/.test(t) && t.length<120) _belumTerjemah[t]=1;
+    if(_jmlBelum<400 && /[A-Za-z]/.test(t) && !/^Rp/.test(t) && t.length<120){
+      if(!_belumTerjemah[t]){ _belumTerjemah[t]=1; _jmlBelum++; }
+    }
     return null;
   }
 
-  var ATTR=['placeholder','title','aria-label','data-label'];
-  function terjemahkanElemen(el){
-    if(!el) return;
-    /* text node */
-    if(el.nodeType===3){
-      var asli=el.nodeValue, t=asli.trim();
-      if(t){ var h=terjemah(t); if(h!=null && h!=='') el.nodeValue=asli.replace(t,h); }
-      return;
-    }
-    if(el.nodeType!==1) return;
-    if(el.tagName==='SCRIPT'||el.tagName==='STYLE') return;
-    /* atribut */
-    ATTR.forEach(function(a){
-      if(el.hasAttribute && el.hasAttribute(a)){
-        var h=terjemah(el.getAttribute(a).trim());
-        if(h!=null && h!=='') el.setAttribute(a,h);
+  var ATTR=['placeholder','title','aria-label'];
+
+  /* satu lintasan penerjemahan atas sebuah elemen (dan seluruh anaknya) */
+  function lintasan(root){
+    if(!root || root.nodeType!==1) return;
+    var walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{
+      acceptNode:function(n){
+        var p=n.parentNode;
+        if(p && (p.tagName==='SCRIPT'||p.tagName==='STYLE')) return NodeFilter.FILTER_REJECT;
+        return n.nodeValue.trim()?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT;
       }
-    });
-    if(el.tagName==='INPUT' && (el.type==='button'||el.type==='submit') && el.value){
-      var hv=terjemah(el.value.trim()); if(hv!=null && hv!=='') el.value=hv;
+    },false);
+    var n, tulis=[];
+    while((n=walker.nextNode())){
+      var t=n.nodeValue.trim(), h=terjemah(t);
+      if(h!=null) tulis.push([n, n.nodeValue.replace(t,h)]);
     }
-    /* anak-anaknya */
-    var walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,null,false), n;
-    while((n=walker.nextNode())) terjemahkanElemen(n);
-    el.querySelectorAll && el.querySelectorAll('input,option,[placeholder],[title],[aria-label]').forEach(function(c){
-      if(c.tagName==='OPTION'){
-        var ho=terjemah(c.textContent.trim());
-        if(ho!=null && ho!=='') c.textContent=ho;
-      }
-      ATTR.forEach(function(a){
-        if(c.hasAttribute(a)){
-          var h=terjemah(c.getAttribute(a).trim());
-          if(h!=null && h!=='') c.setAttribute(a,h);
+    /* kumpulkan dulu, tulis belakangan: TreeWalker tidak terganggu */
+    tulis.forEach(function(p){ p[0].nodeValue=p[1]; });
+
+    root.querySelectorAll('[placeholder],[title],[aria-label],option,input[type=button],input[type=submit]')
+      .forEach(function(el){
+        ATTR.forEach(function(a){
+          if(el.hasAttribute(a)){
+            var h=terjemah(el.getAttribute(a).trim());
+            if(h!=null) el.setAttribute(a,h);
+          }
+        });
+        if(el.tagName==='OPTION'){
+          var ho=terjemah(el.textContent.trim());
+          if(ho!=null) el.textContent=ho;
+        }
+        if(el.tagName==='INPUT' && el.value){
+          var hv=terjemah(el.value.trim());
+          if(hv!=null) el.value=hv;
         }
       });
-    });
   }
 
-  window.terjemahkanSemua=function(){
-    if(LANG!=='en') return;
-    _sedangTerjemah=true;
-    terjemahkanElemen(document.body);
-    _sedangTerjemah=false;
-  };
+  /* ============ inti anti-crash: putus-sambung + debounce ============ */
+  var obs=null, tundaan=null;
 
-  /* ============ MutationObserver: inti perbaikan v2 ============ */
-  var _sedangTerjemah=false;
-  var obs=new MutationObserver(function(muts){
-    if(LANG!=='en'||_sedangTerjemah) return;
-    _sedangTerjemah=true;
-    try{
-      muts.forEach(function(m){
-        if(m.type==='childList'){
-          m.addedNodes.forEach(function(n){ terjemahkanElemen(n); });
-        } else if(m.type==='characterData'){
-          terjemahkanElemen(m.target);
-        }
+  function amati(){
+    if(!obs){
+      obs=new MutationObserver(function(){
+        if(LANG!=='en') return;
+        jadwalkan();
       });
+    }
+    obs.observe(document.body,{childList:true,subtree:true});
+  }
+  function jadwalkan(){
+    if(tundaan) return;                      /* sudah antre, gabungkan */
+    tundaan=requestAnimationFrame(function(){
+      tundaan=null;
+      jalankanTerjemahan();
+    });
+  }
+  function jalankanTerjemahan(){
+    if(LANG!=='en') return;
+    try{
+      obs && obs.disconnect();               /* JANGAN amati tulisan sendiri */
+      lintasan(document.body);
     }catch(e){}
-    _sedangTerjemah=false;
-  });
-  obs.observe(document.body,{childList:true,subtree:true,characterData:true});
+    finally{ amati(); }                       /* sambung kembali */
+  }
+  window.terjemahkanSemua=jalankanTerjemahan;
+
+  window.setLang=function(v){
+    LANG=v; localStorage.setItem(LS_LANG,v);
+    render();
+    if(v==='en') jalankanTerjemahan();
+  };
 
   /* ============ Pengaturan di tab Profil ============ */
   function langBtn(val,label){
@@ -6051,20 +6060,21 @@ function actAdd(kind){
     _renderLama.apply(this,arguments);
     try{
       if(typeof view!=='undefined' && view==='settings') suntikPengaturanBahasa();
-      terjemahkanSemua();
+      if(LANG==='en') jadwalkan();
     }catch(e){}
   };
 
   var _toastLama=window.toast;
   window.toast=function(m){
     if(LANG==='en'){
-      var h=terjemah(String(m).trim());
-      if(h!=null && h!=='') m=h;
+      var t=String(m).trim(), h=terjemah(t);
+      if(h!=null) m=h;
     }
     _toastLama(m);
   };
 
-  setTimeout(function(){ try{ terjemahkanSemua(); }catch(e){} },300);
+  amati();
+  setTimeout(function(){ if(LANG==='en') jalankanTerjemahan(); },300);
 
 })();
 </script>
