@@ -5833,7 +5833,7 @@ function actAdd(kind){
 </script>
 
 <script>
-/* PATCH BAHASA v5 (Indonesia / English). GANTIKAN patch bahasa v4 sepenuhnya.
+/* PATCH BAHASA v5.1 (Indonesia / English). GANTIKAN patch bahasa v5/v4 sepenuhnya.
    Tempel sebelum </body>, paling akhir setelah semua patch lain.
    Baru di v5:
    - KAMUS lengkap hasil pemindaian seluruh sumber aplikasi, termasuk
@@ -5843,7 +5843,10 @@ function actAdd(kind){
      dikembalikan ke Bahasa Indonesia.
    - Kotak kode (pre/code/textarea) TIDAK diterjemahkan, supaya kode
      Apps Script yang disalin pengguna tetap utuh.
-   - Pencarian kamus menormalkan spasi/baris-baru di dalam teks. */
+   - Pencarian kamus menormalkan spasi/baris-baru di dalam teks.
+   - v5.1: kalimat insight yang dirakit dengan variabel di tengah
+     (nama kategori, persen, jumlah transaksi) kini ditangani lewat
+     aturan regex utuh, tidak lagi menghasilkan teks campur aduk. */
 (function(){
 
 var LS_LANG='kk_lang';
@@ -6454,6 +6457,24 @@ var KAMUS={
 
 /* pola utuh (anchored) dengan angka */
 var ATURAN=[
+ [/^Kategori "(.+)" menyerap sekitar (\d+)% dari total pengeluaran bulan ini, indikasi belanja terkonsentrasi pada kategori tersebut\.$/,'The "$1" category absorbs around $2% of this month\'s total expenses, an indication that spending is concentrated in that category.'],
+ [/^Frekuensi transaksi Belanja\/Hiburan cukup tinggi bulan ini \((\d+) transaksi\), perlu diwaspadai potensi pembelian impulsif\.$/,'Shopping\/Entertainment transaction frequency is quite high this month ($1 transactions); watch out for potential impulsive purchases.'],
+ [/^Tingkat tabungan bulan ini sangat tinggi \(sekitar (\d+)%\), baik untuk cadangan dana namun perlu dicek apakah kebutuhan penting sudah terpenuhi\.$/,'This month\'s savings rate is very high (around $1%), good for reserves, but check whether essential needs are being met.'],
+ [/^Evaluasi kategori pengeluaran terbesar bulan ini(?: \("(.+)"\))? dan cari pos yang bisa dikurangi lebih dulu\.$/,function(m,g1){ return 'Review this month\'s largest expense category'+(g1?(' ("'+g1+'")'):'')+' and look for items that can be cut first.'; }],
+ [/^Tetapkan anggaran bulanan khusus untuk kategori "(.+)" agar proporsinya lebih terkendali\.$/,'Set a dedicated monthly budget for the "$1" category to keep its share under control.'],
+ [/^Hapus kategori "(.+)"\?$/,'Delete the "$1" category?'],
+ [/^Kategori "(.+)" sudah ada$/,'Category "$1" already exists'],
+ [/^Kategori "(.+)" ditambahkan$/,'Category "$1" added'],
+ [/^Tandai lunas \((.+)\)$/,'Mark as paid ($1)'],
+ [/^Teks hasil OCR \((\d+) baris\)$/,'OCR result text ($1 lines)'],
+ [/^Hutang & Piutang \(per (.+)\)$/,'Debts & Receivables (as of $1)'],
+ [/^Pengeluaran terbesar \((.+)\)$/,'Largest expenses ($1)'],
+ [/^Per penampung saldo \((.+)\)$/,'Per account ($1)'],
+ [/^Daftar transaksi \((\d+)\)$/,'Transaction list ($1)'],
+ [/^Pemasukan \((.+)\)$/,'Income ($1)'],
+ [/^Pengeluaran \((.+)\)$/,'Expenses ($1)'],
+ [/^Belum terhubung ke layanan pencadangan\. Buka tab (.+) untuk mengaturnya\.$/,'Not connected to a backup service yet. Open the $1 tab to set it up.'],
+ [/^Saldo (.+?) tidak cukup\. Tersedia (.+)$/,'The $1 balance is not enough. Available: $2'],
  [/^(\d+) catatan$/,'$1 records'],
  [/^(\d+) transaksi$/,'$1 transactions'],
  [/^(\d+) hari lalu$/,'$1 days ago'],
@@ -6502,6 +6523,7 @@ var FRASA=[
  [/^Piutang(\s+\S\s+)/,'Receivable$1'],
  [/^Ke /,'To '],
  [/^Dari /,'From '],
+ [/\bProfil\b/g,'Profile'],
  [/\bKemarin\b/g,'Yesterday'],
  [/\bMei\b/g,'May'],[/\bAgu\b/g,'Aug'],[/\bOkt\b/g,'Oct'],[/\bDes\b/g,'Dec'],
  [/Makan & Minum/g,'Food & Drinks'],
