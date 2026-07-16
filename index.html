@@ -5833,7 +5833,7 @@ function actAdd(kind){
 </script>
 
 <script>
-/* PATCH BAHASA v5.2 (Indonesia / English). GANTIKAN patch bahasa sebelumnya sepenuhnya.
+/* PATCH BAHASA v5.3 (Indonesia / English). GANTIKAN patch bahasa sebelumnya sepenuhnya.
    Tempel sebelum </body>, paling akhir setelah semua patch lain.
    Baru di v5:
    - KAMUS lengkap hasil pemindaian seluruh sumber aplikasi, termasuk
@@ -6453,7 +6453,9 @@ var KAMUS={
  "vs 7 hari sebelumnya": "vs previous 7 days",
  "vs 12 bulan sebelumnya": "vs previous 12 months",
  "vs kemarin": "vs yesterday",
- "Prioritaskan pelunasan hutang, mulai dari yang jatuh temponya paling dekat, untuk mengurangi beban kewajiban ke depan.": "Prioritize paying off debts, starting with the nearest due date, to reduce future obligations."
+ "Prioritaskan pelunasan hutang, mulai dari yang jatuh temponya paling dekat, untuk mengurangi beban kewajiban ke depan.": "Prioritize paying off debts, starting with the nearest due date, to reduce future obligations.",
+ "Belum punya Google Sheet sendiri untuk pencadangan? Ikuti langkah berikut untuk menyiapkan Google Drive & Google Sheet Anda dari awal.": "Don't have your own Google Sheet for backup yet? Follow the steps below to set up your Google Drive & Google Sheet from scratch.",
+ "Aplikasi sudah terhubung ke Google Drive Anda (lewat Google Sheet & Apps Script). Pencadangan, pemulihan, dan penghapusan data akan diselaraskan otomatis ke sana.": "The app is connected to your Google Drive (via Google Sheet & Apps Script). Backups, restores, and data deletions will sync there automatically."
 };
 
 /* pola utuh (anchored) dengan angka */
@@ -6476,6 +6478,7 @@ var ATURAN=[
  [/^Pengeluaran \((.+)\)$/,'Expenses ($1)'],
  [/^Belum terhubung ke layanan pencadangan\. Buka tab (.+) untuk mengaturnya\.$/,'Not connected to a backup service yet. Open the $1 tab to set it up.'],
  [/^Saldo (.+?) tidak cukup\. Tersedia (.+)$/,'The $1 balance is not enough. Available: $2'],
+ [/^Catat juga sebagai hutang \(tagihan (.+) yang perlu dibayar nanti\)$/,'Also record as a debt (a $1 bill to be paid later)'],
  [/^(\d+) catatan$/,'$1 records'],
  [/^(\d+) transaksi$/,'$1 transactions'],
  [/^(\d+) hari lalu$/,'$1 days ago'],
@@ -6528,6 +6531,16 @@ var FRASA=[
  [/transaksi tanpa informasi jam tidak ditampilkan pada grafik \(tetap terhitung di total\)\./g,'transactions without time info are not shown on the chart (still counted in totals).'],
  [/foto tidak terbaca/g,'photo could not be read'],
  [/gagal memuat/g,'failed to load'],
+ [/Membaca struk\.\.\./g,'Reading the receipt...'],
+ [/Gagal membaca struk:/g,'Failed to read the receipt:'],
+ [/Daftar transaksi \((\d+)\)/g,'Transaction list ($1)'],
+ [/ketuk dua kali nama\/nominal untuk ubah/g,'double-tap a name\/amount to edit'],
+ [/Berhasil tersambung\./g,'Connected successfully.'],
+ [/(\d+) catatan tersimpan\./g,'$1 records stored.'],
+ [/Sisa penyimpanan Drive:/g,'Remaining Drive storage:'],
+ [/tidak terbatas\./g,'unlimited.'],
+ [/([\d.,]+ ?[KMGT]?B) dari ([\d.,]+ ?[KMGT]?B)/g,'$1 of $2'],
+ [/Tersimpan, tapi gagal menguji koneksi:/g,'Saved, but failed to test the connection:'],
  [/\bKemarin\b/g,'Yesterday'],
  [/\bMei\b/g,'May'],[/\bAgu\b/g,'Aug'],[/\bOkt\b/g,'Oct'],[/\bDes\b/g,'Dec'],
  [/Makan & Minum/g,'Food & Drinks'],
