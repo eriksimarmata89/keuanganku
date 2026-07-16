@@ -4417,7 +4417,10 @@ function actAdd(kind){
     setStatus('Mengambil foto...','');
 
     var sumber=null, sw=0, sh=0;
-    if(_ic && _ic.takePhoto){
+    /* Mode struk: selalu potong dari frame pratinjau, persis yang terlihat
+       di layar. Foto ImageCapture pada banyak perangkat punya bidang
+       pandang lebih lebar dari pratinjau sehingga potongan kotak meleset. */
+    if(_mode!=='struk' && _ic && _ic.takePhoto){
       try{
         var blob;
         try{
@@ -4444,8 +4447,8 @@ function actAdd(kind){
       var cx=sx + (f.left-r.left)/skala;
       var cy=sy + (f.top-r.top)/skala;
       var cw=f.width/skala, ch=f.height/skala;
-      var mg=cw*0.03;
-      cx-=mg; cy-=mg; cw+=mg*2; ch+=mg*2;
+      var mg=0;   /* kotak = batas mutlak, tanpa margin tambahan */
+      //cx-=mg; cy-=mg; cw+=mg*2; ch+=mg*2;
       var k=sw/v.videoWidth;
       var offY=(sh - v.videoHeight*k)/2;
       cx*=k; cw*=k; ch*=k; cy=cy*k + offY;
