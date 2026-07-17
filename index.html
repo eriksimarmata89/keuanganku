@@ -6776,6 +6776,156 @@ setTimeout(function(){ if(LANG==='en') jalankanTerjemahan(); },300);
 
 })();
 </script>
+
+<script>
+/* PATCH MATA UANG v1 (Opsi A: ganti lambang & format, TANPA konversi).
+   Tempel sebelum </body>, paling akhir setelah semua patch lain.
+
+   - Pemilih mata uang layar penuh muncul sekali setelah login bila
+     pengguna belum pernah memilih. Bisa dibuka lagi lewat Profil.
+   - Mengganti lambang dan pemisah ribuan di SELURUH tampilan (rp()),
+     dan label input ("Rp") lewat satu variabel CSS.
+   - Angka tersimpan apa adanya (bilangan bulat); tidak ada konversi
+     nilai, jadi data lama tetap utuh. */
+(function(){
+
+  /* daftar mata uang: symbol, posisi, spasi, locale pemisah ribuan */
+  var CUR={
+    IDR:{n:'Rupiah Indonesia',        s:'Rp', after:false, sp:true,  loc:'id-ID'},
+    USD:{n:'US Dollar',               s:'$',  after:false, sp:false, loc:'en-US'},
+    EUR:{n:'Euro',                    s:'\u20AC', after:false, sp:false, loc:'de-DE'},
+    GBP:{n:'Pound Sterling',          s:'\u00A3', after:false, sp:false, loc:'en-GB'},
+    JPY:{n:'Yen Jepang',              s:'\u00A5', after:false, sp:false, loc:'ja-JP'},
+    CNY:{n:'Yuan Tiongkok',           s:'\u00A5', after:false, sp:false, loc:'zh-CN'},
+    SGD:{n:'Dollar Singapura',        s:'S$', after:false, sp:false, loc:'en-SG'},
+    MYR:{n:'Ringgit Malaysia',        s:'RM', after:false, sp:true,  loc:'ms-MY'},
+    AUD:{n:'Dollar Australia',        s:'A$', after:false, sp:false, loc:'en-AU'},
+    SAR:{n:'Riyal Saudi',             s:'SAR',after:false, sp:true,  loc:'ar-SA'},
+    AED:{n:'Dirham UEA',              s:'AED',after:false, sp:true,  loc:'ar-AE'},
+    INR:{n:'Rupee India',             s:'\u20B9', after:false, sp:false, loc:'en-IN'},
+    KRW:{n:'Won Korea',               s:'\u20A9', after:false, sp:false, loc:'ko-KR'},
+    THB:{n:'Baht Thailand',           s:'\u0E3F', after:false, sp:false, loc:'th-TH'},
+    PHP:{n:'Peso Filipina',           s:'\u20B1', after:false, sp:false, loc:'en-PH'},
+    VND:{n:'Dong Vietnam',            s:'\u20AB', after:true,  sp:true,  loc:'vi-VN'}
+  };
+  var LS_CUR='kk_currency';
+
+  function kodeCur(){ var k=localStorage.getItem(LS_CUR); return CUR[k]?k:'IDR'; }
+  function curAktif(){ return CUR[kodeCur()]; }
+  function formatCur(n){
+    var c=curAktif();
+    var num=(Number(n)||0).toLocaleString(c.loc);
+    return c.after ? (num+(c.sp?' ':'')+c.s) : (c.s+(c.sp?' ':'')+num);
+  }
+
+  /* terapkan lambang ke variabel CSS untuk label input .rp */
+  function terapkanLambangCSS(){
+    document.documentElement.style.setProperty('--cur-sym', "'"+curAktif().s+"'");
+  }
+  (function suntikCSS(){
+    var st=document.createElement('style');
+    st.textContent=
+      '.nominal-wrap .rp{font-size:0 !important;}'+
+      '.nominal-wrap .rp::after{content:var(--cur-sym,'+"'Rp'"+');font-size:18px;color:var(--tx2);}';
+    document.head.appendChild(st);
+  })();
+
+  /* ====== TIMPA FORMATTER GLOBAL ====== */
+  window.rp=function(n){ return formatCur(n); };
+  window.fmtRp=function(n, paksa){
+    return (window.HIDE_AMT && !paksa) ? (curAktif().s+' \u2022\u2022\u2022\u2022\u2022') : formatCur(n);
+  };
+
+  /* ====== PEMILIH LAYAR PENUH ====== */
+  var _pilihSementara=null;
+  function contohFormat(kode){
+    var c=CUR[kode]; var num=(1234567).toLocaleString(c.loc);
+    return c.after ? (num+(c.sp?' ':'')+c.s) : (c.s+(c.sp?' ':'')+num);
+  }
+  function baris(kode){
+    var c=CUR[kode], on=(_pilihSementara===kode);
+    return '<button data-cur="'+kode+'" onclick="pilihCurSementara(\''+kode+'\')" '+
+      'style="display:flex;align-items:center;gap:14px;width:100%;text-align:left;border:none;'+
+      'background:'+(on?'var(--hijau-bg)':'var(--card)')+';border-radius:12px;padding:14px 16px;margin-bottom:8px;'+
+      'box-shadow:0 1px 2px rgba(0,0,0,.05);'+(on?'outline:2px solid var(--hijau-tx)':'')+'">'+
+      '<span style="width:52px;height:40px;border-radius:8px;background:var(--page);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:var(--tx);flex:0 0 auto">'+c.s+'</span>'+
+      '<span style="flex:1;min-width:0"><span style="display:block;font-size:14px;font-weight:600">'+kode+' &middot; '+c.n+'</span>'+
+      '<span style="display:block;font-size:11.5px;color:var(--tx3);margin-top:2px">Contoh: '+contohFormat(kode)+'</span></span>'+
+      '<span style="flex:0 0 auto;width:20px;height:20px;border-radius:50%;border:2px solid '+(on?'var(--hijau-tx)':'var(--line)')+';background:'+(on?'var(--hijau-tx)':'transparent')+'"></span>'+
+      '</button>';
+  }
+  window.pilihCurSementara=function(kode){
+    _pilihSementara=kode;
+    var ov=document.getElementById('curOverlay'); if(!ov) return;
+    ov.querySelectorAll('[data-cur]').forEach(function(b){
+      var on=b.dataset.cur===kode;
+      b.style.background=on?'var(--hijau-bg)':'var(--card)';
+      b.style.outline=on?'2px solid var(--hijau-tx)':'none';
+      var dot=b.lastElementChild;
+      dot.style.border='2px solid '+(on?'var(--hijau-tx)':'var(--line)');
+      dot.style.background=on?'var(--hijau-tx)':'transparent';
+    });
+    var tb=document.getElementById('curSimpanBtn'); if(tb) tb.disabled=false;
+  };
+  window.simpanCur=function(){
+    if(!_pilihSementara){ toast('Pilih salah satu mata uang'); return; }
+    localStorage.setItem(LS_CUR, _pilihSementara);
+    terapkanLambangCSS();
+    var ov=document.getElementById('curOverlay'); if(ov) ov.remove();
+    if(typeof render==='function') render();
+    if(typeof toast==='function') toast('Mata uang diatur: '+_pilihSementara);
+  };
+  function bukaPemilih(wajib){
+    if(document.getElementById('curOverlay')) return;
+    _pilihSementara = wajib ? null : kodeCur();
+    var ov=document.createElement('div');
+    ov.id='curOverlay';
+    ov.style.cssText='position:fixed;inset:0;z-index:200;background:var(--page);display:flex;flex-direction:column;max-width:var(--maxw,520px);margin:0 auto';
+    ov.innerHTML=
+      '<div style="padding:calc(env(safe-area-inset-top,0px) + 22px) 20px 14px">'+
+        (wajib?'':'<button onclick="document.getElementById(\'curOverlay\').remove()" style="border:none;background:none;color:var(--tx2);font-size:15px;padding:0 0 12px">&#8592; Kembali</button>')+
+        '<div style="font-size:20px;font-weight:700">Pilih Mata Uang</div>'+
+        '<div style="font-size:12.5px;color:var(--tx2);margin-top:4px;line-height:1.5">Menentukan lambang dan format tampilan di seluruh aplikasi. Nilai transaksi tidak dikonversi.</div>'+
+      '</div>'+
+      '<div style="flex:1;overflow-y:auto;padding:4px 16px 12px">'+
+        Object.keys(CUR).map(baris).join('')+
+      '</div>'+
+      '<div style="padding:12px 18px calc(env(safe-area-inset-bottom,0px) + 16px);border-top:.5px solid var(--line);background:var(--card)">'+
+        '<button id="curSimpanBtn" onclick="simpanCur()" '+(wajib?'disabled':'')+' '+
+          'style="width:100%;border:none;border-radius:12px;padding:15px 0;font-size:15px;font-weight:700;color:#fff;background:var(--hijau-tx)">'+
+          (wajib?'Lanjutkan':'Simpan')+'</button>'+
+      '</div>';
+    document.body.appendChild(ov);
+    if(!wajib) pilihCurSementara(kodeCur());
+  }
+  window.bukaPengaturanMataUang=function(){ bukaPemilih(false); };
+
+  /* ====== TAMPILKAN SEKALI SETELAH LOGIN ====== */
+  var _renderCurLama=window.render;
+  window.render=function(){
+    var hasil=_renderCurLama.apply(this, arguments);
+    if(USER && !localStorage.getItem(LS_CUR)) bukaPemilih(true);
+    return hasil;
+  };
+
+  /* ====== BARIS MENU DI PROFIL ====== */
+  var _renderSettingsCur=window.renderSettings;
+  window.renderSettings=function(){
+    _renderSettingsCur.apply(this, arguments);
+    if(profSub) return;
+    var wadah=S(); if(!wadah || wadah.querySelector('[data-mr-cur]')) return;
+    var menus=wadah.querySelectorAll('.menu'); if(!menus.length) return;
+    var div=document.createElement('div');
+    div.setAttribute('data-mr-cur','1'); div.style.display='contents';
+    div.innerHTML=menuRow('&#128176;','Mata Uang', kodeCur()+' &middot; '+curAktif().n, 'bukaPengaturanMataUang()');
+    menus[0].appendChild(div);
+  };
+
+  /* terapkan lambang saat aplikasi dimuat */
+  terapkanLambangCSS();
+
+})();
+</script>
   
 </body>
 </html>
