@@ -236,6 +236,28 @@ if(navigator.onLine === false){
   });
 })();
 </script>
+
+<script>
+/* PATCH BAHASA SKELETON v2 (mengikuti pilihan bahasa aplikasi via TinyDB).
+   Kodular memuat skeleton dengan parameter ?lang=id|en yang diambil
+   dari TinyDB (dikirim aplikasi setiap ganti bahasa). Bila parameter
+   tidak ada (mis. pembukaan pertama setelah instal), jatuh ke bahasa
+   perangkat. */
+(function(){
+  var q=String(location.search||'')+String(location.hash||'');
+  var m=q.match(/lang=(en|id)/i);
+  var bhs = m ? m[1].toLowerCase()
+              : (/^(id|in)/i.test(navigator.language||'id') ? 'id' : 'en');
+  if(bhs!=='en') return;   /* Indonesia: biarkan teks bawaan */
+  document.documentElement.lang='en';
+  var t=document.querySelector('.off .ot');
+  var d=document.querySelector('.off .od');
+  var b=document.querySelector('.off button');
+  if(t) t.textContent='No connection';
+  if(d) d.textContent='KeuanganKu needs an internet connection for the first load. Please check your connection and try again.';
+  if(b) b.textContent='Try again';
+})();
+</script>
   
 </body>
 </html>
