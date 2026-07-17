@@ -6725,6 +6725,7 @@ window.terjemahkanSemua=jalankanTerjemahan;
 
 window.setLang=function(v){
   LANG=v; localStorage.setItem(LS_LANG,v);
+  try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebViewString('BAHASA|'+v); }catch(e){}
   if(v==='id') kembalikanKeIndonesia();
   render();
   if(v==='en') jalankanTerjemahan();
@@ -6773,7 +6774,9 @@ window.toast=function(m){
 
 amati();
 setTimeout(function(){ if(LANG==='en') jalankanTerjemahan(); },300);
-
+  
+/* laporkan bahasa aktif ke Kodular saat aplikasi dimuat */
+try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebViewString('BAHASA|'+LANG); }catch(e){}
 })();
 </script>
 
