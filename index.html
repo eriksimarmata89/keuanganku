@@ -6938,6 +6938,7 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
 
   var URL_AUTH='https://script.google.com/macros/s/AKfycbzOussSdotfWY4VKPKCZOZImxUyyfXc5SvYgQZCXnLSb4VL_Pk-n2sRF11L1CTwUBeoLQ/exec';   /* <-- URL /exec dari Bagian B */
   var CLIENT_ID='544135778820-5idlil5pbiai8nndpl6cjmdtg6u5muaj.apps.googleusercontent.com';
+  var URL_CALLBACK='https://eriksimarmata89.github.io/keuanganku/auth.html';
   var _sesi=null, _timer=null, _hasilG=null;
 
   function acak(){ 
@@ -6963,7 +6964,7 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
     _sesi=acak(); _hasilG=null;
     bukaBrowser('https://accounts.google.com/o/oauth2/v2/auth'+
       '?client_id='+encodeURIComponent(CLIENT_ID)+
-      '&redirect_uri='+encodeURIComponent(URL_AUTH)+
+      '&redirect_uri='+encodeURIComponent(URL_CALLBACK)+
       '&response_type=code&scope='+encodeURIComponent('openid email profile')+
       '&prompt=select_account&state='+_sesi);
     var b=document.getElementById('btnGoogle');
