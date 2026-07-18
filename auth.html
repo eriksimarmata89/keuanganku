@@ -19,22 +19,10 @@ var URL_AUTH='https://script.google.com/macros/s/AKfycbzOussSdotfWY4VKPKCZOZImxU
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(d.status==='ok'){
-        var PAKET='com.eriksimarmata.keuanganku';
-        var AKTIVITAS='io.kodular.eriksimarmata89.keuanganKU.Screen1';
-        var intentUrl='intent://buka#Intent;'+
-          'scheme=keuanganku;'+
-          'action=android.intent.action.MAIN;'+
-          'category=android.intent.category.LAUNCHER;'+
-          'package='+PAKET+';'+
-          'component='+PAKET+'/'+AKTIVITAS+';'+
-          'S.browser_fallback_url='+encodeURIComponent('https://eriksimarmata89.github.io')+';'+
-          'end';
         j.textContent='Berhasil masuk';
         p.innerHTML='Akun <b>'+(d.email||'')+'</b> terverifikasi.'+
-          '<br><br><a href="'+intentUrl+'" style="display:inline-block;background:#1D9E75;color:#fff;'+
-          'text-decoration:none;border-radius:12px;padding:14px 26px;font-size:15px;font-weight:700">'+
-          'Kembali ke Aplikasi</a>'+
-          '<br><br><span style="font-size:12px;color:#9A9A94">Bila tombol tidak berfungsi, tekan tombol Kembali di HP Anda.</span>';
+          '<br><br><b>Tekan tombol Kembali (◀) di HP Anda</b><br>untuk melanjutkan ke aplikasi KeuanganKU.'+
+          '<br><br><span style="font-size:12px;color:#9A9A94">Aplikasi akan otomatis mendeteksi login Anda.</span>';
       } else {
         j.textContent='Login gagal';
         p.textContent='Silakan tutup halaman ini dan ulangi dari aplikasi.';
