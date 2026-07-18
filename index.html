@@ -6929,21 +6929,22 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
 </script>
 
 <script>
-/* PATCH LOGIN GOOGLE v1. Tempel sebelum </body>, paling akhir.
-   Tombol "Masuk dengan Google" pada layar login: membuka browser
-   eksternal (OAuth di WebView diblokir Google), aplikasi menunggu
-   dengan memeriksa sesi ke GAS auth pusat. Email terverifikasi lalu
-   ditautkan ke nomor telepon (identitas data tidak berubah). */
+/* PATCH LOGIN GOOGLE v2 (identitas = EMAIL). Menggantikan v1 sepenuhnya.
+   Login hanya via Google; email menjadi identitas data. Termasuk
+   migrasi sekali jalan: semua baris lokal berlabel nomor telepon
+   (identitas lama) dilabel ulang ke email, dan URL GAS pencadangan
+   yang tersimpan di bawah nomor lama dipindahkan ke email. */
 (function(){
 
-  var URL_AUTH='https://script.google.com/macros/s/AKfycbzOussSdotfWY4VKPKCZOZImxUyyfXc5SvYgQZCXnLSb4VL_Pk-n2sRF11L1CTwUBeoLQ/exec';   /* <-- URL /exec dari Bagian B */
+  var URL_AUTH='https://script.google.com/macros/s/AKfycbzOussSdotfWY4VKPKCZOZImxUyyfXc5SvYgQZCXnLSb4VL_Pk-n2sRF11L1CTwUBeoLQ/exec';
   var CLIENT_ID='544135778820-5idlil5pbiai8nndpl6cjmdtg6u5muaj.apps.googleusercontent.com';
   var URL_CALLBACK='https://eriksimarmata89.github.io/keuanganku/auth.html';
-  var _sesi=null, _timer=null, _hasilG=null;
+  var _sesi=null, _timer=null;
 
-  function acak(){ 
-    var s='';while(s.length<24){s+=Math.random().toString(36).slice(2);} return s.slice(0,24);
-  }
+  /* identitas kini email */
+  window.emailUser=function(){ return (USER&&(USER.email||USER.phone))||''; };
+
+  function acak(){ var s='';while(s.length<24){s+=Math.random().toString(36).slice(2);} return s.slice(0,24); }
   function bukaBrowser(url){
     if(window.AppInventor && AppInventor.setWebViewString){
       try{ AppInventor.setWebViewString('BUKA_LINK|'+url); return; }catch(e){}
@@ -6961,7 +6962,7 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
   }
 
   window.masukGoogle=function(){
-    _sesi=acak(); _hasilG=null;
+    _sesi=acak();
     bukaBrowser('https://accounts.google.com/o/oauth2/v2/auth'+
       '?client_id='+encodeURIComponent(CLIENT_ID)+
       '&redirect_uri='+encodeURIComponent(URL_CALLBACK)+
@@ -6977,11 +6978,10 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
       try{
         var r=await fetch(URL_AUTH+'?cek='+_sesi);
         var j=await r.json();
-        if(j.status==='ok'){
+        if(j.status==='ok' && j.email){
           berhentiPolling(); setStatusG('');
-          _hasilG=j;
-          if(j.phone){ selesaiLoginGoogle(j.phone, j.nama, j.foto); }
-          else{ renderTautkanNomor(); }
+          setUser({email:String(j.email).toLowerCase(), name:j.nama||'', picture:j.foto||''});
+          afterLogin();
         } else if(j.status==='kedaluwarsa'){
           berhentiPolling(); setStatusG('Sesi kedaluwarsa. Silakan coba lagi.');
         }
@@ -6989,52 +6989,48 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
     }, 2500);
   };
 
-  async function selesaiLoginGoogle(hp, nama, foto){
-    var fotoTersimpan=null;
-    try{ var rec=await avatarGet(hp); fotoTersimpan=rec?rec.picture:null; }catch(e){}
-    setUser({phone:hp, name:nama||'', picture:fotoTersimpan||foto||'', email:(_hasilG&&_hasilG.email)||''});
-    afterLogin();
-  }
-
-  window.renderTautkanNomor=function(){
-    var g=_hasilG||{};
-    S().innerHTML=
-      '<div class="login-wrap"><div class="logo-mark">'+logoMark(64)+'</div><div class="logo">KeuanganKu</div>'+
-      '<div class="logo-sub">Masuk sebagai <b>'+esc(g.email||'')+'</b>. Satu langkah lagi: masukkan nomor telepon untuk menandai data Anda. Bila sebelumnya sudah pernah memakai aplikasi ini, gunakan nomor yang sama agar data lama tetap terhubung.</div>'+
-      '<label class="fl">Nama</label><input class="field" id="tNama" value="'+esc(g.nama||'')+'">'+
-      '<label class="fl">Nomor Telepon</label><input class="field" id="tPhone" type="tel" inputmode="numeric" placeholder="08xxxxxxxxxx" oninput="onLoginPhone(this)">'+
-      '<button class="save pem" onclick="simpanTautan()">Lanjutkan</button>'+
-      '<button class="save" style="background:transparent;color:var(--tx2);box-shadow:none" onclick="renderLogin()">Batal</button>'+
-      '</div>';
-  };
-  window.simpanTautan=async function(){
-    var n=(document.getElementById('tNama').value||'').trim();
-    var hp=normalisasiHP((document.getElementById('tPhone').value||'').trim());
-    if(!n){ toast('Nama belum diisi'); return; }
-    if(!validHP(hp)){ toast('Nomor Telepon tidak valid'); return; }
-    try{
-      var r=await fetch(URL_AUTH+'?tautkan='+_sesi+'&phone='+encodeURIComponent(hp)+'&nama='+encodeURIComponent(n));
-      var j=await r.json();
-      if(j.status!=='ok'){ toast('Gagal menautkan, silakan ulangi login'); renderLogin(); return; }
-    }catch(e){ toast('Jaringan bermasalah, coba lagi'); return; }
-    selesaiLoginGoogle(hp, n, _hasilG&&_hasilG.foto);
-  };
-
-  /* suntik tombol Google ke layar login */
+  /* layar login: hanya Google */
   var IKON_G='<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.4 30.1 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.4 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.9 7.2l7.6 5.9c4.4-4.1 7.1-10.1 7.1-17.6z"/><path fill="#FBBC05" d="M10.4 28.7a14.5 14.5 0 0 1 0-9.4l-7.8-6.1a24 24 0 0 0 0 21.6l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.1 0 11.2-2 15-5.5l-7.6-5.9c-2.1 1.4-4.8 2.3-7.4 2.3-6.3 0-11.7-3.9-13.6-9.5l-7.8 6.1C6.5 42.6 14.6 48 24 48z"/></svg>';
-  var _renderLoginG=window.renderLogin;
   window.renderLogin=function(){
     berhentiPolling();
-    _renderLoginG.apply(this, arguments);
-    var wrap=S().querySelector('.login-wrap');
-    if(!wrap || wrap.querySelector('#btnGoogle')) return;
-    var div=document.createElement('div');
-    div.innerHTML=
-      '<div style="display:flex;align-items:center;gap:10px;margin:16px 0 12px;color:var(--tx3);font-size:12px">'+
-        '<span style="flex:1;height:.5px;background:var(--line)"></span>atau<span style="flex:1;height:.5px;background:var(--line)"></span></div>'+
-      '<button id="btnGoogle" onclick="masukGoogle()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;border:.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--tx);padding:13px 0;font-size:14px;font-weight:600">'+IKON_G+' Masuk dengan Google</button>'+
-      '<div id="gStatus" style="display:none;text-align:center;font-size:12px;color:var(--tx2);margin-top:10px"></div>';
-    wrap.appendChild(div);
+    S().innerHTML=
+      '<div class="login-wrap"><div class="logo-mark">'+logoMark(64)+'</div><div class="logo">KeuanganKu</div>'+
+      '<div class="logo-sub">Masuk menggunakan akun Google Anda. Data tercatat atas nama alamat email tersebut dan tersimpan di perangkat ini.</div>'+
+      '<button id="btnGoogle" onclick="masukGoogle()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;border:.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--tx);padding:14px 0;font-size:14.5px;font-weight:600">'+IKON_G+' Masuk dengan Google</button>'+
+      '<div id="gStatus" style="display:none;text-align:center;font-size:12px;color:var(--tx2);margin-top:12px"></div>'+
+      '</div>';
+  };
+
+  /* ===== MIGRASI SEKALI JALAN: label nomor -> email ===== */
+  async function migrasiKeEmail(){
+    var em=emailUser();
+    if(!em || em.indexOf('@')<0) return;
+    /* 1) pindahkan URL GAS dari kunci nomor lama ke kunci email */
+    try{
+      var kunciBaru='kk_gas_url_'+em;
+      if(!localStorage.getItem(kunciBaru)){
+        for(var i=0;i<localStorage.length;i++){
+          var k=localStorage.key(i);
+          if(k && k.indexOf('kk_gas_url_')===0 && k!==kunciBaru){
+            var v=localStorage.getItem(k);
+            if(v){ localStorage.setItem(kunciBaru, v); break; }
+          }
+        }
+      }
+    }catch(e){}
+    /* 2) label ulang seluruh baris lokal ber-user non-email */
+    try{
+      var all=await idbGetAll(), ubah=[];
+      all.forEach(function(t){
+        if(t.user && String(t.user).indexOf('@')<0){ t.user=em; ubah.push(t); }
+      });
+      if(ubah.length){ await idbBulkPut(ubah); toast(ubah.length+' catatan dimigrasikan ke akun email'); }
+    }catch(e){}
+  }
+  var _afterLoginLama=window.afterLogin;
+  window.afterLogin=async function(){
+    await migrasiKeEmail();
+    return _afterLoginLama.apply(this, arguments);
   };
 
 })();
