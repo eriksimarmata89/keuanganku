@@ -7080,9 +7080,8 @@ function mulaiLoginGoogle(){
   var sesi=buatSesi();
   localStorage.setItem('sesi_login', sesi);
   localStorage.setItem('sesi_mulai', String(Date.now()));
-  /* minta Kodular buka browser eksternal */
   window.AppInventor && window.AppInventor.setWebViewString(
-    'OPEN_BROWSER|'+URL_AUTH+'?gauth='+encodeURIComponent(sesi));
+    'BUKA_LINKI|'+URL_AUTH+'?gauth='+encodeURIComponent(sesi));
   mulaiPollingSesi();
 }
 
