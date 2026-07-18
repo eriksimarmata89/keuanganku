@@ -7064,6 +7064,75 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
 
 })();
 </script>
+
+<script>
+/* ===== PATCH: Login Google via browser + polling sesi ===== */
+var URL_AUTH='https://script.google.com/macros/s/AKfycbzOussSdotfWY4VKPKCZOZImxUyyfXc5SvYgQZCXnLSb4VL_Pk-n2sRF11L1CTwUBeoLQ/exec'; // URL /exec yang sama
+var _sesiTimer=null;
+
+function buatSesi(){
+  var s='', k='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  for(var i=0;i<24;i++) s+=k.charAt(Math.floor(Math.random()*k.length));
+  return s;
+}
+
+function mulaiLoginGoogle(){
+  var sesi=buatSesi();
+  localStorage.setItem('sesi_login', sesi);
+  localStorage.setItem('sesi_mulai', String(Date.now()));
+  /* minta Kodular buka browser eksternal */
+  window.AppInventor && window.AppInventor.setWebViewString(
+    'OPEN_BROWSER|'+URL_AUTH+'?gauth='+encodeURIComponent(sesi));
+  mulaiPollingSesi();
+}
+
+function mulaiPollingSesi(){
+  hentikanPollingSesi();
+  _sesiTimer=setInterval(cekSesiLogin, 3000);
+}
+function hentikanPollingSesi(){
+  if(_sesiTimer){ clearInterval(_sesiTimer); _sesiTimer=null; }
+}
+
+function cekSesiLogin(){
+  var sesi=localStorage.getItem('sesi_login');
+  if(!sesi){ hentikanPollingSesi(); return; }
+  /* berhenti otomatis setelah 10 menit (selaras MASA_SESI_DETIK) */
+  if(Date.now()-(+localStorage.getItem('sesi_mulai')||0) > 600000){
+    hentikanPollingSesi(); localStorage.removeItem('sesi_login'); return;
+  }
+  fetch(URL_AUTH+'?cek='+encodeURIComponent(sesi))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.status==='ok'){
+        hentikanPollingSesi();
+        localStorage.removeItem('sesi_login');
+        localStorage.setItem('user_email', d.email||'');
+        localStorage.setItem('user_nama',  d.nama ||'');
+        localStorage.setItem('user_foto',  d.foto ||'');
+        localStorage.setItem('user_phone', d.phone||'');
+        onLoginBerhasil(d);            /* fungsi Anda: tutup layar login, tampilkan app */
+      } else if(d.status==='kedaluwarsa' || d.status==='tidak_ada'){
+        hentikanPollingSesi();
+        localStorage.removeItem('sesi_login');
+        onLoginGagal && onLoginGagal(d.status);
+      }
+      /* status 'pending' → biarkan polling lanjut */
+    })
+    .catch(function(){ /* jaringan sesaat bermasalah, coba lagi di tick berikut */ });
+}
+
+/* "OnResume" versi WebView: begitu aplikasi tampil lagi, cek langsung tanpa menunggu tick */
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState==='visible' && localStorage.getItem('sesi_login')){
+    cekSesiLogin();
+    mulaiPollingSesi();
+  }
+});
+
+/* bila aplikasi dibuka ulang di tengah proses login yang belum selesai */
+if(localStorage.getItem('sesi_login')) mulaiPollingSesi();
+</script>
   
 </body>
 </html>
