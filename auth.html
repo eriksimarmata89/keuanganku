@@ -19,10 +19,22 @@ var URL_AUTH='https://script.google.com/macros/s/AKfycbzOussSdotfWY4VKPKCZOZImxU
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(d.status==='ok'){
+        /* bersihkan code OAuth dari URL agar tidak bisa terpakai ulang bila halaman di-reload */
+        try{ history.replaceState(null,'',location.pathname); }catch(_){}
+      
         j.textContent='Berhasil masuk';
         p.innerHTML='Akun <b>'+(d.email||'')+'</b> terverifikasi.'+
-          '<br><br><b>Tekan tombol Kembali (◀) di HP Anda</b><br>untuk melanjutkan ke aplikasi KeuanganKU.'+
-          '<br><br><span style="font-size:12px;color:#9A9A94">Aplikasi akan otomatis mendeteksi login Anda.</span>';
+          '<br><br><span id="tutup" style="color:#9A9A94;font-size:13px">Menutup halaman...</span>';
+      
+        /* coba tutup tab otomatis */
+        setTimeout(function(){ window.close(); }, 800);
+      
+        /* bila browser menolak menutup, tampilkan instruksi manual */
+        setTimeout(function(){
+          var t=document.getElementById('tutup');
+          if(t) t.innerHTML='<b style="color:#333">Tekan tombol Kembali (◀) di HP Anda</b><br>'+
+            '<span style="font-size:12px">untuk melanjutkan ke aplikasi KeuanganKU.</span>';
+        }, 1800);
       } else {
         j.textContent='Login gagal';
         p.textContent='Silakan tutup halaman ini dan ulangi dari aplikasi.';
