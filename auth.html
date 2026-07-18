@@ -19,9 +19,14 @@ var URL_AUTH='https://script.google.com/macros/s/AKfycbzOussSdotfWY4VKPKCZOZImxU
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(d.status==='ok'){
-        var PAKET='com.eriksimarmata.keuanganku';
+        var PAKET='io.kodular.eriksimarmata89.keuanganKU';
         var AKTIVITAS='io.kodular.eriksimarmata89.keuanganKU.Screen1';
-        var intentUrl='intent:#Intent;component='+PAKET+'/'+AKTIVITAS+';end';
+        var intentUrl='intent:#Intent;'+
+          'action=android.intent.action.MAIN;'+
+          'category=android.intent.category.LAUNCHER;'+
+          'component='+PAKET+'/'+AKTIVITAS+';'+
+          'package='+PAKET+';'+
+          'end';
         j.textContent='Berhasil masuk';
         p.innerHTML='Akun <b>'+(d.email||'')+'</b> terverifikasi.'+
           '<br><br><a href="'+intentUrl+'" style="display:inline-block;background:#1D9E75;color:#fff;'+
