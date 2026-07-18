@@ -19,13 +19,15 @@ var URL_AUTH='https://script.google.com/macros/s/AKfycbzOussSdotfWY4VKPKCZOZImxU
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(d.status==='ok'){
-        var PAKET='io.kodular.eriksimarmata89.keuanganKU';
+        var PAKET='com.eriksimarmata.keuanganku';
         var AKTIVITAS='io.kodular.eriksimarmata89.keuanganKU.Screen1';
-        var intentUrl='intent:#Intent;'+
+        var intentUrl='intent://buka#Intent;'+
+          'scheme=keuanganku;'+
           'action=android.intent.action.MAIN;'+
           'category=android.intent.category.LAUNCHER;'+
-          'component='+PAKET+'/'+AKTIVITAS+';'+
           'package='+PAKET+';'+
+          'component='+PAKET+'/'+AKTIVITAS+';'+
+          'S.browser_fallback_url='+encodeURIComponent('https://eriksimarmata89.github.io')+';'+
           'end';
         j.textContent='Berhasil masuk';
         p.innerHTML='Akun <b>'+(d.email||'')+'</b> terverifikasi.'+
