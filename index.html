@@ -6937,6 +6937,7 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
 (function(){
 
   var URL_AUTH='https://script.google.com/macros/s/AKfycbxt46LTTdHdRS_uYYzHUvEmqk_iFvL2l87Zt1BSIMAKDG8L7QrkW8v3kHqQ-cW-n4-7SA/exec';   /* <-- URL /exec dari Bagian B */
+  var CLIENT_ID='544135778820-5idlil5pbiai8nndpl6cjmdtg6u5muaj.apps.googleusercontent.com';
   var _sesi=null, _timer=null, _hasilG=null;
 
   function acak(){ 
@@ -6960,7 +6961,11 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
 
   window.masukGoogle=function(){
     _sesi=acak(); _hasilG=null;
-    bukaBrowser(URL_AUTH+'?gauth='+_sesi);
+    bukaBrowser('https://accounts.google.com/o/oauth2/v2/auth'+
+      '?client_id='+encodeURIComponent(CLIENT_ID)+
+      '&redirect_uri='+encodeURIComponent(URL_AUTH)+
+      '&response_type=code&scope='+encodeURIComponent('openid email profile')+
+      '&prompt=select_account&state='+_sesi);
     var b=document.getElementById('btnGoogle');
     if(b){ b.disabled=true; b.style.opacity='.6'; }
     setStatusG('Menunggu persetujuan di browser...');
