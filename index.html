@@ -7005,10 +7005,28 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
   window.renderLogin=function(){
     berhentiPolling();
     S().innerHTML=
-      '<div class="login-wrap"><div class="logo-mark">'+logoMark(64)+'</div><div class="logo">KeuanganKu</div>'+
-      L('Masuk menggunakan akun Google Anda. Data tercatat atas nama alamat email tersebut dan tersimpan di perangkat ini.','Sign in with your Google account. Your data is recorded under that email address and stored on this device.')+   // ⬅️ diganti + di sini
-      '<button id="btnGoogle" onclick="masukGoogle()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;border:.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--tx);padding:14px 0;font-size:14.5px;font-weight:600">'+IKON_G+' '+L('Masuk dengan Google','Sign in with Google')+'</button>'+
-      '<div id="gStatus" style="display:none;text-align:center;font-size:12px;color:var(--tx2);margin-top:12px"></div>'+
+      '<div class="login-wrap" style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:22px;max-width:380px;margin:0 auto;padding:40px 20px">' +
+  
+        // Logo + judul
+        '<div style="display:flex;flex-direction:column;align-items:center;gap:14px">' +
+          '<div class="logo-mark">'+logoMark(64)+'</div>' +
+          '<div class="logo" style="font-size:22px;font-weight:700;color:var(--accent,#4285F4)">KeuanganKu</div>' +
+        '</div>' +
+  
+        // Deskripsi
+        '<div style="font-size:14px;line-height:1.6;color:var(--tx2);padding:0 4px">' +
+          L('Masuk menggunakan akun Google Anda. Data tercatat atas nama alamat email tersebut dan tersimpan di perangkat ini.',
+            'Sign in with your Google account. Your data is recorded under that email address and stored on this device.') +
+        '</div>' +
+  
+        // Tombol Google
+        '<button id="btnGoogle" onclick="masukGoogle()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;border:.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--tx);padding:14px 0;font-size:14.5px;font-weight:600;cursor:pointer;transition:background .15s ease" onmouseover="this.style.background=\'var(--hover,rgba(255,255,255,0.05))\'" onmouseout="this.style.background=\'var(--card)\'">' +
+          IKON_G+' '+L('Masuk dengan Google','Sign in with Google') +
+        '</button>' +
+  
+        // Status area
+        '<div id="gStatus" style="display:none;font-size:12px;color:var(--tx2)"></div>' +
+  
       '</div>';
   };
 
