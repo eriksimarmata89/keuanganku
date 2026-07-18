@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KeuanganKu — Login</title>
+<style>
+body{font-family:sans-serif;background:#F4F4F2;display:flex;align-items:center;justify-content:center;min-height:92vh;margin:0}
+.c{background:#fff;border-radius:16px;padding:30px 24px;max-width:340px;text-align:center;box-shadow:0 4px 18px rgba(0,0,0,.08)}
+h2{margin:0 0 8px;font-size:19px}p{color:#6B6B66;font-size:14px;line-height:1.55;margin:0}
+</style></head><body>
+<div class="c"><h2 id="j">Memproses login...</h2><p id="p">Mohon tunggu sebentar.</p></div>
+<script>
+var URL_AUTH='https://script.google.com/macros/s/AKfycbzOussSdotfWY4VKPKCZOZImxUyyfXc5SvYgQZCXnLSb4VL_Pk-n2sRF11L1CTwUBeoLQ/exec';   /* URL /exec yang sama dengan di aplikasi */
+(function(){
+  var q=new URLSearchParams(location.search);
+  var code=q.get('code'), state=q.get('state');
+  var j=document.getElementById('j'), p=document.getElementById('p');
+  if(!code || !state){ j.textContent='Tautan tidak lengkap'; p.textContent='Silakan ulangi login dari aplikasi.'; return; }
+  fetch(URL_AUTH+'?selesaikan='+encodeURIComponent(state)+'&code='+encodeURIComponent(code))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.status==='ok'){
+        j.textContent='Berhasil masuk';
+        p.innerHTML='Akun <b>'+(d.email||'')+'</b> terverifikasi.<br><br><b>Silakan kembali ke aplikasi KeuanganKu.</b><br><span style="font-size:12px">You are signed in. Please return to the app.</span>';
+      } else {
+        j.textContent='Login gagal';
+        p.textContent='Silakan tutup halaman ini dan ulangi dari aplikasi.';
+      }
+    })
+    .catch(function(){ j.textContent='Jaringan bermasalah'; p.textContent='Periksa koneksi lalu ulangi dari aplikasi.'; });
+})();
+</script></body></html>
