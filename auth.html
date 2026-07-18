@@ -19,9 +19,8 @@ var URL_AUTH='https://script.google.com/macros/s/AKfycbzOussSdotfWY4VKPKCZOZImxU
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(d.status==='ok'){
-        var PAKET='com.eriksimarmata.keuanganku';   /* <-- samakan dengan package name Kodular */
-        var intentUrl='intent:#Intent;component='+PAKET+'/'+PAKET+'.Screen1;end';
-          'category=android.intent.category.LAUNCHER;package='+PAKET+';end';
+        var PAKET='com.eriksimarmata.keuanganku';
+        var intentUrl='intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package='+PAKET+';end';
         j.textContent='Berhasil masuk';
         p.innerHTML='Akun <b>'+(d.email||'')+'</b> terverifikasi.'+
           '<br><br><a href="'+intentUrl+'" style="display:inline-block;background:#1D9E75;color:#fff;'+
