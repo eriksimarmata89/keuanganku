@@ -6812,10 +6812,14 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
     VND:{n:'Dong Vietnam',     en:'Vietnamese Dong',    s:'\u20AB', after:true,  sp:true,  loc:'vi-VN'}
   };
   var LS_CUR='kk_currency';
+  function kunciCur(){ return 'kk_currency_'+((typeof emailUser==='function'&&emailUser())||''); }
 
   function L(id,en){ return (window.LANG==='en')?en:id; }
   function namaCur(c){ return (window.LANG==='en')?c.en:c.n; }
-  function kodeCur(){ var k=localStorage.getItem(LS_CUR); return CUR[k]?k:'IDR'; }
+  function kodeCur(){
+    var k=localStorage.getItem(kunciCur())||localStorage.getItem(LS_CUR);
+    return CUR[k]?k:'IDR';
+  }
   function curAktif(){ return CUR[kodeCur()]; }
   function formatCur(n){
     var c=curAktif();
@@ -6871,7 +6875,7 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
   };
   window.simpanCur=function(){
     if(!_pilihSementara){ toast(L('Pilih salah satu mata uang','Please select a currency')); return; }
-    localStorage.setItem(LS_CUR, _pilihSementara);
+    localStorage.setItem(kunciCur(), _pilihSementara);
     terapkanLambangCSS();
     var ov=document.getElementById('curOverlay'); if(ov) ov.remove();
     if(typeof render==='function') render();
@@ -6907,7 +6911,7 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
   var _renderCurLama=window.render;
   window.render=function(){
     var hasil=_renderCurLama.apply(this, arguments);
-    if(USER && !localStorage.getItem(LS_CUR)) bukaPemilih(true);
+    if(USER && !localStorage.getItem(kunciCur())) bukaPemilih(true);
     return hasil;
   };
 
@@ -6941,6 +6945,9 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
   var URL_CALLBACK='https://eriksimarmata89.github.io/keuanganku/auth.html';
   var _sesi=null, _timer=null;
 
+  var _selesai=false;
+  function L(id,en){ return (window.LANG==='en')?en:id; }
+
   /* identitas kini email */
   window.emailUser=function(){ return (USER&&(USER.email||USER.phone))||''; };
 
@@ -6962,6 +6969,7 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
   }
 
   window.masukGoogle=function(){
+    _selesai=false;
     _sesi=acak();
     bukaBrowser('https://accounts.google.com/o/oauth2/v2/auth'+
       '?client_id='+encodeURIComponent(CLIENT_ID)+
@@ -6970,20 +6978,23 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
       '&prompt=select_account&state='+_sesi);
     var b=document.getElementById('btnGoogle');
     if(b){ b.disabled=true; b.style.opacity='.6'; }
-    setStatusG('Menunggu persetujuan di browser...');
+    setStatusG(L('Menunggu persetujuan di browser...','Waiting for approval in the browser...'))
     var mulai=Date.now();
     if(_timer) clearInterval(_timer);
     _timer=setInterval(async function(){
-      if(Date.now()-mulai > 180000){ berhentiPolling(); setStatusG('Waktu habis. Silakan coba lagi.'); return; }
+      if(_selesai) return;
+      if(Date.now()-mulai > 180000){ berhentiPolling(); setStatusG(L('Waktu habis. Silakan coba lagi.','Timed out. Please try again.'), 'Sesi kedaluwarsa...'); return; }
       try{
         var r=await fetch(URL_AUTH+'?cek='+_sesi);
         var j=await r.json();
         if(j.status==='ok' && j.email){
+          if(_selesai) return;
+          _selesai=true;
           berhentiPolling(); setStatusG('');
           setUser({email:String(j.email).toLowerCase(), name:j.nama||'', picture:j.foto||''});
           afterLogin();
         } else if(j.status==='kedaluwarsa'){
-          berhentiPolling(); setStatusG('Sesi kedaluwarsa. Silakan coba lagi.');
+          berhentiPolling(); setStatusGL('Sesi kedaluwarsa. Silakan coba lagi.','Session expired. Please try again.');
         }
       }catch(e){}
     }, 2500);
@@ -6995,8 +7006,8 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
     berhentiPolling();
     S().innerHTML=
       '<div class="login-wrap"><div class="logo-mark">'+logoMark(64)+'</div><div class="logo">KeuanganKu</div>'+
-      '<div class="logo-sub">Masuk menggunakan akun Google Anda. Data tercatat atas nama alamat email tersebut dan tersimpan di perangkat ini.</div>'+
-      '<button id="btnGoogle" onclick="masukGoogle()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;border:.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--tx);padding:14px 0;font-size:14.5px;font-weight:600">'+IKON_G+' Masuk dengan Google</button>'+
+      L('Masuk menggunakan akun Google Anda. Data tercatat atas nama alamat email tersebut dan tersimpan di perangkat ini.','Sign in with your Google account. Your data is recorded under that email address and stored on this device.')
+      '<button id="btnGoogle" onclick="masukGoogle()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;border:.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--tx);padding:14px 0;font-size:14.5px;font-weight:600">'+IKON_G+''+L('Masuk dengan Google','Sign in with Google')</button>'+
       '<div id="gStatus" style="display:none;text-align:center;font-size:12px;color:var(--tx2);margin-top:12px"></div>'+
       '</div>';
   };
