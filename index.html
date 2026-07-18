@@ -3752,7 +3752,7 @@ function actAdd(kind){
       for(var d=6; d>=0; d--){
         var d0=new Date(now); d0.setDate(now.getDate()-d);
         var ag=agTgl(isoDari(d0));
-        labels.push(d0.toLocaleDateString('id-ID',{weekday:'short', day:'numeric'}));
+        labels.push(d0.toLocaleDateString(window.LANG==='en'?'en-US':'id-ID', {weekday:'short', day:'numeric'}));
         dMasuk.push(ag.m); dKeluar.push(ag.k);
       }
     } else if(repPeriode==='bulanan'){
@@ -3767,7 +3767,7 @@ function actAdd(kind){
       for(var mo=11; mo>=0; mo--){
         var d1=new Date(now.getFullYear(), now.getMonth()-mo, 1);
         var ag3=agBulan(kunciBulan(d1));
-        labels.push(d1.toLocaleDateString('id-ID',{month:'short', year:'2-digit'}));
+        labels.push(d1.toLocaleDateString(window.LANG==='en'?'en-US':'id-ID', {month:'short', year:'2-digit'}));
         dMasuk.push(ag3.m); dKeluar.push(ag3.k);
       }
     }
@@ -3781,8 +3781,8 @@ function actAdd(kind){
     window._chartTren=new Chart(ctx,{
       type:'line',
       data:{ labels:labels, datasets:[
-        {label:'Pemasukan', data:dMasuk, borderColor:hij, backgroundColor:hij, fill:false, tension:.35, pointRadius:2.5, pointHoverRadius:5, pointHitRadius:14, borderWidth:2},
-        {label:'Pengeluaran', data:dKeluar, borderColor:mer, backgroundColor:mer, fill:false, tension:.35, pointRadius:2.5, pointHoverRadius:5, pointHitRadius:14, borderWidth:2}
+        {label:(window.LANG==='en'?'Income':'Pemasukan'), data:dMasuk, borderColor:hij, backgroundColor:hij, fill:false, tension:.35, pointRadius:2.5, pointHoverRadius:5, pointHitRadius:14, borderWidth:2},
+        {label:(window.LANG==='en'?'Expenses':'Pengeluaran'), data:dKeluar, borderColor:mer, backgroundColor:mer, fill:false, tension:.35, pointRadius:2.5, pointHoverRadius:5, pointHitRadius:14, borderWidth:2}
       ]},
       options:{
         /* Kunci perbaikan untuk layar sentuh:
