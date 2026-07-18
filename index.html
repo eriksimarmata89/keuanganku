@@ -6978,12 +6978,12 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
       '&prompt=select_account&state='+_sesi);
     var b=document.getElementById('btnGoogle');
     if(b){ b.disabled=true; b.style.opacity='.6'; }
-    setStatusG(L('Menunggu persetujuan di browser...','Waiting for approval in the browser...'))
+    setStatusG(L('Menunggu persetujuan di browser...','Waiting for approval in the browser...'));
     var mulai=Date.now();
     if(_timer) clearInterval(_timer);
     _timer=setInterval(async function(){
       if(_selesai) return;
-      if(Date.now()-mulai > 180000){ berhentiPolling(); setStatusG(L('Waktu habis. Silakan coba lagi.','Timed out. Please try again.'), 'Sesi kedaluwarsa...'); return; }
+      if(Date.now()-mulai > 180000){ berhentiPolling(); setStatusG(L('Waktu habis. Silakan coba lagi.','Timed out. Please try again.')); return; }
       try{
         var r=await fetch(URL_AUTH+'?cek='+_sesi);
         var j=await r.json();
@@ -6994,7 +6994,7 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
           setUser({email:String(j.email).toLowerCase(), name:j.nama||'', picture:j.foto||''});
           afterLogin();
         } else if(j.status==='kedaluwarsa'){
-          berhentiPolling(); setStatusGL('Sesi kedaluwarsa. Silakan coba lagi.','Session expired. Please try again.');
+          berhentiPolling(); setStatusG(L('Sesi kedaluwarsa. Silakan coba lagi.','Session expired. Please try again.'));
         }
       }catch(e){}
     }, 2500);
