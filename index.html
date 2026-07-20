@@ -7132,6 +7132,40 @@ document.addEventListener('visibilitychange', function(){
 /* bila aplikasi dibuka ulang di tengah proses login yang belum selesai */
 if(localStorage.getItem('sesi_login')) mulaiPollingSesi();
 </script>
+
+<script>
+/* PATCH KONEKSI PENCADANGAN v2: baca via fetch anonim (credentials omit)
+   agar tidak terkena redirect multi-akun Google /u/N/ yang berujung 404.
+   JSONP tag-script lama dipertahankan sebagai cadangan bila fetch gagal. */
+(function(){
+
+function jsonpTagScript(params){
+  return new Promise(function(res,rej){
+    var url=getGasUrl();
+    if(!url){ rej(new Error('Layanan pencadangan belum terhubung. Atur di tab Profil, menu Koneksi Pencadangan.')); return; }
+    var cb='kk_cb_'+Date.now().toString(36)+Math.floor(Math.random()*1e4);
+    var sep=url.indexOf('?')>=0?'&':'?';
+    var s=document.createElement('script');
+    var timer=setTimeout(function(){ cleanup(); rej(new Error('Layanan tidak merespons. Periksa kembali pengaturan koneksi lalu coba lagi.')); },20000);
+    function cleanup(){ clearTimeout(timer); try{ delete window[cb]; }catch(e){ window[cb]=undefined; } if(s.parentNode) s.parentNode.removeChild(s); }
+    window[cb]=function(data){ cleanup(); res(data); };
+    s.onerror=function(){ cleanup(); rej(new Error('Gagal terhubung ke layanan')); };
+    s.src=url+sep+params+'&callback='+cb;
+    document.body.appendChild(s);
+  });
+}
+
+window.jsonp=function(params){
+  var url=getGasUrl();
+  if(!url) return Promise.reject(new Error('Layanan pencadangan belum terhubung. Atur di tab Profil, menu Koneksi Pencadangan.'));
+  var sep=url.indexOf('?')>=0?'&':'?';
+  return fetch(url+sep+params,{method:'GET',credentials:'omit',redirect:'follow'})
+    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .catch(function(){ return jsonpTagScript(params); });
+};
+
+})();
+</script>
   
 </body>
 </html>
