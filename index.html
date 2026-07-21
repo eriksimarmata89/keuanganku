@@ -7269,6 +7269,128 @@ window.jsonp=function(params){
 
 })();
 </script>
+
+<script>
+/* ===== PATCH KATEGORI DWIBAHASA v2 (menggantikan v1) =====
+   Patch bahasa menerjemahkan teks <option>, sedangkan option kategori dibuat
+   tanpa atribut value, sehingga nilai select ikut berubah menjadi teks Inggris.
+   Akibatnya pilihan tidak pernah cocok (tampilan lompat ke pilihan pertama)
+   dan kategori tersimpan dalam bahasa Inggris.
+   Patch ini menanamkan value kanonik (Indonesia) ke tiap option, sehingga
+   terjemahan hanya mengubah label yang terlihat, bukan nilai yang disimpan. */
+(function(){
+
+  var LS_KAT='kk_kat_barang_terakhir';
+  function katTerakhir(){ try{ return localStorage.getItem(LS_KAT)||''; }catch(e){ return ''; } }
+  function simpanKat(v){ try{ if(v) localStorage.setItem(LS_KAT,v); }catch(e){} }
+
+  function daftarKeluar(){ return window.KAT_PENGELUARAN||[]; }
+  function daftarMasuk(){  return window.KAT_PEMASUKAN||[]; }
+
+  /* tanam value kanonik ke option kategori (bukan select penampung saldo,
+     yang optionnya sudah punya value berisi id akun) */
+  function tanamValue(sel){
+    if(!sel || !sel.options.length) return;
+    var o0=sel.options[0];
+    if(o0.getAttribute('value')!==null && o0.getAttribute('value')!==o0.textContent.trim()) return;
+    var ref=null;
+    if(sel.options.length===daftarKeluar().length) ref=daftarKeluar();
+    else if(sel.options.length===daftarMasuk().length) ref=daftarMasuk();
+    if(!ref) return;
+    Array.prototype.forEach.call(sel.options, function(o,i){ o.value=ref[i]; });
+  }
+
+  function pasangNilai(sel, nilai){
+    if(!sel || !nilai) return;
+    var cocok=-1;
+    Array.prototype.forEach.call(sel.options, function(o,i){
+      if(cocok<0 && (o.value===nilai || o.textContent.trim()===nilai)) cocok=i;
+    });
+    if(cocok<0){
+      var o=document.createElement('option');
+      o.value=nilai; o.textContent=nilai;
+      sel.appendChild(o);
+      cocok=sel.options.length-1;
+    }
+    sel.selectedIndex=cocok;
+  }
+
+  function bereskan(daftar){
+    document.querySelectorAll('select').forEach(tanamValue);
+    if(!daftar || !daftar.length) return;
+    var sel=document.querySelectorAll('select.psel');
+    for(var i=0; i<sel.length && i<daftar.length; i++){
+      if(daftar[i] && daftar[i].kategori) pasangNilai(sel[i], daftar[i].kategori);
+    }
+  }
+
+  var _renderAdd=window.renderAdd;
+  if(typeof _renderAdd==='function'){
+    window.renderAdd=function(){
+      var h=_renderAdd.apply(this, arguments);
+      try{
+        bereskan(window.addState ? addState.items : null);
+        if(window.addState && addState.kategori){
+          document.querySelectorAll('select').forEach(function(s){
+            if(s.classList.contains('psel')) return;
+            var ref=(addState.tipe==='pengeluaran'?daftarKeluar():daftarMasuk());
+            if(s.options.length===ref.length) pasangNilai(s, addState.kategori);
+          });
+        }
+      }catch(e){}
+      return h;
+    };
+  }
+
+  var _renderStruk=window.renderStruk;
+  if(typeof _renderStruk==='function'){
+    window.renderStruk=function(){
+      var h=_renderStruk.apply(this, arguments);
+      try{ bereskan(window.strukState ? strukState.pending : null); }catch(e){}
+      return h;
+    };
+  }
+
+  var _bukaItem=window.bukaItemManual;
+  if(typeof _bukaItem==='function'){
+    window.bukaItemManual=function(){
+      var h=_bukaItem.apply(this, arguments);
+      try{
+        var sel=document.getElementById('miKat');
+        var ket=(document.getElementById('miKet').value||'').trim();
+        if(sel){
+          tanamValue(sel);
+          if(!ket){
+            var t=katTerakhir(); if(t) pasangNilai(sel, t);
+          } else {
+            var sumber=((window.addState&&addState.items)||[])
+              .concat((window.strukState&&strukState.pending)||[]);
+            for(var i=0;i<sumber.length;i++){
+              if(sumber[i] && sumber[i].keterangan===ket && sumber[i].kategori){
+                pasangNilai(sel, sumber[i].kategori); break;
+              }
+            }
+          }
+        }
+      }catch(e){}
+      return h;
+    };
+  }
+
+  var _simpanItem=window.simpanItemManual;
+  if(typeof _simpanItem==='function'){
+    window.simpanItemManual=function(){
+      try{
+        var sel=document.getElementById('miKat');
+        tanamValue(sel);
+        if(sel && sel.selectedIndex>=0) simpanKat(sel.options[sel.selectedIndex].value);
+      }catch(e){}
+      return _simpanItem.apply(this, arguments);
+    };
+  }
+
+})();
+</script>
   
 </body>
 </html>
