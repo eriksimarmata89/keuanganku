@@ -7168,41 +7168,105 @@ window.jsonp=function(params){
 </script>
 
 <script>
-/* PATCH: pertahankan pilihan penampung saldo saat beralih ke pemindai struk.
-   Sebelumnya blankStruk() selalu memakai akun pertama (AK[0]). */
+/* ===== PATCH PENAMPUNG SALDO KONSISTEN =====
+   1. Mengingat penampung saldo terakhir yang dipilih (per pengguna).
+   2. Menjadikannya bawaan di form Tambah Transaksi dan pemindai struk,
+      menggantikan perilaku lama yang selalu memakai akun pertama (AK[0]).
+   3. Mewariskan pilihan dari form Tambah ke pemindai struk saat foto diambil. */
 (function(){
-  var _mulaiLama = window.mulaiStrukDariDataURL;
-  if(typeof _mulaiLama !== 'function') return;
 
-  window.mulaiStrukDariDataURL = function(dataUrl){
-    /* rekam pilihan pengguna sebelum strukState direset */
-    var pilih = (window.addState && addState.akunId) ? addState.akunId : '';
-    var pHutang  = !!(window.addState && addState.jadiHutang);
-    var pPiutang = !!(window.addState && addState.jadiPiutang);
-    var pPihak   = (window.addState && addState.piutangPihak) || '';
-
-    var hasil = _mulaiLama.call(this, dataUrl);
-
-    /* strukState direset di dalam img.onload (asinkron), jadi tanam ulang
-       pilihannya setelah reset terjadi */
-    var coba = 0;
-    var t = setInterval(function(){
-      coba++;
-      if(window.strukState && strukState.img){
-        if(pilih && typeof cariAkun==='function' && cariAkun(pilih)){
-          strukState.akunId = pilih;
-          strukState.jadiHutang  = pHutang;
-          strukState.jadiPiutang = pPiutang;
-          strukState.piutangPihak= pPihak;
-          if(typeof renderStruk==='function' && document.getElementById('scanCanvas')) renderStruk();
-        }
-        clearInterval(t);
-      }
-      if(coba > 40) clearInterval(t);   /* menyerah setelah ~4 detik */
-    }, 100);
-
-    return hasil;
+  /* ---------- penyimpanan pilihan terakhir ---------- */
+  function kunciAkun(){
+    var u = (typeof emailUser==='function' ? emailUser() : '') || '';
+    return u ? ('kk_akun_terakhir_'+u) : 'kk_akun_terakhir';
+  }
+  function akunValid(id){
+    return !!(id && typeof cariAkun==='function' && cariAkun(id));
+  }
+  function akunDefault(){
+    var simpan;
+    try{ simpan = localStorage.getItem(kunciAkun()); }catch(e){}
+    if(akunValid(simpan)) return simpan;
+    return (window.AK && AK[0]) ? AK[0].id : '';
+  }
+  window.ingatAkun = function(id){
+    if(!akunValid(id)) return;
+    try{ localStorage.setItem(kunciAkun(), id); }catch(e){}
   };
+
+  /* ---------- bawaan form Tambah Transaksi ---------- */
+  var _blankAdd = window.blankAdd;
+  if(typeof _blankAdd==='function'){
+    window.blankAdd = function(){
+      var a = _blankAdd.apply(this, arguments);
+      var d = akunDefault();
+      if(d) a.akunId = d;
+      return a;
+    };
+  }
+
+  /* ---------- bawaan pemindai struk ---------- */
+  var _blankStruk = window.blankStruk;
+  if(typeof _blankStruk==='function'){
+    window.blankStruk = function(){
+      var s = _blankStruk.apply(this, arguments);
+      var d = akunDefault();
+      if(d) s.akunId = d;
+      return s;
+    };
+  }
+
+  /* ---------- catat setiap kali pilihan berubah ----------
+     Kedua <select> memanggil renderAdd/renderStruk sesudah mengubah nilai,
+     jadi cukup dicatat di sini tanpa mengubah markup mana pun. */
+  var _renderAdd = window.renderAdd;
+  if(typeof _renderAdd==='function'){
+    window.renderAdd = function(){
+      if(window.addState) ingatAkun(addState.akunId);
+      return _renderAdd.apply(this, arguments);
+    };
+  }
+  var _renderStruk = window.renderStruk;
+  if(typeof _renderStruk==='function'){
+    window.renderStruk = function(){
+      if(window.strukState) ingatAkun(strukState.akunId);
+      return _renderStruk.apply(this, arguments);
+    };
+  }
+
+  /* ---------- wariskan pilihan saat beralih ke pemindai struk ---------- */
+  var _mulaiStruk = window.mulaiStrukDariDataURL;
+  if(typeof _mulaiStruk==='function'){
+    window.mulaiStrukDariDataURL = function(dataUrl){
+      var pilih   = (window.addState && addState.akunId) || akunDefault();
+      var hutang  = !!(window.addState && addState.jadiHutang);
+      var piutang = !!(window.addState && addState.jadiPiutang);
+      var pihak   = (window.addState && addState.piutangPihak) || '';
+
+      var hasil = _mulaiStruk.call(this, dataUrl);
+
+      /* strukState direset di dalam img.onload yang asinkron,
+         jadi pilihan ditanam ulang begitu gambar selesai dimuat */
+      var coba=0, t=setInterval(function(){
+        coba++;
+        if(window.strukState && strukState.img){
+          if(akunValid(pilih)){
+            strukState.akunId      = pilih;
+            strukState.jadiHutang  = hutang;
+            strukState.jadiPiutang = piutang;
+            strukState.piutangPihak= pihak;
+            ingatAkun(pilih);
+            if(typeof renderStruk==='function' && document.getElementById('scanCanvas')) renderStruk();
+          }
+          clearInterval(t);
+        }
+        if(coba>40) clearInterval(t);   /* menyerah setelah ~4 detik */
+      }, 100);
+
+      return hasil;
+    };
+  }
+
 })();
 </script>
   
