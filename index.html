@@ -7166,6 +7166,45 @@ window.jsonp=function(params){
 
 })();
 </script>
+
+<script>
+/* PATCH: pertahankan pilihan penampung saldo saat beralih ke pemindai struk.
+   Sebelumnya blankStruk() selalu memakai akun pertama (AK[0]). */
+(function(){
+  var _mulaiLama = window.mulaiStrukDariDataURL;
+  if(typeof _mulaiLama !== 'function') return;
+
+  window.mulaiStrukDariDataURL = function(dataUrl){
+    /* rekam pilihan pengguna sebelum strukState direset */
+    var pilih = (window.addState && addState.akunId) ? addState.akunId : '';
+    var pHutang  = !!(window.addState && addState.jadiHutang);
+    var pPiutang = !!(window.addState && addState.jadiPiutang);
+    var pPihak   = (window.addState && addState.piutangPihak) || '';
+
+    var hasil = _mulaiLama.call(this, dataUrl);
+
+    /* strukState direset di dalam img.onload (asinkron), jadi tanam ulang
+       pilihannya setelah reset terjadi */
+    var coba = 0;
+    var t = setInterval(function(){
+      coba++;
+      if(window.strukState && strukState.img){
+        if(pilih && typeof cariAkun==='function' && cariAkun(pilih)){
+          strukState.akunId = pilih;
+          strukState.jadiHutang  = pHutang;
+          strukState.jadiPiutang = pPiutang;
+          strukState.piutangPihak= pPihak;
+          if(typeof renderStruk==='function' && document.getElementById('scanCanvas')) renderStruk();
+        }
+        clearInterval(t);
+      }
+      if(coba > 40) clearInterval(t);   /* menyerah setelah ~4 detik */
+    }, 100);
+
+    return hasil;
+  };
+})();
+</script>
   
 </body>
 </html>
