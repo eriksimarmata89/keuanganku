@@ -7420,7 +7420,15 @@ window.jsonp=function(params){
      Badge merah di ikon pencadangan ikut menghitung anggaran yang belum
      terkirim; tiap baris anggaran menampilkan status: merah "Belum dikirim"
      / hijau "Terkirim".
-     Penyimpanan tetap INSTAN; dorongan GAS di latar belakang.
+     Baru di v6:
+     - Simpan anggaran TIDAK lagi mengirim ke Google Sheet otomatis.
+       Data hanya masuk IndexedDB; pengiriman terjadi saat menekan
+       tombol Cadangkan (kirimRentang), sama seperti transaksi. Badge
+       merah di ikon Pencadangan tetap menghitung anggaran belum terkirim.
+     - Normalisasi kategori campur bahasa: nama kategori Inggris pada
+       transaksi (mis. "Food & Drinks") disatukan ke kanonik Indonesia
+       ("Makan & Minum") sehingga di laporan tidak lagi terpisah. Migrasi
+       sekali-jalan; record yang diubah ditandai belum-terkirim.
 ====================================================================== -->
 <script>
 (function(){
@@ -7768,11 +7776,9 @@ window.jsonp=function(params){
     refreshPip();
     toast(La('Anggaran dihapus','Budget deleted'));
     render();
-    /* hapus dari disk + antre hapus GAS (prosedur sama seperti hapus transaksi) */
-    tulisMassal([], ids).then(function(){
-      addDelAG(ids);
-      flushDeletesAnggaran();
-    }).catch(function(){});
+    /* hapus dari IndexedDB + masukkan ke antrean hapus. Pengiriman
+       penghapusan ke Google Sheet dilakukan saat menekan Cadangkan. */
+    tulisMassal([], ids).then(function(){ addDelAG(ids); }).catch(function(){});
   };
 
   /* ============ 8) FORM ISIAN ============ */
@@ -7871,9 +7877,10 @@ window.jsonp=function(params){
     refreshPip();
     toast(La('Target pemasukan tersimpan','Income target saved'));
     goView('anggaran');
+    /* HANYA simpan ke IndexedDB. Kirim ke Google Sheet dilakukan saat
+       menekan tombol Cadangkan (tidak otomatis di latar belakang). */
     tulisMassal(puts, dels).then(function(){
-      if(dels.length){ addDelAG(dels); flushDeletesAnggaran(); }
-      dorongAnggaranBelum();
+      if(dels.length) addDelAG(dels);
     }).catch(function(){});
   };
 
@@ -7909,8 +7916,7 @@ window.jsonp=function(params){
     toast(La('Alokasi pengeluaran tersimpan','Expense allocation saved'));
     goView('anggaran');
     tulisMassal(puts, dels).then(function(){
-      if(dels.length){ addDelAG(dels); flushDeletesAnggaran(); }
-      dorongAnggaranBelum();
+      if(dels.length) addDelAG(dels);
     }).catch(function(){});
   };
 
@@ -7931,7 +7937,7 @@ window.jsonp=function(params){
     refreshPip();
     toast(La('Anggaran disalin','Budget copied'));
     agEdit(tipe);
-    tulisMassal(puts, []).then(function(){ dorongAnggaranBelum(); }).catch(function(){});
+    tulisMassal(puts, []).catch(function(){});
   };
 
   /* ============ 9) INTEGRASI LAPORAN (inline di .catlist) ============ */
@@ -8168,19 +8174,72 @@ window.jsonp=function(params){
       };
       window.tarikDariSheet.__agHooked=true;
     }
-    /* saat mencadangkan / flush hapus, ikutkan anggaran */
-    ['cadangkan','cadangkanSemua','kirimSemua','flushDeletes'].forEach(function(nm){
-      var f=window[nm];
-      if(typeof f==='function' && !f.__agHooked){
-        window[nm]=async function(){
-          var r=await f.apply(this, arguments);
-          try{ await dorongAnggaranBelum(); await flushDeletesAnggaran(); }catch(e){}
-          return r;
-        };
-        window[nm].__agHooked=true;
+    /* Kirim anggaran ke Google Sheet HANYA saat menekan tombol Cadangkan
+       (kirimRentang). Tidak otomatis di latar belakang, tidak saat login. */
+    var _kr=window.kirimRentang;
+    if(typeof _kr==='function' && !_kr.__agHooked){
+      window.kirimRentang=async function(){
+        var r=await _kr.apply(this, arguments);
+        try{ await dorongAnggaranBelum(); await flushDeletesAnggaran(); refreshPip(); if(typeof view!=='undefined' && view==='anggaran') render(); }catch(e){}
+        return r;
+      };
+      window.kirimRentang.__agHooked=true;
+    }
+  }
+
+  /* ============ 12b) NORMALISASI KATEGORI (campur bahasa) ============
+     Sebagian transaksi mungkin tersimpan dengan nama kategori bahasa Inggris
+     (mis. "Food & Drinks") dan sebagian bahasa Indonesia ("Makan & Minum"),
+     sehingga di laporan tampil sebagai dua kategori berbeda. Migrasi ini
+     menyatukan semuanya ke nama kanonik Indonesia. Dijalankan sekali per
+     perangkat (ditandai flag), memperbarui IndexedDB transaksi, lalu menandai
+     record yang diubah sebagai belum-terkirim agar ikut tersinkron saat
+     menekan Cadangkan. */
+  var PETA_KATEGORI_EN_ID = {
+    'Food & Drinks':'Makan & Minum',
+    'Electricity & Water':'Listrik & Air',
+    'Phone & Internet':'Pulsa & Internet',
+    'Tools & Equipment':'Peralatan & Perkakas',
+    'Social Fund':'Dana Sosial',
+    'Transportation':'Transportasi',
+    'Health':'Kesehatan',
+    'Education':'Pendidikan',
+    'Entertainment':'Hiburan',
+    'Clothing':'Pakaian',
+    'Shopping':'Belanja',
+    'Others':'Lainnya',
+    'Salary':'Gaji',
+    'Gift':'Hadiah',
+    'Business':'Usaha',
+    'Bonus':'Bonus'
+  };
+
+  async function normalisasiKategoriTX(paksa){
+    var FLAG='kk_norm_kategori_v1_'+u();
+    if(!paksa){ try{ if(localStorage.getItem(FLAG)==='1') return 0; }catch(e){} }
+    if(!window.TX || !TX.length){ try{ localStorage.setItem(FLAG,'1'); }catch(e){} return 0; }
+
+    var ubah=[];
+    TX.forEach(function(t){
+      var kan=PETA_KATEGORI_EN_ID[t.kategori];
+      if(kan && kan!==t.kategori){
+        t.kategori=kan;
+        t.terkirim=false;   /* agar tersinkron ulang saat Cadangkan */
+        ubah.push(t);
       }
     });
+
+    if(ubah.length && typeof idbBulkPut==='function'){
+      try{ await idbBulkPut(ubah); }catch(e){}
+    }
+    try{ localStorage.setItem(FLAG,'1'); }catch(e){}
+    if(ubah.length){
+      refreshPip();
+      try{ if(typeof view!=='undefined' && (view==='report'||view==='home')) render(); }catch(e){}
+    }
+    return ubah.length;
   }
+  window.normalisasiKategoriTX = normalisasiKategoriTX;   /* bisa dipanggil ulang manual bila perlu */
 
   /* ============ 13) BOOT ============ */
   async function boot(){
@@ -8190,9 +8249,11 @@ window.jsonp=function(params){
     pasangHookAdd();
     pasangHookLaporan();
     pasangHookSinkron();
-    /* bila sudah tersambung, tarik anggaran sekali & bereskan antrean */
-    try{ await tarikAnggaranDariGAS(); }catch(e){}
-    try{ dorongAnggaranBelum(); flushDeletesAnggaran(); }catch(e){}
+    try{ await normalisasiKategoriTX(false); }catch(e){}
+    /* Tidak menarik/mengirim otomatis di sini. Anggaran hanya:
+       - dikirim saat menekan Cadangkan (kirimRentang)
+       - ditarik saat menekan Pulihkan data cadangan (tarikDariSheet)
+       Sama seperti data transaksi. */
     refreshPip();
     if(typeof view!=='undefined' && view) { try{ render(); }catch(e){} }
   }
