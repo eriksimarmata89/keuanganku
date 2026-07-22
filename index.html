@@ -7396,28 +7396,28 @@ window.jsonp=function(params){
 </script>
 
 <!-- =====================================================================
-     PATCH ANGGARAN v3  (KeuanganKu)  — menggantikan v1 & v2 sepenuhnya
+     PATCH ANGGARAN v4  (KeuanganKu)  — menggantikan v1/v2/v3 sepenuhnya
      Tempel PERSIS SEBELUM </body> di FILE HTML UTAMA (bukan skeleton.html),
      PALING AKHIR setelah PATCH BAHASA, PATCH MATA UANG, dan PATCH LAPORAN.
 
+     PENTING: naikkan versi IndexedDB inti. Di openDB() aplikasi, ubah
+     indexedDB.open('keuanganku',4) menjadi 5, dan tambahkan store
+     'anggaran' di onupgradeneeded. (Lihat percakapan.)
+
      Model:
-     - PEMASUKAN : isi rupiah per kategori (Gaji, Bonus, dst).
-       Total pemasukan = jumlah otomatis seluruh kategori.
-     - PENGELUARAN: isi PERSEN per kategori. Target rupiah tiap kategori
-       dihitung otomatis = persen% x total pemasukan periode yang sama.
+     - PEMASUKAN : rupiah per kategori; total = jumlah otomatis.
+     - PENGELUARAN: persen per kategori; target rupiah = persen% x total
+       pemasukan periode yang sama.
 
-     Laporan:
-     - Anggaran tampil INLINE di daftar "Pengeluaran/Pemasukan per
-       kategori" (di bawah grafik lingkaran): ada kartu ringkas
-       "Realisasi vs Anggaran" + sub-baris per kategori. Angka mengikuti
-       tombol mata (fmtRp), toggle (window.repKatMode) & periode.
+     Sinkron (v4): anggaran DIKIRIM ke Google Sheet dan ikut alur yang
+     sudah ada — didorong saat menyimpan & saat "Cadangkan", ditarik saat
+     "Pulihkan data cadangan", dan bisa DIHAPUS dari IndexedDB + Sheet
+     (antrean hapus seperti transaksi). Backend GAS perlu ditambah
+     (lihat TAMBAHAN_GAS_ANGGARAN.txt).
 
-     Baru di v3:
-     - Penyimpanan INSTAN: semua kategori ditulis dalam satu transaksi
-       IndexedDB, UI langsung berpindah (tanpa menunggu).
-     - LOKAL SAJA: anggaran TIDAK dikirim ke Google Sheet (hemat kuota
-       pencadangan; backend GAS untuk anggaran tidak diperlukan).
-     - Tampilan laporan lebih profesional + angka bisa disembunyikan.
+     Header view anggaran kini MENETAP (sticky) di atas.
+     Penyimpanan tetap INSTAN (satu transaksi IndexedDB), dorongan GAS
+     berjalan di latar belakang.
 ====================================================================== -->
 <script>
 (function(){
@@ -7425,6 +7425,20 @@ window.jsonp=function(params){
 
   function La(id,en){ return (window.LANG==='en') ? en : id; }
   function u(){ return (typeof emailUser==='function' && emailUser()) || ''; }
+
+  /* ---- style header menetap khusus view anggaran ---- */
+  (function(){
+    if(document.getElementById('ag-style')) return;
+    var st=document.createElement('style');
+    st.id='ag-style';
+    st.textContent=
+      '.ag-fhead{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;'+
+        'padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px;background:var(--bg,var(--page,#000));'+
+        'border-bottom:.5px solid var(--line)}'+
+      '.ag-fhead .bk{background:none;border:none;font-size:22px;color:var(--tx);line-height:1;padding:4px;cursor:pointer}'+
+      '.ag-fhead .ti{font-size:17px;font-weight:700;color:var(--tx)}';
+    document.head.appendChild(st);
+  })();
 
   /* ============ 1) INDEXEDDB store 'anggaran' (versi 5) ============ */
   var VERSI_BARU = 5;
@@ -7531,8 +7545,52 @@ window.jsonp=function(params){
   function siapkanRecord(rec){
     rec.user = u(); rec.updatedAt = new Date().toISOString();
     if(!rec.createdAt) rec.createdAt = rec.updatedAt;
+    rec.terkirim = false;   /* akan didorong ke GAS di latar belakang / saat cadangkan */
     return rec;
   }
+  function bersih(r){
+    return {id:r.id,tipe:r.tipe,basis:r.basis,periode:r.periode,kategori:r.kategori,
+      nilai:Number(r.nilai)||0,persen:Number(r.persen)||0,mode:r.mode||'',
+      user:r.user||u(),createdAt:r.createdAt||'',updatedAt:r.updatedAt||''};
+  }
+
+  /* ---- antrean hapus anggaran (meniru pola LS_DELQ transaksi) ---- */
+  var LS_DELQ_AG='kk_delqueue_anggaran';
+  function getDelAG(){ try{ return JSON.parse(localStorage.getItem(LS_DELQ_AG)||'[]'); }catch(e){ return []; } }
+  function setDelAG(a){ try{ localStorage.setItem(LS_DELQ_AG, JSON.stringify(a)); }catch(e){} }
+  function addDelAG(ids){ var q=getDelAG(); ids.forEach(function(id){ if(q.indexOf(String(id))<0) q.push(String(id)); }); setDelAG(q); }
+  function removeDelAG(ids){ var s={}; ids.forEach(function(id){ s[String(id)]=1; }); setDelAG(getDelAG().filter(function(id){ return !s[String(id)]; })); }
+
+  /* dorong record yang belum terkirim ke GAS (dipakai saat simpan & saat cadangkan) */
+  async function dorongAnggaranBelum(){
+    if(!(typeof getGasUrl==='function' && getGasUrl() && typeof kirimNoCors==='function')) return;
+    var belum=AG.filter(function(r){ return !r.terkirim; });
+    if(!belum.length) return;
+    try{
+      await kirimNoCors('syncAnggaran',{items:belum.map(bersih)});
+      belum.forEach(function(r){ r.terkirim=true; });
+      /* tandai terkirim di disk (satu transaksi) */
+      tulisMassalMentah(belum.slice(), []).catch(function(){});
+    }catch(e){ /* biarkan, dicoba lagi saat cadangkan berikutnya */ }
+  }
+  /* kirim antrean hapus anggaran ke GAS lalu bersihkan antrean bila sukses */
+  async function flushDeletesAnggaran(){
+    var q=getDelAG();
+    if(!q.length || !(typeof getGasUrl==='function' && getGasUrl() && typeof kirimNoCors==='function')) return;
+    try{
+      await kirimNoCors('deleteAnggaran',{ids:q, user:u()});
+      var d=await jsonp('action=listAnggaran');
+      var ada={}; (d.data||[]).forEach(function(r){ ada[String(r.id)]=1; });
+      var terhapus=q.filter(function(id){ return !ada[String(id)]; });
+      if(terhapus.length) removeDelAG(terhapus);
+    }catch(e){ /* offline: biarkan di antrean */ }
+  }
+  window.dorongAnggaranBelum=dorongAnggaranBelum;
+  window.flushDeletesAnggaran=flushDeletesAnggaran;
+
+  /* varian tulisMassal yang menerima record apa adanya (tanpa siapkanRecord) */
+  function tulisMassalMentah(puts, delIds){ return tulisMassal(puts, delIds); }
+
   function ambil(tipe, basis, periode){ return AG.filter(function(r){ return r.tipe===tipe && r.basis===basis && r.periode===periode; }); }
   function totalPemasukanAnggaran(basis, periode){
     return ambil('pemasukan', basis, periode).reduce(function(s,r){ return s+(+r.nilai||0); }, 0);
@@ -7653,14 +7711,37 @@ window.jsonp=function(params){
     }
 
     S().innerHTML=
-      '<div class="fhead"><button class="bk" onclick="goView(\'home\')">&#8592;</button><div class="ti">'+La('Anggaran','Budget')+'</div></div>'+
+      '<div class="ag-fhead"><button class="bk" onclick="goView(\'home\')">&#8592;</button><div class="ti">'+La('Anggaran','Budget')+'</div></div>'+
       '<div class="form" style="padding-bottom:24px">'+
         segTipe()+segBasis()+navPeriode()+isi+
         '<button class="save '+(vTipe==='pengeluaran'?'':'pem')+'" style="margin-top:6px" onclick="agEdit(\''+vTipe+'\')">'+
           (vTipe==='pemasukan'?La('+ Atur target pemasukan','+ Set income target'):La('+ Atur alokasi pengeluaran','+ Set expense allocation'))+'</button>'+
+        (ambil(vTipe, vBasis, vPeriode).length?
+          '<button class="save" style="background:transparent;color:var(--merah-tx,#c0392b);box-shadow:none;border:1px solid var(--merah-tx,#c0392b);margin-top:4px" onclick="agHapusPeriode(\''+vTipe+'\')">'+
+            (vTipe==='pemasukan'?La('Hapus target pemasukan periode ini','Delete this period income target'):La('Hapus alokasi pengeluaran periode ini','Delete this period expense allocation'))+'</button>':'')+
       '</div>';
   }
   window.renderAnggaran=renderAnggaran;
+
+  /* ---- hapus semua record satu tipe pada periode aktif (IndexedDB + GAS) ---- */
+  window.agHapusPeriode=async function(tipe){
+    var target=ambil(tipe, vBasis, vPeriode);
+    if(!target.length) return;
+    var pesan = tipe==='pemasukan'
+      ? La('Hapus target pemasukan untuk periode ini?','Delete the income target for this period?')
+      : La('Hapus alokasi pengeluaran untuk periode ini?','Delete the expense allocation for this period?');
+    var ok = (typeof confirmModal==='function') ? await confirmModal(pesan, {danger:true}) : window.confirm(pesan);
+    if(!ok) return;
+    var ids=target.map(function(r){ return r.id; });
+    terapkanMemori([], ids);
+    toast(La('Anggaran dihapus','Budget deleted'));
+    render();
+    /* hapus dari disk + antre hapus GAS (prosedur sama seperti hapus transaksi) */
+    tulisMassal([], ids).then(function(){
+      addDelAG(ids);
+      flushDeletesAnggaran();
+    }).catch(function(){});
+  };
 
   /* ============ 8) FORM ISIAN ============ */
   window.agEdit=function(tipe){
@@ -7680,7 +7761,7 @@ window.jsonp=function(params){
   function renderAnggaranEdit(){
     var e=editState;
     if(!e){ goView('anggaran'); return; }
-    var head='<div class="fhead"><button class="bk" onclick="goView(\'anggaran\')">&#8592;</button><div class="ti">'+
+    var head='<div class="ag-fhead"><button class="bk" onclick="goView(\'anggaran\')">&#8592;</button><div class="ti">'+
       (e.tipe==='pemasukan'?La('Target pemasukan','Income target'):La('Alokasi pengeluaran','Expense allocation'))+'</div></div>';
     var info='<div style="font-size:12px;color:var(--tx3);margin-bottom:12px">'+esc(labelPeriode(e.basis, e.periode))+
       ' &middot; '+(e.basis==='minggu'?La('Mingguan','Weekly'):La('Bulanan','Monthly'))+'</div>';
@@ -7757,7 +7838,10 @@ window.jsonp=function(params){
     terapkanMemori(puts, dels);
     toast(La('Target pemasukan tersimpan','Income target saved'));
     goView('anggaran');
-    tulisMassal(puts, dels).catch(function(){});   /* tulis ke disk di latar belakang */
+    tulisMassal(puts, dels).then(function(){
+      if(dels.length){ addDelAG(dels); flushDeletesAnggaran(); }
+      dorongAnggaranBelum();
+    }).catch(function(){});
   };
 
   window.agOnPengeluaran=function(k, el){
@@ -7790,7 +7874,10 @@ window.jsonp=function(params){
     terapkanMemori(puts, dels);
     toast(La('Alokasi pengeluaran tersimpan','Expense allocation saved'));
     goView('anggaran');
-    tulisMassal(puts, dels).catch(function(){});
+    tulisMassal(puts, dels).then(function(){
+      if(dels.length){ addDelAG(dels); flushDeletesAnggaran(); }
+      dorongAnggaranBelum();
+    }).catch(function(){});
   };
 
   function adaPeriodeLalu(tipe){
@@ -7809,7 +7896,7 @@ window.jsonp=function(params){
     terapkanMemori(puts, []);
     toast(La('Anggaran disalin','Budget copied'));
     agEdit(tipe);
-    tulisMassal(puts, []).catch(function(){});
+    tulisMassal(puts, []).then(function(){ dorongAnggaranBelum(); }).catch(function(){});
   };
 
   /* ============ 9) INTEGRASI LAPORAN (inline di .catlist) ============ */
@@ -7947,8 +8034,9 @@ window.jsonp=function(params){
     var _render=window.render;
     if(typeof _render!=='function' || _render.__agHooked) return;
     window.render=function(){
-      if(window.view==='anggaran'){ setNav && setNav(); return renderAnggaran(); }
-      if(window.view==='anggaranEdit'){ setNav && setNav(); return renderAnggaranEdit(); }
+      var v=(typeof view!=='undefined')?view:window.view;
+      if(v==='anggaran'){ if(typeof setNav==='function') setNav(); return renderAnggaran(); }
+      if(v==='anggaranEdit'){ if(typeof setNav==='function') setNav(); return renderAnggaranEdit(); }
       return _render.apply(this, arguments);
     };
     window.render.__agHooked=true;
@@ -7993,10 +8081,26 @@ window.jsonp=function(params){
     }
   }
 
-  /* ============ 12) MUAT ULANG SAAT GANTI PENGGUNA ============
-     Anggaran lokal saja. Kita hanya perlu memuat ulang AG dari IndexedDB
-     saat data akun dimuat ulang (mis. setelah login), tanpa jaringan. */
+  /* ============ 12) INTEGRASI SINKRON GAS ============
+     Anggaran ikut alur cadang/tarik/hapus yang sudah ada:
+     - tarikDariSheet  -> sekalian tarik anggaran dari GAS
+     - cadangkan/kirim -> sekalian dorong anggaran yang belum terkirim
+     - afterLogin/muatAkun -> muat ulang AG lokal + flush antrean hapus */
+  async function tarikAnggaranDariGAS(){
+    if(!(typeof getGasUrl==='function' && getGasUrl() && typeof jsonp==='function')) return;
+    try{
+      var d=await jsonp('action=listAnggaran');
+      var q=getDelAG(), qset={}; q.forEach(function(id){ qset[String(id)]=1; });
+      var dari=(d.data||[]).filter(function(r){ return r.user===u() && !qset[String(r.id)]; })
+                 .map(function(r){ r.terkirim=true; return r; });
+      if(dari.length) await agBulkPut(dari);
+      await muatAnggaran();
+    }catch(e){}
+  }
+  window.tarikAnggaranDariGAS=tarikAnggaranDariGAS;
+
   function pasangHookSinkron(){
+    /* muat ulang AG saat data akun dimuat ulang (login/afterLogin) */
     var _mAk=window.muatAkun;
     if(typeof _mAk==='function' && !_mAk.__agHooked){
       window.muatAkun=async function(){
@@ -8006,6 +8110,28 @@ window.jsonp=function(params){
       };
       window.muatAkun.__agHooked=true;
     }
+    /* saat pemulihan penuh, tarik anggaran juga */
+    var _td=window.tarikDariSheet;
+    if(typeof _td==='function' && !_td.__agHooked){
+      window.tarikDariSheet=async function(){
+        var r=await _td.apply(this, arguments);
+        try{ await tarikAnggaranDariGAS(); if(typeof view!=='undefined') render(); }catch(e){}
+        return r;
+      };
+      window.tarikDariSheet.__agHooked=true;
+    }
+    /* saat mencadangkan / flush hapus, ikutkan anggaran */
+    ['cadangkan','cadangkanSemua','kirimSemua','flushDeletes'].forEach(function(nm){
+      var f=window[nm];
+      if(typeof f==='function' && !f.__agHooked){
+        window[nm]=async function(){
+          var r=await f.apply(this, arguments);
+          try{ await dorongAnggaranBelum(); await flushDeletesAnggaran(); }catch(e){}
+          return r;
+        };
+        window[nm].__agHooked=true;
+      }
+    });
   }
 
   /* ============ 13) BOOT ============ */
@@ -8016,7 +8142,10 @@ window.jsonp=function(params){
     pasangHookAdd();
     pasangHookLaporan();
     pasangHookSinkron();
-    if(window.view) { try{ render(); }catch(e){} }
+    /* bila sudah tersambung, tarik anggaran sekali & bereskan antrean */
+    try{ await tarikAnggaranDariGAS(); }catch(e){}
+    try{ dorongAnggaranBelum(); flushDeletesAnggaran(); }catch(e){}
+    if(typeof view!=='undefined' && view) { try{ render(); }catch(e){} }
   }
   var coba=0;
   (function tunggu(){
