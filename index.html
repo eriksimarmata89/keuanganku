@@ -7415,9 +7415,12 @@ window.jsonp=function(params){
      (antrean hapus seperti transaksi). Backend GAS perlu ditambah
      (lihat TAMBAHAN_GAS_ANGGARAN.txt).
 
-     Header view anggaran kini MENETAP (sticky) di atas.
-     Penyimpanan tetap INSTAN (satu transaksi IndexedDB), dorongan GAS
-     berjalan di latar belakang.
+     Header view anggaran MENETAP (position:fixed seperti .appbar) — tidak
+     ikut tergeser saat tarik-untuk-menyegarkan.
+     Badge merah di ikon pencadangan ikut menghitung anggaran yang belum
+     terkirim; tiap baris anggaran menampilkan status: merah "Belum dikirim"
+     / hijau "Terkirim".
+     Penyimpanan tetap INSTAN; dorongan GAS di latar belakang.
 ====================================================================== -->
 <script>
 (function(){
@@ -7426,19 +7429,27 @@ window.jsonp=function(params){
   function La(id,en){ return (window.LANG==='en') ? en : id; }
   function u(){ return (typeof emailUser==='function' && emailUser()) || ''; }
 
-  /* ---- style header menetap khusus view anggaran ---- */
+  /* ---- header menetap khusus view anggaran (pola .appbar: position:fixed) ---- */
   (function(){
     if(document.getElementById('ag-style')) return;
     var st=document.createElement('style');
     st.id='ag-style';
     st.textContent=
-      '.ag-fhead{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;'+
-        'padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px;background:var(--bg,var(--page,#000));'+
+      '.ag-fhead{position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:var(--maxw);'+
+        'z-index:30;display:flex;align-items:center;gap:10px;box-sizing:border-box;'+
+        'padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 12px;background:var(--page);'+
         'border-bottom:.5px solid var(--line)}'+
       '.ag-fhead .bk{background:none;border:none;font-size:22px;color:var(--tx);line-height:1;padding:4px;cursor:pointer}'+
-      '.ag-fhead .ti{font-size:17px;font-weight:700;color:var(--tx)}';
+      '.ag-fhead .ti{font-size:17px;font-weight:700;color:var(--tx)}'+
+      '.scroll.has-aghead{padding-top:calc(60px + env(safe-area-inset-top,0px))}';
     document.head.appendChild(st);
   })();
+
+  /* pasang/lepas kelas offset pada #scroll saat masuk/keluar view anggaran */
+  function setAgHead(aktif){
+    try{ var s=(typeof S==='function')?S():document.getElementById('scroll');
+      if(s) s.classList.toggle('has-aghead', !!aktif); }catch(e){}
+  }
 
   /* ============ 1) INDEXEDDB store 'anggaran' (versi 5) ============ */
   var VERSI_BARU = 5;
@@ -7571,6 +7582,9 @@ window.jsonp=function(params){
       belum.forEach(function(r){ r.terkirim=true; });
       /* tandai terkirim di disk (satu transaksi) */
       tulisMassalMentah(belum.slice(), []).catch(function(){});
+      refreshPip();
+      /* bila sedang di view anggaran, segarkan agar warna list berubah hijau */
+      try{ var v=(typeof view!=='undefined')?view:window.view; if(v==='anggaran') render(); }catch(e){}
     }catch(e){ /* biarkan, dicoba lagi saat cadangkan berikutnya */ }
   }
   /* kirim antrean hapus anggaran ke GAS lalu bersihkan antrean bila sukses */
@@ -7590,6 +7604,9 @@ window.jsonp=function(params){
 
   /* varian tulisMassal yang menerima record apa adanya (tanpa siapkanRecord) */
   function tulisMassalMentah(puts, delIds){ return tulisMassal(puts, delIds); }
+
+  /* perbarui badge merah di ikon pencadangan */
+  function refreshPip(){ try{ if(typeof updatePip==='function') updatePip(); }catch(e){} }
 
   function ambil(tipe, basis, periode){ return AG.filter(function(r){ return r.tipe===tipe && r.basis===basis && r.periode===periode; }); }
   function totalPemasukanAnggaran(basis, periode){
@@ -7621,6 +7638,20 @@ window.jsonp=function(params){
     var w=Math.max(0, Math.min(100, persen));
     return '<div style="height:8px;background:var(--page,#eee);border-radius:99px;overflow:hidden">'+
       '<div style="width:'+w+'%;height:100%;background:'+warna+';border-radius:99px"></div></div>';
+  }
+  /* titik status kirim: merah=belum terkirim, hijau=terkirim */
+  function dotKirim(r){
+    var terkirim=!!(r && r.terkirim);
+    var c = terkirim ? HIJAU : MERAH;
+    var judul = terkirim ? La('Tersimpan di cloud','Saved to cloud') : La('Belum dikirim ke cloud','Not sent to cloud yet');
+    return '<span title="'+judul+'" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+c+';margin-right:6px;vertical-align:middle;flex:0 0 auto"></span>';
+  }
+  /* label status kirim (teks kecil) */
+  function labelKirim(r){
+    var terkirim=!!(r && r.terkirim);
+    var c = terkirim ? HIJAU : MERAH;
+    var txt = terkirim ? La('Terkirim','Sent') : La('Belum dikirim','Not sent');
+    return '<span style="font-size:10.5px;color:'+c+';font-weight:600">'+txt+'</span>';
   }
 
   /* ============ 6) STATE VIEW ============ */
@@ -7679,9 +7710,9 @@ window.jsonp=function(params){
           var pk=realisasiKategori('pemasukan', r.kategori, vBasis, vPeriode);
           var pr=t>0?Math.round(pk/t*100):0, w=warnaPemasukan(pr);
           isi += '<div style="margin-bottom:14px">'+
-            '<div style="display:flex;justify-content:space-between;font-size:14px;color:var(--tx);margin-bottom:5px">'+
-              '<span>'+esc(r.kategori)+'</span><span style="color:var(--tx2)">'+rp(pk)+' / '+rp(t)+'</span></div>'+
-            bar(pr, w)+'<div style="font-size:11px;color:'+w+';margin-top:4px">'+pr+'%</div></div>';
+            '<div style="display:flex;justify-content:space-between;align-items:center;font-size:14px;color:var(--tx);margin-bottom:5px">'+
+              '<span style="display:flex;align-items:center">'+dotKirim(r)+esc(r.kategori)+'</span><span style="color:var(--tx2)">'+rp(pk)+' / '+rp(t)+'</span></div>'+
+            bar(pr, w)+'<div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font-size:11px;color:'+w+'">'+pr+'%</span>'+labelKirim(r)+'</div></div>';
         });
       }
     } else {
@@ -7701,11 +7732,11 @@ window.jsonp=function(params){
           var pakai=realisasiKategori('pengeluaran', r.kategori, vBasis, vPeriode);
           var persen=target>0?Math.round(pakai/target*100):0, w=warnaPengeluaran(persen);
           isi += '<div style="margin-bottom:14px">'+
-            '<div style="display:flex;justify-content:space-between;font-size:14px;color:var(--tx);margin-bottom:5px">'+
-              '<span>'+esc(r.kategori)+' <span style="color:var(--tx3);font-size:12px">('+(+r.persen)+'%)</span></span>'+
+            '<div style="display:flex;justify-content:space-between;align-items:center;font-size:14px;color:var(--tx);margin-bottom:5px">'+
+              '<span style="display:flex;align-items:center">'+dotKirim(r)+esc(r.kategori)+' <span style="color:var(--tx3);font-size:12px;margin-left:4px">('+(+r.persen)+'%)</span></span>'+
               '<span style="color:var(--tx2)">'+rp(pakai)+' / '+rp(target)+'</span></div>'+
             bar(persen, w)+
-            '<div style="font-size:11px;color:'+w+';margin-top:4px">'+persen+'%'+(persen>100?(' &middot; '+La('lewat ','over ')+rp(pakai-target)):'')+'</div></div>';
+            '<div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font-size:11px;color:'+w+'">'+persen+'%'+(persen>100?(' &middot; '+La('lewat ','over ')+rp(pakai-target)):'')+'</span>'+labelKirim(r)+'</div></div>';
         });
       }
     }
@@ -7734,6 +7765,7 @@ window.jsonp=function(params){
     if(!ok) return;
     var ids=target.map(function(r){ return r.id; });
     terapkanMemori([], ids);
+    refreshPip();
     toast(La('Anggaran dihapus','Budget deleted'));
     render();
     /* hapus dari disk + antre hapus GAS (prosedur sama seperti hapus transaksi) */
@@ -7836,6 +7868,7 @@ window.jsonp=function(params){
       else if(AG.some(function(r){ return r.id===id; })){ dels.push(id); }
     });
     terapkanMemori(puts, dels);
+    refreshPip();
     toast(La('Target pemasukan tersimpan','Income target saved'));
     goView('anggaran');
     tulisMassal(puts, dels).then(function(){
@@ -7872,6 +7905,7 @@ window.jsonp=function(params){
       else if(AG.some(function(r){ return r.id===id; })){ dels.push(id); }
     });
     terapkanMemori(puts, dels);
+    refreshPip();
     toast(La('Alokasi pengeluaran tersimpan','Expense allocation saved'));
     goView('anggaran');
     tulisMassal(puts, dels).then(function(){
@@ -7894,6 +7928,7 @@ window.jsonp=function(params){
         nilai:+s.nilai||0, persen:+s.persen||0, mode:s.mode });
     });
     terapkanMemori(puts, []);
+    refreshPip();
     toast(La('Anggaran disalin','Budget copied'));
     agEdit(tipe);
     tulisMassal(puts, []).then(function(){ dorongAnggaranBelum(); }).catch(function(){});
@@ -8035,8 +8070,9 @@ window.jsonp=function(params){
     if(typeof _render!=='function' || _render.__agHooked) return;
     window.render=function(){
       var v=(typeof view!=='undefined')?view:window.view;
-      if(v==='anggaran'){ if(typeof setNav==='function') setNav(); return renderAnggaran(); }
-      if(v==='anggaranEdit'){ if(typeof setNav==='function') setNav(); return renderAnggaranEdit(); }
+      if(v==='anggaran'){ if(typeof setNav==='function') setNav(); setAgHead(true); return renderAnggaran(); }
+      if(v==='anggaranEdit'){ if(typeof setNav==='function') setNav(); setAgHead(true); return renderAnggaranEdit(); }
+      setAgHead(false);
       return _render.apply(this, arguments);
     };
     window.render.__agHooked=true;
@@ -8095,11 +8131,23 @@ window.jsonp=function(params){
                  .map(function(r){ r.terkirim=true; return r; });
       if(dari.length) await agBulkPut(dari);
       await muatAnggaran();
+      refreshPip();
     }catch(e){}
   }
   window.tarikAnggaranDariGAS=tarikAnggaranDariGAS;
 
   function pasangHookSinkron(){
+    /* ikutkan anggaran belum terkirim ke badge pencadangan (navPip) */
+    var _jb=window.jumlahBelum;
+    if(typeof _jb==='function' && !_jb.__agHooked){
+      window.jumlahBelum=function(){
+        var n=_jb.apply(this, arguments)||0;
+        try{ n += (window.AG||[]).filter(function(r){ return !r.terkirim; }).length; }catch(e){}
+        return n;
+      };
+      window.jumlahBelum.__agHooked=true;
+    }
+
     /* muat ulang AG saat data akun dimuat ulang (login/afterLogin) */
     var _mAk=window.muatAkun;
     if(typeof _mAk==='function' && !_mAk.__agHooked){
@@ -8145,6 +8193,7 @@ window.jsonp=function(params){
     /* bila sudah tersambung, tarik anggaran sekali & bereskan antrean */
     try{ await tarikAnggaranDariGAS(); }catch(e){}
     try{ dorongAnggaranBelum(); flushDeletesAnggaran(); }catch(e){}
+    refreshPip();
     if(typeof view!=='undefined' && view) { try{ render(); }catch(e){} }
   }
   var coba=0;
