@@ -7799,25 +7799,479 @@ window.jsonp=function(params){
 
 <script>
 /* ============================================================================
-   PATCH ANGGARAN v1 - BAGIAN 3: LAPORAN + EKSPOR + MENU PROFIL
-   Tempel PERSIS setelah BAGIAN 2.
+   PATCH ANGGARAN v2 - BAGIAN 1: INTI (DB, CRUD, dua tipe)
+   Tempel sebelum </body>, PALING AKHIR setelah semua patch lain.
 
-   Blok "Realisasi vs Anggaran" di tab Laporan, dengan pembanding:
-   hari / minggu / bulan / tahun / kustom. Plafon bulanan diprorata ke
-   panjang rentang pembanding agar perbandingan adil:
-     - hari   : plafon/hari  x 1
-     - minggu : plafon/hari  x 7
-     - bulan  : plafon        (utuh)
-     - tahun  : plafon        x 12
-     - kustom : plafon/hari   x jumlah hari rentang
-   Realisasi dihitung dari TX pada rentang yang sama.
+   Perubahan dari v1:
+   - Perbaikan bug "Cannot read properties of null (reading 'transaction')":
+     koneksi IndexedDB v4 milik aplikasi ditutup dulu sebelum membuka v5,
+     lalu DB global dipindahkan ke koneksi v5 (berisi store 'anggaran').
+     Semua operasi anggaran juga self-healing: memastikan DBA siap dulu.
+   - Anggaran kini punya field 'tipe' (pemasukan / pengeluaran), sehingga
+     bisa menetapkan target pemasukan sekaligus plafon pengeluaran.
+============================================================================ */
+(function(){
+  'use strict';
+
+  function L(id,en){ return (window.LANG==='en')?en:id; }
+
+  window.BG = window.BG || [];
+  window.bgPeriode = window.bgPeriode || null;
+  window.bgEdit = window.bgEdit || null;
+  window.bgBanding = window.bgBanding || 'bulan';
+
+  function duaDigit(n){ return (n<10?'0':'')+n; }
+  function periodeSekarang(){ var d=new Date(); return d.getFullYear()+'-'+duaDigit(d.getMonth()+1); }
+  function periodeAktif(){ return window.bgPeriode || periodeSekarang(); }
+  function labelPeriode(p){
+    var bg=(p||periodeAktif()).split('-'), th=+bg[0], bl=+bg[1]-1;
+    var nmID=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    var nmEN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return (window.LANG==='en'?nmEN:nmID)[bl]+' '+th;
+  }
+  function geserPeriode(p, delta){
+    var a=p.split('-'), th=+a[0], bl=+a[1]-1+delta;
+    var d=new Date(th, bl, 1);
+    return d.getFullYear()+'-'+duaDigit(d.getMonth()+1);
+  }
+  function tanggalDalamPeriodeBulan(tgl, p){ return String(tgl||'').slice(0,7)===p; }
+  function hariDalamBulan(p){ var a=p.split('-'); return new Date(+a[0], +a[1], 0).getDate(); }
+
+  /* ---------- IndexedDB: buka store 'anggaran' dengan menutup koneksi lama ---------- */
+  var DBA=null, bukaProm=null;
+  function openDBA(){
+    if(DBA) return Promise.resolve(DBA);
+    if(bukaProm) return bukaProm;
+    bukaProm=new Promise(function(res,rej){
+      /* tutup koneksi v4 milik aplikasi agar upgrade ke v5 tidak terblokir */
+      try{ if(window.DB && window.DB.close){ window.DB.close(); } }catch(e){}
+      var req=indexedDB.open('keuanganku',5);
+      req.onupgradeneeded=function(e){
+        var db=e.target.result;
+        if(!db.objectStoreNames.contains('transaksi')){
+          var st=db.createObjectStore('transaksi',{keyPath:'id'});
+          st.createIndex('tanggal','tanggal',{unique:false});
+          st.createIndex('terkirim','terkirim',{unique:false});
+        }
+        if(!db.objectStoreNames.contains('utang'))    db.createObjectStore('utang',{keyPath:'id'});
+        if(!db.objectStoreNames.contains('avatars'))  db.createObjectStore('avatars',{keyPath:'phone'});
+        if(!db.objectStoreNames.contains('akun'))     db.createObjectStore('akun',{keyPath:'id'});
+        if(!db.objectStoreNames.contains('transfer')) db.createObjectStore('transfer',{keyPath:'id'});
+        if(!db.objectStoreNames.contains('anggaran')) db.createObjectStore('anggaran',{keyPath:'id'});
+      };
+      req.onsuccess=function(e){
+        DBA=e.target.result;
+        /* pindahkan DB global ke koneksi v5 agar aplikasi tetap berfungsi */
+        try{ window.DB=DBA; }catch(_){}
+        DBA.onversionchange=function(){ try{ DBA.close(); }catch(_){} DBA=null; };
+        res(DBA);
+      };
+      req.onerror=function(e){ bukaProm=null; rej(e.target.error); };
+      req.onblocked=function(){
+        try{ toast(L('Tutup tab KeuanganKu lain lalu buka ulang untuk memperbarui.','Close other KeuanganKu tabs then reopen to update.')); }catch(_){}
+      };
+    });
+    return bukaProm;
+  }
+  /* arahkan openDB aplikasi ke v5 juga, agar re-login tidak membuka v4 lagi */
+  try{ if(typeof window.openDB==='function'){ window.openDB=function(){ return openDBA(); }; } }catch(e){}
+
+  async function ensureDBA(){ if(!DBA) await openDBA(); return DBA; }
+  function txA(mode){ return DBA.transaction('anggaran',mode).objectStore('anggaran'); }
+  async function idbAnggaranAll(){ await ensureDBA(); return new Promise(function(res,rej){ var r=txA('readonly').getAll(); r.onsuccess=function(){res(r.result||[]);}; r.onerror=function(){rej(r.error);}; }); }
+  async function idbAnggaranPut(item){ await ensureDBA(); return new Promise(function(res,rej){ var r=txA('readwrite').put(item); r.onsuccess=function(){res();}; r.onerror=function(){rej(r.error);}; }); }
+  async function idbAnggaranDelete(id){ await ensureDBA(); return new Promise(function(res,rej){ var r=txA('readwrite').delete(id); r.onsuccess=function(){res();}; r.onerror=function(){rej(r.error);}; }); }
+
+  /* ---------- id memuat tipe agar kategori "Lainnya" tak bentrok antar tipe ---------- */
+  function idAnggaran(periode, tipe, kategori){ return periode+'|'+tipe+'|'+kategori; }
+
+  /* ---------- pemuatan + migrasi ringan record lama (tanpa tipe) ---------- */
+  window.muatAnggaran = async function(){
+    try{
+      var all=await idbAnggaranAll();
+      var milik=all.filter(function(b){ return b.user===emailUser(); });
+      for(var i=0;i<milik.length;i++){
+        var b=milik[i];
+        if(!b.tipe){ b.tipe='pengeluaran'; }
+        var nid=idAnggaran(b.periode, b.tipe, b.kategori);
+        if(b.id!==nid){ var lama=b.id; b.id=nid; try{ await idbAnggaranPut(b); await idbAnggaranDelete(lama); }catch(e){} }
+      }
+      BG=milik;
+    }catch(e){ BG=[]; }
+  };
+
+  /* ---------- CRUD ---------- */
+  window.simpanAnggaran = async function(periode, tipe, kategori, plafon){
+    var id=idAnggaran(periode, tipe, kategori);
+    var ada=BG.filter(function(b){ return b.id===id; })[0];
+    var now=new Date().toISOString();
+    var obj=ada
+      ? Object.assign({}, ada, {plafon:+plafon, updatedAt:now, terkirim:false})
+      : {id:id, periode:periode, tipe:tipe, kategori:kategori, plafon:+plafon, user:emailUser(), createdAt:now, updatedAt:now, terkirim:false};
+    if(ada){ for(var i=0;i<BG.length;i++){ if(BG[i].id===id){ BG[i]=obj; break; } } }
+    else BG.push(obj);
+    await idbAnggaranPut(obj);
+    try{ if(getGasUrl()) kirimNoCors('syncAnggaran',{items:[obj]}); }catch(e){}
+  };
+
+  window.hapusAnggaran = async function(id){
+    BG=BG.filter(function(b){ return b.id!==id; });
+    await idbAnggaranDelete(id);
+    try{ if(getGasUrl()) kirimNoCors('deleteAnggaran',{ids:[id]}); }catch(e){}
+  };
+
+  window.salinAnggaranBulanLalu = async function(periodeTarget){
+    var sebelum=geserPeriode(periodeTarget,-1);
+    var sumber=BG.filter(function(b){ return b.periode===sebelum; });
+    if(!sumber.length){ toast(L('Bulan lalu belum punya anggaran','No budget set last month')); return 0; }
+    var n=0;
+    for(var i=0;i<sumber.length;i++){
+      var s=sumber[i];
+      if(BG.some(function(b){ return b.periode===periodeTarget && b.tipe===s.tipe && b.kategori===s.kategori; })) continue;
+      await simpanAnggaran(periodeTarget, s.tipe, s.kategori, s.plafon);
+      n++;
+    }
+    return n;
+  };
+
+  /* ---------- realisasi per tipe ---------- */
+  function terpakaiBulan(kategori, tipe, periode){
+    return TX.filter(function(t){
+      return t.tipe===tipe && t.user===emailUser()
+        && t.kategori===kategori && tanggalDalamPeriodeBulan(t.tanggal, periode);
+    }).reduce(function(s,t){ return s+(+t.nominal||0); },0);
+  }
+
+  function ringkasPeriode(periode, tipe){
+    var rows=BG.filter(function(b){ return b.periode===periode && (b.tipe||'pengeluaran')===tipe; }).map(function(b){
+      var pakai=terpakaiBulan(b.kategori, tipe, periode);
+      var pct=b.plafon>0 ? (pakai/b.plafon*100) : 0;
+      return {id:b.id, tipe:tipe, kategori:b.kategori, plafon:b.plafon, pakai:pakai, sisa:b.plafon-pakai, pct:pct};
+    });
+    rows.sort(function(a,b){ return b.pct-a.pct; });
+    return rows;
+  }
+
+  /* warna & status berbeda per tipe:
+     pengeluaran: makin tinggi makin buruk (merah bila lewat).
+     pemasukan  : makin tinggi makin baik (hijau bila target tercapai). */
+  function warnaAnggaran(pct, tipe){
+    if(tipe==='pemasukan'){
+      if(pct>=100) return '#0F6E56';
+      if(pct>=70)  return '#EF9F27';
+      return '#E24B4A';
+    }
+    if(pct>100) return '#E24B4A';
+    if(pct>=80) return '#EF9F27';
+    return '#1D9E75';
+  }
+  function subLabel(r){
+    if(r.tipe==='pemasukan'){
+      if(r.pakai>=r.plafon) return {t:(L('Tercapai','Reached')+(r.pakai>r.plafon?(' (+'+fmtRp(r.pakai-r.plafon)+')'):'')), c:'#0F6E56'};
+      return {t:(L('Kurang ','Short ')+fmtRp(r.plafon-r.pakai)+' ('+Math.round(r.pct)+'%)'), c:'#BA7517'};
+    }
+    if(r.pakai>r.plafon) return {t:(L('Lewat ','Over ')+fmtRp(r.pakai-r.plafon)), c:'#A32D2D'};
+    return {t:(Math.round(r.pct)+'% '+L('terpakai','used')), c:'var(--tx3)'};
+  }
+
+  window._bgUtil = {
+    L:L, periodeAktif:periodeAktif, labelPeriode:labelPeriode, geserPeriode:geserPeriode,
+    periodeSekarang:periodeSekarang, ringkasPeriode:ringkasPeriode, terpakaiBulan:terpakaiBulan,
+    hariDalamBulan:hariDalamBulan, warnaAnggaran:warnaAnggaran, subLabel:subLabel,
+    idAnggaran:idAnggaran, tanggalDalamPeriodeBulan:tanggalDalamPeriodeBulan
+  };
+
+  var _afterLogin = window.afterLogin;
+  if(typeof _afterLogin==='function'){
+    window.afterLogin = async function(){
+      var r = _afterLogin.apply(this, arguments);
+      try{ await muatAnggaran(); if(view==='home'||view==='report') render(); }catch(e){}
+      return r;
+    };
+  } else {
+    setTimeout(function(){ if(emailUser()) muatAnggaran(); }, 1500);
+  }
+
+})();
+</script>
+
+<script>
+/* ============================================================================
+   PATCH ANGGARAN v2 - BAGIAN 2: TAMPILAN
+   Tempel PERSIS setelah BAGIAN 1.
+   - View ikhtisar menampilkan dua kelompok: Pengeluaran & Pemasukan.
+   - Form punya pemilih tipe.
+   - Tombol tambah anggaran dipindah ke layar Tambah Transaksi (di .fhead),
+     mengikuti tipe yang sedang aktif di layar itu.
 ============================================================================ */
 (function(){
   'use strict';
   var U=window._bgUtil; if(!U){ return; }
   var L=U.L;
 
-  /* ---- rentang tanggal untuk pembanding ---- */
+  (function suntik(){
+    if(document.getElementById('bgStyle')) return;
+    var st=document.createElement('style'); st.id='bgStyle';
+    st.textContent=
+      '.bg-bar{height:7px;background:var(--page);border-radius:99px;overflow:hidden;margin-top:6px}'+
+      '.bg-bar>i{display:block;height:100%;border-radius:99px}'+
+      '.bg-row{padding:12px 0;border-bottom:.5px solid var(--line)}'+
+      '.bg-row:last-child{border-bottom:none}'+
+      '.bg-head{display:flex;justify-content:space-between;align-items:baseline;font-size:14px;color:var(--tx)}'+
+      '.bg-sub{font-size:11px;margin-top:5px;display:flex;justify-content:space-between}'+
+      '.bg-stat{display:flex;gap:10px;margin:4px 0 2px}'+
+      '.bg-stat>div{flex:1;background:var(--card);border-radius:10px;padding:10px 12px}'+
+      '.bg-stat .l{font-size:11px;color:var(--tx3)}'+
+      '.bg-stat .v{font-size:15px;font-weight:700;margin-top:2px}'+
+      '.bg-mon{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--tx2);border:.5px solid var(--line);border-radius:10px;padding:6px 10px}'+
+      '.bg-mon button{border:none;background:transparent;color:var(--tx2);font-size:16px;line-height:1;cursor:pointer;padding:2px 4px}'+
+      '.bg-seg{display:flex;gap:6px;margin:2px 0 4px}'+
+      '.bg-seg button{flex:1;border:.5px solid var(--line);background:var(--card);color:var(--tx2);border-radius:9px;padding:9px;font-size:13px;cursor:pointer}'+
+      '.bg-seg button.on{background:var(--hijau-bg);color:var(--hijau-tx);outline:1.5px solid var(--hijau-tx)}';
+    document.head.appendChild(st);
+  })();
+
+  function bulanNav(){
+    var p=U.periodeAktif();
+    return '<div class="bg-mon"><button onclick="bgGeser(-1)" aria-label="Bulan sebelumnya">&#8249;</button>'+
+      '<span style="flex:1;text-align:center;font-weight:600;color:var(--tx)">'+U.labelPeriode(p)+'</span>'+
+      '<button onclick="bgGeser(1)" aria-label="Bulan berikutnya">&#8250;</button></div>';
+  }
+  window.bgGeser=function(delta){ window.bgPeriode=U.geserPeriode(U.periodeAktif(), delta); render(); };
+
+  /* satu kelompok (tipe) */
+  function kelompokHtml(tipe){
+    var p=U.periodeAktif();
+    var rows=U.ringkasPeriode(p, tipe);
+    if(!rows.length) return '';
+    var totPlafon=rows.reduce(function(s,r){ return s+r.plafon; },0);
+    var totPakai=rows.reduce(function(s,r){ return s+r.pakai; },0);
+    var isKeluar=(tipe==='pengeluaran');
+    var judul=isKeluar?L('Anggaran Pengeluaran','Expense Budget'):L('Target Pemasukan','Income Target');
+
+    var stat = isKeluar
+      ? '<div class="bg-stat">'+
+          '<div><div class="l">'+L('Total plafon','Total budget')+'</div><div class="v" style="color:var(--tx)">'+fmtRp(totPlafon)+'</div></div>'+
+          '<div><div class="l">'+L('Terpakai','Spent')+'</div><div class="v" style="color:#BA7517">'+fmtRp(totPakai)+'</div></div>'+
+          '<div><div class="l">'+L('Sisa','Remaining')+'</div><div class="v" style="color:'+((totPlafon-totPakai)<0?'#A32D2D':'#0F6E56')+'">'+fmtRp(totPlafon-totPakai)+'</div></div>'+
+        '</div>'
+      : '<div class="bg-stat">'+
+          '<div><div class="l">'+L('Total target','Total target')+'</div><div class="v" style="color:var(--tx)">'+fmtRp(totPlafon)+'</div></div>'+
+          '<div><div class="l">'+L('Tercapai','Reached')+'</div><div class="v" style="color:#0F6E56">'+fmtRp(totPakai)+'</div></div>'+
+          '<div><div class="l">'+L('Kurang','Short')+'</div><div class="v" style="color:'+((totPlafon-totPakai)>0?'#BA7517':'#0F6E56')+'">'+fmtRp(Math.max(0,totPlafon-totPakai))+'</div></div>'+
+        '</div>';
+
+    var body=rows.map(function(r){
+      var w=Math.max(2,Math.min(100,r.pct));
+      var c=U.warnaAnggaran(r.pct, tipe);
+      var sl=U.subLabel(r);
+      return '<div class="bg-row">'+
+        '<div class="bg-head"><span>'+esc(r.kategori)+'</span>'+
+          '<span style="color:var(--tx2);font-size:12px">'+fmtRp(r.pakai)+' / '+fmtRp(r.plafon)+'</span></div>'+
+        '<div class="bg-bar"><i style="width:'+w+'%;background:'+c+'"></i></div>'+
+        '<div class="bg-sub"><span style="color:'+sl.c+'">'+sl.t+'</span>'+
+          '<span style="display:flex;gap:12px">'+
+            '<button onclick="bgUbah(\''+r.id+'\')" style="border:none;background:transparent;color:var(--biru-tx,#185FA5);font-size:12px;cursor:pointer">'+L('Ubah','Edit')+'</button>'+
+            '<button onclick="bgHapus(\''+r.id+'\')" style="border:none;background:transparent;color:#A32D2D;font-size:12px;cursor:pointer">'+L('Hapus','Delete')+'</button>'+
+          '</span></div>'+
+      '</div>';
+    }).join('');
+
+    return '<div class="sec-head" style="padding-top:16px"><div class="t">'+judul+'</div></div>'+
+      stat+'<div class="panel">'+body+'</div>';
+  }
+
+  window.renderAnggaran=function(){
+    var p=U.periodeAktif();
+    var keluar=kelompokHtml('pengeluaran');
+    var masuk=kelompokHtml('pemasukan');
+    var kosong=(!keluar && !masuk);
+
+    var html=appBar()+
+      '<div class="fhead" style="padding-top:6px"><button class="bk" onclick="goView(\'home\')">&#8592;</button>'+
+        '<div class="ti">'+L('Anggaran','Budget')+'</div></div>'+
+      '<div style="padding:0 2px 6px">'+bulanNav()+'</div>'+
+      (kosong?('<div class="empty" style="padding:18px">'+L('Belum ada anggaran untuk bulan ini. Tambahkan dari layar Tambah Transaksi (tombol +) atau tombol di bawah.','No budget for this month. Add one from the Add Transaction screen (+ button) or below.')+'</div>'):'')+
+      keluar+masuk+
+      '<button class="btn-line" style="width:100%;margin-top:12px" onclick="bgTambahTipe(\'pengeluaran\')">+ '+L('Anggaran pengeluaran','Expense budget')+'</button>'+
+      '<button class="btn-line" style="width:100%;margin-top:8px" onclick="bgTambahTipe(\'pemasukan\')">+ '+L('Target pemasukan','Income target')+'</button>';
+
+    var sebelum=U.geserPeriode(p,-1);
+    if(BG.some(function(b){ return b.periode===sebelum; })){
+      html+='<button class="btn-line" style="width:100%;margin-top:8px" onclick="bgSalin()">&#128203; '+L('Salin anggaran bulan lalu','Copy last month\u2019s budget')+'</button>';
+    }
+    html+='<div style="height:20px"></div>';
+    S().innerHTML=html;
+  };
+
+  window.bgTambahTipe=function(tipe){
+    window.bgEdit={id:null, periode:U.periodeAktif(), tipe:(tipe==='pemasukan'?'pemasukan':'pengeluaran'), kategori:'', plafon:0};
+    goView('anggaranEdit');
+  };
+  window.bgTambah=function(){ window.bgTambahTipe('pengeluaran'); };
+  window.bgUbah=function(id){
+    var b=BG.filter(function(x){ return x.id===id; })[0]; if(!b) return;
+    window.bgEdit={id:b.id, periode:b.periode, tipe:b.tipe||'pengeluaran', kategori:b.kategori, plafon:b.plafon};
+    goView('anggaranEdit');
+  };
+  window.bgHapus=async function(id){
+    if(!await confirmModal(L('Hapus anggaran ini?','Delete this budget?'),{danger:true,okText:L('Hapus','Delete')})) return;
+    await hapusAnggaran(id);
+    toast(L('Anggaran dihapus','Budget deleted')); render();
+  };
+  window.bgSalin=async function(){
+    var n=await salinAnggaranBulanLalu(U.periodeAktif());
+    if(n>0){ toast(n+' '+L('anggaran disalin','budgets copied')); render(); }
+  };
+
+  /* ---------- form tetapkan/ubah ---------- */
+  window.bgFormTipe=function(t){ if(!window.bgEdit) return; window.bgEdit.tipe=t; window.bgEdit.kategori=''; render(); };
+
+  window.renderAnggaranEdit=function(){
+    var e=window.bgEdit; if(!e){ goView('anggaran'); return; }
+    var baru=!e.id;
+    var daftar=(e.tipe==='pemasukan')?KAT_PEMASUKAN:KAT_PENGELUARAN;
+    var terpakai={};
+    BG.filter(function(b){ return b.periode===e.periode && (b.tipe||'pengeluaran')===e.tipe; }).forEach(function(b){ terpakai[b.kategori]=1; });
+    var opsi=daftar.filter(function(k){ return baru ? !terpakai[k] : (k===e.kategori || !terpakai[k]); });
+    if(!baru && opsi.indexOf(e.kategori)<0) opsi.unshift(e.kategori);
+
+    var toggle = baru
+      ? '<div class="bg-seg">'+
+          '<button class="'+(e.tipe==='pengeluaran'?'on':'')+'" onclick="bgFormTipe(\'pengeluaran\')">'+L('Pengeluaran','Expense')+'</button>'+
+          '<button class="'+(e.tipe==='pemasukan'?'on':'')+'" onclick="bgFormTipe(\'pemasukan\')">'+L('Pemasukan','Income')+'</button>'+
+        '</div>'
+      : '<div style="font-size:12px;color:var(--tx3);margin-bottom:8px">'+(e.tipe==='pemasukan'?L('Target pemasukan','Income target'):L('Anggaran pengeluaran','Expense budget'))+'</div>';
+
+    var labelPlafon = (e.tipe==='pemasukan')?L('Target per bulan','Monthly target'):L('Plafon per bulan','Monthly limit');
+
+    var html=appBar()+
+      '<div class="fhead" style="padding-top:6px"><button class="bk" onclick="goView(\'anggaran\')">&#8592;</button>'+
+        '<div class="ti">'+(baru?L('Tetapkan anggaran','Set budget'):L('Ubah anggaran','Edit budget'))+'</div></div>'+
+      '<div style="padding:0 2px 10px;font-size:12px;color:var(--tx3)">'+U.labelPeriode(e.periode)+'</div>'+
+      '<div class="panel">'+
+        toggle+
+        '<label class="fl">'+L('Kategori','Category')+'</label>'+
+        (baru
+          ? (opsi.length
+              ? '<select class="field" id="bgKat">'+opsi.map(function(k){return '<option value="'+esc(k)+'">'+esc(k)+'</option>';}).join('')+'</select>'
+              : '<div class="empty" style="padding:12px">'+L('Semua kategori sudah punya anggaran bulan ini.','All categories already have a budget this month.')+'</div>')
+          : '<input class="field" id="bgKat" value="'+esc(e.kategori)+'" disabled style="opacity:.7">')+
+        '<label class="fl" style="margin-top:12px">'+labelPlafon+'</label>'+
+        '<div class="nominal-wrap"><span class="rp">Rp</span>'+
+          '<input id="bgNom" inputmode="numeric" placeholder="0" oninput="_fmtIn(this)" value="'+(e.plafon?(+e.plafon).toLocaleString('id-ID'):'')+'"></div>'+
+        ((baru && !opsi.length)?'':'<button class="save pem" style="margin-top:16px" onclick="bgSimpan()">'+L('Simpan anggaran','Save budget')+'</button>')+
+      '</div>';
+    S().innerHTML=html;
+  };
+
+  window.bgSimpan=async function(){
+    var e=window.bgEdit; if(!e) return;
+    var kat = e.id ? e.kategori : ((document.getElementById('bgKat')||{}).value||'');
+    var nom = +((document.getElementById('bgNom').value||'').replace(/\D/g,''))||0;
+    if(!kat){ toast(L('Pilih kategori dahulu','Choose a category first')); return; }
+    if(nom<=0){ toast(L('Isi nominal anggaran','Enter a budget amount')); return; }
+    await simpanAnggaran(e.periode, e.tipe, kat, nom);
+    window.bgEdit=null;
+    toast(L('Anggaran tersimpan','Budget saved'));
+    goView('anggaran');
+  };
+
+  /* ---------- kartu Beranda (pengeluaran utama + baris pemasukan bila ada) ---------- */
+  function kartuBerandaHtml(){
+    var p=U.periodeSekarang();
+    var rk=U.ringkasPeriode(p,'pengeluaran');
+    var rm=U.ringkasPeriode(p,'pemasukan');
+    if(!rk.length && !rm.length) return '';
+    var html='<div class="card-lite" onclick="goView(\'anggaran\')" style="cursor:pointer;background:var(--card);border-radius:14px;padding:14px 16px;margin:12px 0;box-shadow:0 1px 2px rgba(0,0,0,.05)">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+        '<span style="font-size:13px;font-weight:600;color:var(--tx)">'+L('Anggaran bulan ini','This month\u2019s budget')+'</span>'+
+        '<span style="font-size:16px;color:var(--tx3)">&#8250;</span></div>';
+
+    if(rk.length){
+      var tp=rk.reduce(function(s,r){return s+r.plafon;},0), tu=rk.reduce(function(s,r){return s+r.pakai;},0);
+      var pct=tp>0?(tu/tp*100):0, lewat=rk.filter(function(r){return r.pct>100;}).length;
+      html+='<div style="font-size:12px;color:var(--tx3);margin-bottom:4px">'+L('Pengeluaran','Expenses')+' '+Math.round(pct)+'% &middot; '+fmtRp(tu)+' / '+fmtRp(tp)+'</div>'+
+        '<div class="bg-bar"><i style="width:'+Math.max(2,Math.min(100,pct))+'%;background:'+U.warnaAnggaran(pct,'pengeluaran')+'"></i></div>'+
+        (lewat?('<div style="font-size:11px;color:#A32D2D;margin-top:6px">&#9888; '+(window.LANG==='en'?(lewat+' over budget'):(lewat+' kategori melewati batas'))+'</div>'):'');
+    }
+    if(rm.length){
+      var tpm=rm.reduce(function(s,r){return s+r.plafon;},0), tum=rm.reduce(function(s,r){return s+r.pakai;},0);
+      var pctm=tpm>0?(tum/tpm*100):0;
+      html+='<div style="font-size:12px;color:var(--tx3);margin:10px 0 4px">'+L('Pemasukan','Income')+' '+Math.round(pctm)+'% &middot; '+fmtRp(tum)+' / '+fmtRp(tpm)+'</div>'+
+        '<div class="bg-bar"><i style="width:'+Math.max(2,Math.min(100,pctm))+'%;background:'+U.warnaAnggaran(pctm,'pemasukan')+'"></i></div>';
+    }
+    html+='</div>';
+    return html;
+  }
+  window._bgKartuBeranda = kartuBerandaHtml;
+
+  var _renderHome=window.renderHome;
+  if(typeof _renderHome==='function'){
+    window.renderHome=function(){
+      var r=_renderHome.apply(this, arguments);
+      try{
+        var html=kartuBerandaHtml();
+        if(html){
+          var host=S();
+          var anchor=host.querySelector('.uring, .saldo-carousel, #saldoCarousel');
+          if(anchor && anchor.parentNode) anchor.parentNode.insertAdjacentHTML('afterend', html);
+          else host.insertAdjacentHTML('beforeend', html);
+        }
+      }catch(e){}
+      return r;
+    };
+  }
+
+  /* ---------- tombol tambah anggaran di layar Tambah Transaksi ---------- */
+  var _renderAdd=window.renderAdd;
+  if(typeof _renderAdd==='function'){
+    window.renderAdd=function(){
+      var r=_renderAdd.apply(this, arguments);
+      try{
+        var head=S().querySelector('.fhead');
+        if(head && !head.querySelector('.bg-add-btn')){
+          var tipe=(window.addState&&addState.tipe)||'pengeluaran';
+          var b=document.createElement('button');
+          b.className='bg-add-btn'; b.type='button';
+          b.textContent=L('+ Anggaran','+ Budget');
+          b.setAttribute('onclick',"bgTambahTipe('"+tipe+"')");
+          b.style.cssText='margin-left:auto;border:.5px solid var(--line);background:transparent;color:var(--tx2);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer';
+          head.appendChild(b);
+        }
+      }catch(e){}
+      return r;
+    };
+  }
+
+  /* ---------- dispatch view baru ---------- */
+  var _render=window.render;
+  window.render=function(){
+    if(USER && (view==='anggaran' || view==='anggaranEdit')){
+      var nav=document.querySelector('.nav'); if(nav) nav.style.display='flex';
+      if(view==='anggaran') renderAnggaran(); else renderAnggaranEdit();
+      S().classList.toggle('has-appbar', !!document.querySelector('.appbar'));
+      setNav();
+      return;
+    }
+    return _render.apply(this, arguments);
+  };
+
+})();
+</script>
+
+<script>
+/* ============================================================================
+   PATCH ANGGARAN v2 - BAGIAN 3: LAPORAN + EKSPOR + MENU PROFIL
+   Tempel PERSIS setelah BAGIAN 2.
+   Blok laporan menampilkan Pengeluaran DAN Pemasukan vs anggaran, dengan
+   pembanding hari/minggu/bulan/tahun/kustom. Plafon bulanan diprorata.
+============================================================================ */
+(function(){
+  'use strict';
+  var U=window._bgUtil; if(!U){ return; }
+  var L=U.L;
+
   function todayISO2(){ var d=new Date(); d.setHours(0,0,0,0);
     return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
 
@@ -7835,92 +8289,88 @@ window.jsonp=function(params){
       return {awal:aw, akhir:ak, hari:h}; }
     return {awal:iso(now), akhir:iso(now), hari:1};
   }
-
-  /* plafon bulanan diprorata ke panjang rentang */
   function plafonProrata(plafonBulan, mode, hariRentang, periodeBulan){
     var hariBulan=U.hariDalamBulan(periodeBulan||U.periodeSekarang());
     if(mode==='bulan') return plafonBulan;
     if(mode==='tahun') return plafonBulan*12;
-    /* hari, minggu, kustom: berbasis harian */
     return Math.round(plafonBulan/hariBulan*hariRentang);
   }
 
-  /* susun baris realisasi vs anggaran untuk mode pembanding aktif */
-  function barisLaporan(){
+  /* baris laporan untuk satu tipe */
+  function barisLaporanTipe(tipe){
     var mode=window.bgBanding||'bulan';
     var rt=rentangBanding(mode);
     var periodeBulan=U.periodeSekarang();
-    /* anggaran acuan = bulan berjalan (plafon bulanan per kategori) */
     var anggaranBulan={};
-    BG.filter(function(b){ return b.periode===periodeBulan; }).forEach(function(b){ anggaranBulan[b.kategori]=b.plafon; });
-
-    /* realisasi per kategori pada rentang */
+    BG.filter(function(b){ return b.periode===periodeBulan && (b.tipe||'pengeluaran')===tipe; })
+      .forEach(function(b){ anggaranBulan[b.kategori]=b.plafon; });
     var pakai={};
     TX.filter(function(t){
-      return t.tipe==='pengeluaran' && t.user===emailUser()
-        && t.tanggal>=rt.awal && t.tanggal<=rt.akhir;
+      return t.tipe===tipe && t.user===emailUser() && t.tanggal>=rt.awal && t.tanggal<=rt.akhir;
     }).forEach(function(t){ pakai[t.kategori]=(pakai[t.kategori]||0)+(+t.nominal||0); });
-
-    /* gabungkan kategori dari anggaran + yang ada realisasinya */
     var semua={};
     Object.keys(anggaranBulan).forEach(function(k){ semua[k]=1; });
     Object.keys(pakai).forEach(function(k){ semua[k]=1; });
-
     var rows=Object.keys(semua).map(function(k){
       var plafon=anggaranBulan[k]!=null ? plafonProrata(anggaranBulan[k], mode, rt.hari, periodeBulan) : 0;
       var real=pakai[k]||0;
       var pct=plafon>0 ? (real/plafon*100) : (real>0?999:0);
-      return {kategori:k, plafon:plafon, pakai:real, selisih:plafon-real, pct:pct, adaPlafon:anggaranBulan[k]!=null};
+      return {tipe:tipe, kategori:k, plafon:plafon, pakai:real, selisih:plafon-real, pct:pct, adaPlafon:anggaranBulan[k]!=null};
     });
     rows.sort(function(a,b){ return b.pct-a.pct; });
     return {rows:rows, rt:rt, mode:mode};
   }
-  window._bgBarisLaporan = barisLaporan;
+  window._bgBarisLaporan = barisLaporanTipe;
 
-  /* ---- HTML blok laporan ---- */
   function labelMode(m){
     var id={hari:'Hari ini',minggu:'7 hari',bulan:'Bulan ini',tahun:'Tahun ini',kustom:'Kustom'};
     var en={hari:'Today',minggu:'7 days',bulan:'This month',tahun:'This year',kustom:'Custom'};
     return (window.LANG==='en'?en:id)[m];
   }
+
+  function seksiHtml(tipe){
+    var d=barisLaporanTipe(tipe);
+    var rows=d.rows.filter(function(r){ return r.adaPlafon || r.pakai>0; });
+    if(!rows.length) return '';
+    var isKeluar=(tipe==='pengeluaran');
+    var judul=isKeluar?L('Pengeluaran vs Anggaran','Expenses vs Budget'):L('Pemasukan vs Target','Income vs Target');
+    var body=rows.map(function(r){
+      var w=Math.max(2,Math.min(100,r.pct));
+      var c=U.warnaAnggaran(r.pct, tipe);
+      var sl=U.subLabel(r);
+      var tanpa=!r.adaPlafon;
+      return '<div class="bg-row">'+
+        '<div class="bg-head"><span>'+esc(r.kategori)+(tanpa?(' <span style="font-size:10px;color:var(--tx3)">('+L('tanpa anggaran','no budget')+')</span>'):'')+'</span>'+
+          '<span style="color:var(--tx2);font-size:12px">'+fmtRp(r.pakai)+(r.adaPlafon?(' / '+fmtRp(r.plafon)):'')+'</span></div>'+
+        (r.adaPlafon?('<div class="bg-bar"><i style="width:'+w+'%;background:'+c+'"></i></div>'+
+          '<div class="bg-sub"><span style="color:'+sl.c+'">'+sl.t+'</span><span></span></div>'):'')+
+      '</div>';
+    }).join('');
+    return '<div class="sec-head" style="padding-top:14px"><div class="t">'+judul+'</div></div>'+
+      '<div class="panel">'+body+'</div>';
+  }
+
   function blokLaporanHtml(){
-    var d=barisLaporan();
-    if(!d.rows.length) return '';
+    var keluar=seksiHtml('pengeluaran');
+    var masuk=seksiHtml('pemasukan');
+    if(!keluar && !masuk) return '';
+    var mode=window.bgBanding||'bulan';
     var modes=['hari','minggu','bulan','tahun','kustom'];
     var chips='<div class="chips" style="margin-top:4px">'+modes.map(function(m){
-      return '<button class="chip '+(d.mode===m?'on':'')+'" onclick="bgSetBanding(\''+m+'\')">'+labelMode(m)+'</button>';
+      return '<button class="chip '+(mode===m?'on':'')+'" onclick="bgSetBanding(\''+m+'\')">'+labelMode(m)+'</button>';
     }).join('')+'</div>';
-    var kustom = d.mode==='kustom'
+    var kustom = mode==='kustom'
       ? '<div class="panel"><div class="kustom-date"><div><label class="fl">'+L('Dari','From')+'</label>'+
         '<input class="field" type="date" value="'+(window.bgKustomAwal||todayISO2())+'" onchange="window.bgKustomAwal=this.value;render();"></div>'+
         '<div><label class="fl">'+L('Sampai','To')+'</label>'+
         '<input class="field" type="date" value="'+(window.bgKustomAkhir||todayISO2())+'" onchange="window.bgKustomAkhir=this.value;render();"></div></div></div>'
       : '';
-
-    var body=d.rows.map(function(r){
-      var w=Math.max(2,Math.min(100,r.pct));
-      var c=U.warnaAnggaran(r.pct);
-      var lewat=r.adaPlafon && r.pakai>r.plafon;
-      var tanpaPlafon=!r.adaPlafon;
-      return '<div class="bg-row">'+
-        '<div class="bg-head"><span>'+esc(r.kategori)+(tanpaPlafon?(' <span style="font-size:10px;color:var(--tx3)">('+L('tanpa anggaran','no budget')+')</span>'):'')+'</span>'+
-          '<span style="color:var(--tx2);font-size:12px">'+fmtRp(r.pakai)+(r.adaPlafon?(' / '+fmtRp(r.plafon)):'')+'</span></div>'+
-        (r.adaPlafon?('<div class="bg-bar"><i style="width:'+w+'%;background:'+c+'"></i></div>'+
-          '<div class="bg-sub" style="color:'+(lewat?'#A32D2D':'var(--tx3)')+'">'+
-            (lewat?(L('Lewat ','Over ')+fmtRp(r.pakai-r.plafon)):(Math.round(r.pct)+'% '+L('terpakai','used')))+'</div>')
-          :'')+
-      '</div>';
-    }).join('');
-
     return '<div class="sec-head" style="padding-top:16px"><div class="t">'+L('Realisasi vs Anggaran','Actual vs Budget')+'</div></div>'+
-      chips+kustom+
-      '<div class="panel">'+body+'</div>';
+      chips+kustom+keluar+masuk;
   }
   window._bgBlokLaporan = blokLaporanHtml;
-
   window.bgSetBanding=function(m){ window.bgBanding=m; render(); };
 
-  /* sisipkan blok ke Laporan setelah render bawaan */
   var _renderReport=window.renderReport;
   if(typeof _renderReport==='function'){
     window.renderReport=function(){
@@ -7928,15 +8378,10 @@ window.jsonp=function(params){
       try{
         var html=blokLaporanHtml();
         if(html){
-          var host=S();
-          /* taruh sebelum bagian "Unduh laporan" bila ketemu, jika tidak di akhir */
-          var heads=host.querySelectorAll('.sec-head');
-          var target=null;
-          heads.forEach(function(h){
-            var t=(h.textContent||'').toLowerCase();
-            if(!target && (t.indexOf('unduh')>=0 || t.indexOf('download')>=0)) target=h;
-          });
-          if(target){ target.insertAdjacentHTML('beforebegin', html); }
+          var host=S(), heads=host.querySelectorAll('.sec-head'), target=null;
+          heads.forEach(function(h){ var t=(h.textContent||'').toLowerCase();
+            if(!target && (t.indexOf('unduh')>=0 || t.indexOf('download')>=0)) target=h; });
+          if(target) target.insertAdjacentHTML('beforebegin', html);
           else host.insertAdjacentHTML('beforeend', html);
         }
       }catch(e){}
@@ -7944,103 +8389,86 @@ window.jsonp=function(params){
     };
   }
 
-  /* ---- integrasi ke ekspor PDF/Excel ----
-     Menyisipkan tabel Realisasi vs Anggaran ke berkas ekspor. Karena struktur
-     unduhHTML/unduhCSV bisa berbeda antar versi, kita bungkus aman: bila
-     fungsi menghasilkan string HTML, sisipkan tabel sebelum penutup body. */
+  /* ---- ekspor: tabel gabungan dua tipe ---- */
+  function barisEksporSemua(){
+    var out=[];
+    ['pengeluaran','pemasukan'].forEach(function(tipe){
+      var d=barisLaporanTipe(tipe);
+      d.rows.filter(function(r){ return r.adaPlafon; }).forEach(function(r){ out.push(r); });
+    });
+    return out;
+  }
   function tabelHtmlEkspor(){
-    var d=barisLaporan();
-    if(!d.rows.length) return '';
-    var rowsHtml=d.rows.filter(function(r){return r.adaPlafon;}).map(function(r){
-      var status = r.pakai>r.plafon ? L('Lewat','Over') : L('Aman','OK');
-      return '<tr><td>'+esc(r.kategori)+'</td><td style="text-align:right">'+fmtRp(r.plafon)+'</td>'+
-        '<td style="text-align:right">'+fmtRp(r.pakai)+'</td>'+
-        '<td style="text-align:right">'+fmtRp(r.selisih)+'</td>'+
-        '<td style="text-align:right">'+Math.round(r.pct)+'%</td>'+
-        '<td>'+status+'</td></tr>';
+    var rows=barisEksporSemua(); if(!rows.length) return '';
+    var mode=window.bgBanding||'bulan';
+    var body=rows.map(function(r){
+      var isMasuk=(r.tipe==='pemasukan');
+      var status = isMasuk ? (r.pakai>=r.plafon?L('Tercapai','Reached'):L('Kurang','Short'))
+                           : (r.pakai>r.plafon?L('Lewat','Over'):L('Aman','OK'));
+      return '<tr><td>'+(isMasuk?L('Pemasukan','Income'):L('Pengeluaran','Expense'))+'</td>'+
+        '<td>'+esc(r.kategori)+'</td><td style="text-align:right">'+fmtRp(r.plafon)+'</td>'+
+        '<td style="text-align:right">'+fmtRp(r.pakai)+'</td><td style="text-align:right">'+fmtRp(r.selisih)+'</td>'+
+        '<td style="text-align:right">'+Math.round(r.pct)+'%</td><td>'+status+'</td></tr>';
     }).join('');
-    if(!rowsHtml) return '';
-    return '<h3 style="margin-top:18px">'+L('Realisasi vs Anggaran','Actual vs Budget')+' ('+labelMode(d.mode)+')</h3>'+
+    return '<h3 style="margin-top:18px">'+L('Realisasi vs Anggaran','Actual vs Budget')+' ('+labelMode(mode)+')</h3>'+
       '<table style="width:100%;border-collapse:collapse" border="1" cellpadding="6">'+
-      '<thead><tr>'+
-        '<th>'+L('Kategori','Category')+'</th><th>'+L('Plafon','Budget')+'</th>'+
-        '<th>'+L('Terpakai','Spent')+'</th><th>'+L('Selisih','Difference')+'</th>'+
-        '<th>%</th><th>'+L('Status','Status')+'</th>'+
-      '</tr></thead><tbody>'+rowsHtml+'</tbody></table>';
+      '<thead><tr><th>'+L('Jenis','Type')+'</th><th>'+L('Kategori','Category')+'</th><th>'+L('Anggaran','Budget')+'</th>'+
+      '<th>'+L('Realisasi','Actual')+'</th><th>'+L('Selisih','Difference')+'</th><th>%</th><th>'+L('Status','Status')+'</th></tr></thead>'+
+      '<tbody>'+body+'</tbody></table>';
   }
   window._bgTabelEksporHtml = tabelHtmlEkspor;
-
   function tabelCsvEkspor(){
-    var d=barisLaporan();
-    var rows=d.rows.filter(function(r){return r.adaPlafon;});
-    if(!rows.length) return '';
-    var out='\n'+L('Realisasi vs Anggaran','Actual vs Budget')+' ('+labelMode(d.mode)+')\n';
-    out+=[L('Kategori','Category'),L('Plafon','Budget'),L('Terpakai','Spent'),L('Selisih','Difference'),'%',L('Status','Status')].join(',')+'\n';
+    var rows=barisEksporSemua(); if(!rows.length) return '';
+    var mode=window.bgBanding||'bulan';
+    var out='\n'+L('Realisasi vs Anggaran','Actual vs Budget')+' ('+labelMode(mode)+')\n';
+    out+=[L('Jenis','Type'),L('Kategori','Category'),L('Anggaran','Budget'),L('Realisasi','Actual'),L('Selisih','Difference'),'%',L('Status','Status')].join(',')+'\n';
     rows.forEach(function(r){
-      var status = r.pakai>r.plafon ? L('Lewat','Over') : L('Aman','OK');
-      out+=['"'+String(r.kategori).replace(/"/g,'""')+'"', r.plafon, r.pakai, r.selisih, Math.round(r.pct), status].join(',')+'\n';
+      var isMasuk=(r.tipe==='pemasukan');
+      var status = isMasuk ? (r.pakai>=r.plafon?L('Tercapai','Reached'):L('Kurang','Short'))
+                           : (r.pakai>r.plafon?L('Lewat','Over'):L('Aman','OK'));
+      out+=[(isMasuk?L('Pemasukan','Income'):L('Pengeluaran','Expense')),'"'+String(r.kategori).replace(/"/g,'""')+'"',r.plafon,r.pakai,r.selisih,Math.round(r.pct),status].join(',')+'\n';
     });
     return out;
   }
   window._bgTabelEksporCsv = tabelCsvEkspor;
 
-  /* Bungkus unduhHTML bila mengembalikan string; bila menulis file langsung,
-     pembungkus tetap aman karena hanya menambah bila hasilnya berupa string. */
   ['unduhHTML'].forEach(function(fn){
-    var asli=window[fn];
-    if(typeof asli!=='function') return;
+    var asli=window[fn]; if(typeof asli!=='function') return;
     window[fn]=function(){
       var hasil=asli.apply(this, arguments);
-      try{
-        if(typeof hasil==='string'){
-          var t=tabelHtmlEkspor();
-          if(t){
-            if(hasil.indexOf('</body>')>=0) return hasil.replace('</body>', t+'</body>');
-            return hasil+t;
-          }
-        }
-      }catch(e){}
+      try{ if(typeof hasil==='string'){ var t=tabelHtmlEkspor();
+        if(t) return hasil.indexOf('</body>')>=0 ? hasil.replace('</body>', t+'</body>') : hasil+t; } }catch(e){}
       return hasil;
     };
   });
   ['unduhCSV'].forEach(function(fn){
-    var asli=window[fn];
-    if(typeof asli!=='function') return;
+    var asli=window[fn]; if(typeof asli!=='function') return;
     window[fn]=function(){
       var hasil=asli.apply(this, arguments);
-      try{
-        if(typeof hasil==='string'){
-          var t=tabelCsvEkspor(); if(t) return hasil+t;
-        }
-      }catch(e){}
+      try{ if(typeof hasil==='string'){ var t=tabelCsvEkspor(); if(t) return hasil+t; } }catch(e){}
       return hasil;
     };
   });
 
-  /* ---- MENU DI PROFIL ---- */
+  /* ---- menu di Profil (menuju ikhtisar) ---- */
   var _renderSettings=window.renderSettings;
   if(typeof _renderSettings==='function'){
     window.renderSettings=function(){
       var r=_renderSettings.apply(this, arguments);
       try{
-        if(!profSub){
-          var host=S();
-          if(!document.getElementById('mrAnggaran')){
-            var menus=host.querySelectorAll('.menu');
-            var jml=BG.filter(function(b){ return b.periode===U.periodeSekarang(); }).length;
-            var sub=jml?(jml+' '+L('kategori bulan ini','categories this month')):L('Kelola anggaran bulanan','Manage monthly budgets');
-            var html=menuRow('&#128202;', L('Anggaran','Budget'), sub, "goView('anggaran')");
-            var wrap='<div id="mrAnggaran" style="display:contents">'+html+'</div>';
-            if(menus.length){ menus[0].insertAdjacentHTML('beforeend', wrap); }
-            else host.insertAdjacentHTML('beforeend', wrap);
-          }
+        if(!profSub && !document.getElementById('mrAnggaran')){
+          var host=S(), menus=host.querySelectorAll('.menu');
+          var jml=BG.filter(function(b){ return b.periode===U.periodeSekarang(); }).length;
+          var sub=jml?(jml+' '+L('anggaran bulan ini','budgets this month')):L('Kelola anggaran bulanan','Manage monthly budgets');
+          var html='<div id="mrAnggaran" style="display:contents">'+menuRow('&#128202;', L('Anggaran','Budget'), sub, "goView('anggaran')")+'</div>';
+          if(menus.length) menus[0].insertAdjacentHTML('beforeend', html);
+          else host.insertAdjacentHTML('beforeend', html);
         }
       }catch(e){}
       return r;
     };
   }
 
-  /* ---- muat ulang saat ganti bahasa (agar label ikut) ---- */
   var _setLang=window.setLang;
   if(typeof _setLang==='function'){
     window.setLang=function(){
