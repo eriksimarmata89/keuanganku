@@ -7393,7 +7393,7 @@ window.jsonp=function(params){
 </script>
 
 <!-- =====================================================================
-     PATCH ANGGARAN v2  (KeuanganKu)  — menggantikan v1 sepenuhnya
+     PATCH ANGGARAN v3  (KeuanganKu)  — menggantikan v1 & v2 sepenuhnya
      Tempel PERSIS SEBELUM </body> di FILE HTML UTAMA (bukan skeleton.html),
      PALING AKHIR setelah PATCH BAHASA, PATCH MATA UANG, dan PATCH LAPORAN.
 
@@ -7404,12 +7404,17 @@ window.jsonp=function(params){
        dihitung otomatis = persen% x total pemasukan periode yang sama.
 
      Laporan:
-     - Tidak ada blok terpisah. Anggaran tampil INLINE di daftar
-       "Pengeluaran/Pemasukan per kategori" (di bawah grafik lingkaran):
-       tiap kategori menampilkan Realisasi vs Anggaran + persen.
-       Mengikuti toggle (window.repKatMode) & periode (window.repPeriode).
+     - Anggaran tampil INLINE di daftar "Pengeluaran/Pemasukan per
+       kategori" (di bawah grafik lingkaran): ada kartu ringkas
+       "Realisasi vs Anggaran" + sub-baris per kategori. Angka mengikuti
+       tombol mata (fmtRp), toggle (window.repKatMode) & periode.
 
-     Penyimpanan: IndexedDB store 'anggaran' (versi 5) + sinkron GAS.
+     Baru di v3:
+     - Penyimpanan INSTAN: semua kategori ditulis dalam satu transaksi
+       IndexedDB, UI langsung berpindah (tanpa menunggu).
+     - LOKAL SAJA: anggaran TIDAK dikirim ke Google Sheet (hemat kuota
+       pencadangan; backend GAS untuk anggaran tidak diperlukan).
+     - Tampilan laporan lebih profesional + angka bisa disembunyikan.
 ====================================================================== -->
 <script>
 (function(){
@@ -7491,26 +7496,39 @@ window.jsonp=function(params){
      PEMASUKAN  : mode 'rupiah', nilai=rupiah kategori
      PENGELUARAN: mode 'persen', persen=% dari total pemasukan */
   function idAnggaran(tipe, basis, periode, kategori){ return tipe+'|'+basis+'|'+periode+'|'+kategori; }
-  async function simpanRecord(rec){
+
+  /* Anggaran disimpan LOKAL saja (IndexedDB), tanpa dikirim ke Google Sheet,
+     supaya penyimpanan cepat (tanpa jeda jaringan) dan tidak memakan kuota
+     pencadangan. Data anggaran adalah rencana yang mudah diisi ulang. */
+
+  /* Simpan/hapus BANYAK record dalam SATU transaksi IndexedDB (instan).
+     puts: array record; delIds: array id yang dihapus. */
+  function tulisMassal(puts, delIds){
+    return new Promise(function(res,rej){
+      try{
+        var t=DB.transaction('anggaran','readwrite'), st=t.objectStore('anggaran');
+        (puts||[]).forEach(function(r){ st.put(r); });
+        (delIds||[]).forEach(function(id){ st.delete(id); });
+        t.oncomplete=function(){ res(); };
+        t.onerror=function(){ rej(t.error); };
+      }catch(e){ rej(e); }
+    });
+  }
+
+  /* Terapkan perubahan ke memori AG (put + delete) tanpa menyentuh disk. */
+  function terapkanMemori(puts, delIds){
+    var buang={}; (delIds||[]).forEach(function(id){ buang[id]=1; });
+    AG = AG.filter(function(x){ return !buang[x.id]; });
+    (puts||[]).forEach(function(r){
+      var idx=AG.findIndex(function(x){ return x.id===r.id; });
+      if(idx>=0) AG[idx]=r; else AG.push(r);
+    });
+  }
+
+  function siapkanRecord(rec){
     rec.user = u(); rec.updatedAt = new Date().toISOString();
     if(!rec.createdAt) rec.createdAt = rec.updatedAt;
-    rec.terkirim = false;
-    await agPut(rec);
-    var idx=AG.findIndex(function(x){ return x.id===rec.id; });
-    if(idx>=0) AG[idx]=rec; else AG.push(rec);
-    if(typeof getGasUrl==='function' && getGasUrl()){
-      try{ await kirimNoCors('syncAnggaran',{items:[bersih(rec)]}); rec.terkirim=true; await agPut(rec); }catch(e){}
-    }
-  }
-  async function hapusRecord(id){
-    await agDelete(id);
-    AG = AG.filter(function(x){ return x.id!==id; });
-    if(typeof getGasUrl==='function' && getGasUrl()){ try{ await kirimNoCors('deleteAnggaran',{ids:[id], user:u()}); }catch(e){} }
-  }
-  function bersih(r){
-    return {id:r.id,tipe:r.tipe,basis:r.basis,periode:r.periode,kategori:r.kategori,
-      nilai:Number(r.nilai)||0,persen:Number(r.persen)||0,mode:r.mode||'',
-      user:r.user||u(),createdAt:r.createdAt||'',updatedAt:r.updatedAt||''};
+    return rec;
   }
   function ambil(tipe, basis, periode){ return AG.filter(function(r){ return r.tipe===tipe && r.basis===basis && r.periode===periode; }); }
   function totalPemasukanAnggaran(basis, periode){
@@ -7727,13 +7745,16 @@ window.jsonp=function(params){
     var e=editState;
     var sum=hitungTotalPem();
     if(!(sum>0)){ toast(La('Isi minimal satu kategori pemasukan','Enter at least one income category')); return; }
-    for(var i=0;i<KAT_PEMASUKAN.length;i++){
-      var k=KAT_PEMASUKAN[i], v=e.nilai[k]||0, id=idAnggaran('pemasukan',e.basis,e.periode,k);
-      if(v>0){ await simpanRecord({ id:id, tipe:'pemasukan', basis:e.basis, periode:e.periode, kategori:k, nilai:v, persen:0, mode:'rupiah' }); }
-      else if(AG.some(function(r){ return r.id===id; })){ await hapusRecord(id); }
-    }
+    var puts=[], dels=[];
+    KAT_PEMASUKAN.forEach(function(k){
+      var v=e.nilai[k]||0, id=idAnggaran('pemasukan',e.basis,e.periode,k);
+      if(v>0){ puts.push(siapkanRecord({ id:id, tipe:'pemasukan', basis:e.basis, periode:e.periode, kategori:k, nilai:v, persen:0, mode:'rupiah' })); }
+      else if(AG.some(function(r){ return r.id===id; })){ dels.push(id); }
+    });
+    terapkanMemori(puts, dels);
     toast(La('Target pemasukan tersimpan','Income target saved'));
     goView('anggaran');
+    tulisMassal(puts, dels).catch(function(){});   /* tulis ke disk di latar belakang */
   };
 
   window.agOnPengeluaran=function(k, el){
@@ -7757,13 +7778,16 @@ window.jsonp=function(params){
     var sum=hitungPengeluaran();
     if(sum>100){ toast(La('Jumlah persentase melebihi 100%','Total percentage exceeds 100%')); return; }
     if(!(sum>0)){ toast(La('Isi minimal satu alokasi','Enter at least one allocation')); return; }
-    for(var i=0;i<KAT_PENGELUARAN.length;i++){
-      var k=KAT_PENGELUARAN[i], v=e.persen[k]||0, id=idAnggaran('pengeluaran',e.basis,e.periode,k);
-      if(v>0){ await simpanRecord({ id:id, tipe:'pengeluaran', basis:e.basis, periode:e.periode, kategori:k, nilai:0, persen:v, mode:'persen' }); }
-      else if(AG.some(function(r){ return r.id===id; })){ await hapusRecord(id); }
-    }
+    var puts=[], dels=[];
+    KAT_PENGELUARAN.forEach(function(k){
+      var v=e.persen[k]||0, id=idAnggaran('pengeluaran',e.basis,e.periode,k);
+      if(v>0){ puts.push(siapkanRecord({ id:id, tipe:'pengeluaran', basis:e.basis, periode:e.periode, kategori:k, nilai:0, persen:v, mode:'persen' })); }
+      else if(AG.some(function(r){ return r.id===id; })){ dels.push(id); }
+    });
+    terapkanMemori(puts, dels);
     toast(La('Alokasi pengeluaran tersimpan','Expense allocation saved'));
     goView('anggaran');
+    tulisMassal(puts, dels).catch(function(){});
   };
 
   function adaPeriodeLalu(tipe){
@@ -7774,14 +7798,15 @@ window.jsonp=function(params){
     var prev=geserPeriode(editState.basis, editState.periode, -1);
     var sumber=AG.filter(function(r){ return r.tipe===tipe && r.basis===editState.basis && r.periode===prev; });
     if(!sumber.length){ toast(La('Tidak ada anggaran periode sebelumnya','No budget in previous period')); return; }
-    for(var i=0;i<sumber.length;i++){
-      var s=sumber[i];
-      await simpanRecord({ id:idAnggaran(s.tipe, s.basis, editState.periode, s.kategori),
+    var puts=sumber.map(function(s){
+      return siapkanRecord({ id:idAnggaran(s.tipe, s.basis, editState.periode, s.kategori),
         tipe:s.tipe, basis:s.basis, periode:editState.periode, kategori:s.kategori,
         nilai:+s.nilai||0, persen:+s.persen||0, mode:s.mode });
-    }
+    });
+    terapkanMemori(puts, []);
     toast(La('Anggaran disalin','Budget copied'));
     agEdit(tipe);
+    tulisMassal(puts, []).catch(function(){});
   };
 
   /* ============ 9) INTEGRASI LAPORAN (inline di .catlist) ============ */
@@ -7842,8 +7867,12 @@ window.jsonp=function(params){
     window.renderReport.__agHooked2=true;
   }
 
+  /* uang yang menghormati tombol mata (fmtRp bila ada, jika tidak rp) */
+  function uang(n){ return (typeof fmtRp==='function') ? fmtRp(n) : rp(n); }
+
   function suntikAnggaranKeCatlist(){
     var list=document.querySelector('.catlist');
+    if(!list || list.getAttribute('data-ag')) { /* boleh render ulang: tandai ulang di bawah */ }
     if(!list) return;
     var tipe = (window.repKatMode==='masuk') ? 'pemasukan' : 'pengeluaran';
     var rg=rentangLaporan();
@@ -7859,34 +7888,55 @@ window.jsonp=function(params){
     });
     if(!ada) return;
 
+    /* header ringkas total realisasi vs total anggaran */
+    var totTarget=0, totPakai=0;
+    data.forEach(function(d){ totTarget+=d.target; totPakai+=realisasiRentang(tipe, d.kategori, rg.awal, rg.akhir); });
+    var persenTot = totTarget>0 ? Math.round(totPakai/totTarget*100) : 0;
+    var wTot = tipe==='pengeluaran' ? warnaPengeluaran(persenTot) : warnaPemasukan(persenTot);
+    var judul = tipe==='pengeluaran' ? La('Realisasi vs Anggaran Pengeluaran','Actual vs Expense Budget')
+                                     : La('Realisasi vs Anggaran Pemasukan','Actual vs Income Budget');
+
+    if(!list.parentNode.querySelector('.ag-cap')){
+      var cap=document.createElement('div');
+      cap.className='ag-cap';
+      cap.style.cssText='margin:2px 18px 12px;background:var(--card);border-radius:12px;padding:14px 16px';
+      cap.innerHTML=
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">'+
+          '<span style="font-size:12.5px;font-weight:600;color:var(--tx)">'+judul+'</span>'+
+          '<span style="font-size:11px;color:'+wTot+';font-weight:600">'+persenTot+'%</span></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--tx2);margin-bottom:6px">'+
+          '<span>'+La('Realisasi','Actual')+' <b style="color:var(--tx)">'+uang(totPakai)+'</b></span>'+
+          '<span>'+La('Anggaran','Budget')+' <b style="color:var(--tx)">'+uang(totTarget)+'</b></span></div>'+
+        '<div style="height:7px;background:var(--page,#eee);border-radius:99px;overflow:hidden"><div style="width:'+Math.max(0,Math.min(100,persenTot))+'%;height:100%;background:'+wTot+';border-radius:99px"></div></div>'+
+        (rg.tipe!=='bulanan'?('<div style="font-size:10px;color:var(--tx3);margin-top:8px">'+La('Anggaran diprorata dari anggaran bulanan sesuai rentang.','Budget prorated from monthly budget to the range.')+'</div>'):'');
+      /* letakkan tepat sebelum daftar kategori */
+      list.parentNode.insertBefore(cap, list);
+    }
+
+    /* sub-baris rapi per kategori */
     data.forEach(function(d){
       if(d.row.nextSibling && d.row.nextSibling.className==='ag-sub') return;
-      var pakai=realisasiRentang(tipe, d.kategori, rg.awal, rg.akhir);
-      var persen = d.target>0 ? Math.round(pakai/d.target*100) : 0;
-      var w = tipe==='pengeluaran' ? warnaPengeluaran(persen) : warnaPemasukan(persen);
       var sub=document.createElement('div');
       sub.className='ag-sub';
-      sub.style.cssText='padding:0 0 10px;margin-top:-4px';
       if(d.target>0){
+        var pakai=realisasiRentang(tipe, d.kategori, rg.awal, rg.akhir);
+        var persen = Math.round(pakai/d.target*100);
+        var w = tipe==='pengeluaran' ? warnaPengeluaran(persen) : warnaPemasukan(persen);
+        sub.style.cssText='padding:0 0 12px;margin-top:-6px';
         sub.innerHTML=
-          '<div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--tx3);margin-bottom:3px">'+
-            '<span>'+La('Anggaran','Budget')+': '+rp(d.target)+'</span>'+
-            '<span style="color:'+w+'">'+persen+'%'+((tipe==='pengeluaran'&&persen>100)?(' &middot; '+La('lewat','over')):'')+'</span></div>'+
-          '<div style="height:5px;background:var(--page,#eee);border-radius:99px;overflow:hidden"><div style="width:'+Math.max(0,Math.min(100,persen))+'%;height:100%;background:'+w+';border-radius:99px"></div></div>';
+          '<div style="display:flex;align-items:center;gap:8px">'+
+            '<div style="flex:1;height:5px;background:var(--page,#eee);border-radius:99px;overflow:hidden"><div style="width:'+Math.max(0,Math.min(100,persen))+'%;height:100%;background:'+w+';border-radius:99px"></div></div>'+
+            '<span style="font-size:10.5px;color:'+w+';font-weight:600;flex:0 0 auto;min-width:34px;text-align:right">'+persen+'%</span></div>'+
+          '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--tx3);margin-top:3px">'+
+            '<span>'+La('Anggaran','Budget')+' '+uang(d.target)+'</span>'+
+            ((tipe==='pengeluaran'&&persen>100)?('<span style="color:'+MERAH+'">'+La('lewat ','over ')+uang(pakai-d.target)+'</span>'):'')+'</div>';
       } else {
-        sub.innerHTML='<div style="font-size:10.5px;color:var(--tx3)">'+La('Belum dianggarkan','Not budgeted')+'</div>';
+        sub.style.cssText='padding:0 0 10px;margin-top:-6px';
+        sub.innerHTML='<div style="font-size:10px;color:var(--tx3)">'+La('Belum dianggarkan','Not budgeted')+'</div>';
       }
       if(d.row.nextSibling) d.row.parentNode.insertBefore(sub, d.row.nextSibling);
       else d.row.parentNode.appendChild(sub);
     });
-
-    if(rg.tipe!=='bulanan' && list.parentNode && !list.parentNode.querySelector('.ag-note')){
-      var note=document.createElement('div');
-      note.className='ag-note';
-      note.style.cssText='font-size:10px;color:var(--tx3);padding:0 18px 14px';
-      note.textContent=La('Anggaran diprorata dari anggaran bulanan sesuai rentang periode.','Budget prorated from monthly budget to the selected range.');
-      list.parentNode.insertBefore(note, list.nextSibling);
-    }
   }
 
   /* ============ 10) NAVIGASI ============ */
@@ -7940,29 +7990,9 @@ window.jsonp=function(params){
     }
   }
 
-  /* ============ 12) SINKRON GAS ============ */
-  async function tarikAnggaranDariGAS(){
-    if(!(typeof getGasUrl==='function' && getGasUrl())) return;
-    try{
-      var d=await jsonp('action=listAnggaran');
-      var dari=(d.data||[]).filter(function(r){ return r.user===u(); }).map(function(r){ r.terkirim=true; return r; });
-      if(dari.length) await agBulkPut(dari);
-      await muatAnggaran();
-    }catch(e){}
-  }
-  window.tarikAnggaranDariGAS=tarikAnggaranDariGAS;
-  async function dorongAnggaranBelum(){
-    if(!(typeof getGasUrl==='function' && getGasUrl())) return;
-    try{
-      var belum=AG.filter(function(r){ return !r.terkirim; });
-      if(belum.length){
-        await kirimNoCors('syncAnggaran',{items:belum.map(bersih)});
-        belum.forEach(function(r){ r.terkirim=true; });
-        await agBulkPut(belum);
-      }
-    }catch(e){}
-  }
-  window.dorongAnggaranBelum=dorongAnggaranBelum;
+  /* ============ 12) MUAT ULANG SAAT GANTI PENGGUNA ============
+     Anggaran lokal saja. Kita hanya perlu memuat ulang AG dari IndexedDB
+     saat data akun dimuat ulang (mis. setelah login), tanpa jaringan. */
   function pasangHookSinkron(){
     var _mAk=window.muatAkun;
     if(typeof _mAk==='function' && !_mAk.__agHooked){
@@ -7973,26 +8003,6 @@ window.jsonp=function(params){
       };
       window.muatAkun.__agHooked=true;
     }
-    var _td=window.tarikDariSheet;
-    if(typeof _td==='function' && !_td.__agHooked){
-      window.tarikDariSheet=async function(){
-        var r=await _td.apply(this, arguments);
-        try{ await tarikAnggaranDariGAS(); if(window.view) render(); }catch(e){}
-        return r;
-      };
-      window.tarikDariSheet.__agHooked=true;
-    }
-    ['cadangkan','kirimSemua','mulaiSinkron','sinkronSekarang'].forEach(function(nm){
-      var f=window[nm];
-      if(typeof f==='function' && !f.__agHooked){
-        window[nm]=async function(){
-          var r=await f.apply(this, arguments);
-          try{ await dorongAnggaranBelum(); }catch(e){}
-          return r;
-        };
-        window[nm].__agHooked=true;
-      }
-    });
   }
 
   /* ============ 13) BOOT ============ */
@@ -8003,7 +8013,6 @@ window.jsonp=function(params){
     pasangHookAdd();
     pasangHookLaporan();
     pasangHookSinkron();
-    try{ await tarikAnggaranDariGAS(); }catch(e){}
     if(window.view) { try{ render(); }catch(e){} }
   }
   var coba=0;
