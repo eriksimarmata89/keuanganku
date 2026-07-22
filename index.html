@@ -1371,6 +1371,17 @@ async function kirimRentang(){
         trBelum.forEach(function(t){ t.terkirim=true; }); await trBulkPut(trBelum);
       }
     }catch(e){}
+    setProgress(88,'Menyelaraskan anggaran...');
+    try{
+      /* PATCH ANGGARAN v3: ikutkan anggaran (budget) yang belum tercadangkan */
+      var bgBelum=(window.BG||[]).filter(function(b){ return !b.terkirim; });
+      if(bgBelum.length){
+        var bgitems=bgBelum.map(function(b){ return {id:b.id, periode:b.periode, tipe:b.tipe||'pengeluaran', kategori:b.kategori, plafon:b.plafon, createdAt:b.createdAt||'', updatedAt:b.updatedAt||'', user:b.user||emailUser()}; });
+        await kirimNoCors('syncAnggaran',{items:bgitems});
+        bgBelum.forEach(function(b){ b.terkirim=true; });
+        if(window.DB){ bgBelum.forEach(function(b){ try{ window.DB.transaction('anggaran','readwrite').objectStore('anggaran').put(b); }catch(e){} }); }
+      }
+    }catch(e){}
     setProgress(95,'Menyelesaikan...');
     flushDeletes();
     setProgress(100,'Selesai');
@@ -1414,6 +1425,16 @@ async function tarikDariSheet(){
       var dariT=(dt.data||[]).filter(function(r){ return r.user===emailUser(); }).map(function(r){ r.terkirim=true; return r; });
       if(dariT.length) await trBulkPut(dariT);
       await muatTransfer();
+    }catch(e){}
+    setProgress(96,'Mengambil anggaran...');
+    try{
+      /* PATCH ANGGARAN v3: pulihkan anggaran (budget) dari cadangan */
+      var dbg=await jsonp('action=listAnggaran');
+      var dariBG=(dbg.data||[]).filter(function(r){ return r.user===emailUser(); }).map(function(r){ r.tipe=r.tipe||'pengeluaran'; r.terkirim=true; return r; });
+      if(dariBG.length && window.DB){
+        dariBG.forEach(function(b){ try{ window.DB.transaction('anggaran','readwrite').objectStore('anggaran').put(b); }catch(e){} });
+      }
+      if(typeof window.muatAnggaran==='function') await window.muatAnggaran();
     }catch(e){}
     setProgress(100,'Selesai');
     await new Promise(function(r){setTimeout(r,350);});
@@ -7116,7 +7137,7 @@ function cekSesiLogin(){
         localStorage.removeItem('sesi_login');
         onLoginGagal && onLoginGagal(d.status);
       }
-      /* status 'pending' → biarkan polling lanjut */
+      /* status 'pending' ? biarkan polling lanjut */
     })
     .catch(function(){ /* jaringan sesaat bermasalah, coba lagi di tick berikut */ });
 }
