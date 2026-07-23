@@ -9150,6 +9150,137 @@ window.jsonp=function(params){
 
 })();
 </script>
+
+<!-- =====================================================================
+     PATCH ANGGARAN HAPUS v9  (KeuanganKu)
+     Tempel PERSIS SEBELUM </body>, PALING AKHIR — setelah PATCH ANGGARAN
+     SINKRON v8. Patch ini hanya menambal bagian penghapusan.
+
+     MASALAH
+     Menghapus anggaran hanya menghapus di IndexedDB. Baris di Google Sheet
+     baru ikut terhapus bila pengguna kebetulan menekan "Cadangkan".
+
+     PERBAIKAN
+     Penghapusan langsung dikirim ke Google Sheet saat itu juga, lalu
+     diverifikasi dengan membaca ulang daftar. Bila perangkat sedang tidak
+     tersambung, ID tetap tersimpan di antrean dan dikirim otomatis pada
+     pencadangan berikutnya (perilaku lama sebagai jaring pengaman).
+
+     Cara kerja: ID yang benar-benar hilang dari daftar anggaran setelah
+     penghapusan dibandingkan sebelum/sesudah, jadi tidak bergantung pada
+     waktu penulisan antrean.
+====================================================================== -->
+<script>
+(function(){
+  "use strict";
+
+  function La(id,en){ return (window.LANG==='en') ? en : id; }
+  function u(){ return (typeof emailUser==='function' && emailUser()) || ''; }
+  function tersambung(){ return !!(typeof getGasUrl==='function' && getGasUrl()); }
+
+  var LSQ='kk_delqueue_anggaran';
+  function qGet(){ try{ var a=JSON.parse(localStorage.getItem(LSQ)||'[]'); return Array.isArray(a)?a.map(String):[]; }catch(e){ return []; } }
+  function qSet(a){ try{ localStorage.setItem(LSQ, JSON.stringify(a||[])); }catch(e){} }
+  function qAdd(ids){ var q=qGet(); (ids||[]).forEach(function(id){ if(q.indexOf(String(id))<0) q.push(String(id)); }); qSet(q); }
+  function qRemove(ids){ var s={}; (ids||[]).forEach(function(id){ s[String(id)]=1; }); qSet(qGet().filter(function(id){ return !s[id]; })); }
+
+  /* baca daftar anggaran di Sheet (untuk verifikasi) */
+  async function bacaSheet(){
+    if(!tersambung() || typeof jsonp!=='function') return null;
+    try{
+      var d=await jsonp('action=listAnggaran&user='+encodeURIComponent(u()));
+      if(d && 'data' in d && Array.isArray(d.data)) return d.data;
+      return null;
+    }catch(e){ return null; }
+  }
+
+  /* kirim penghapusan sekarang juga, lalu verifikasi */
+  async function hapusDiSheet(ids, diam){
+    if(!ids || !ids.length) return 0;
+    qAdd(ids);                                  /* jaring pengaman bila gagal */
+    if(!tersambung() || typeof kirimNoCors!=='function'){
+      if(!diam) toast(La('Terhapus di perangkat. Akan dihapus di cadangan saat Anda menekan Cadangkan.',
+                         'Deleted on device. It will be removed from the backup when you press Back up.'));
+      return 0;
+    }
+    try{
+      await kirimNoCors('deleteAnggaran',{ids:ids.map(String), user:u()});
+    }catch(e){
+      if(!diam) toast(La('Gagal menghapus di cadangan. Akan dicoba lagi saat mencadangkan.',
+                         'Failed to delete in backup. It will retry on the next backup.'));
+      return 0;
+    }
+    /* verifikasi: ID yang sudah hilang dari Sheet dikeluarkan dari antrean */
+    var data=await bacaSheet();
+    if(data===null){
+      /* tidak bisa verifikasi; anggap terkirim agar antrean tidak menumpuk */
+      qRemove(ids);
+      if(!diam) toast(La('Anggaran dihapus dari perangkat dan cadangan.','Budget deleted from device and backup.'));
+      return ids.length;
+    }
+    var masih={}; data.forEach(function(r){ masih[String(r.id)]=1; });
+    var sukses=ids.filter(function(id){ return !masih[String(id)]; });
+    qRemove(sukses);
+    if(!diam){
+      if(sukses.length===ids.length){
+        toast(La('Anggaran dihapus dari perangkat dan cadangan.','Budget deleted from device and backup.'));
+      } else if(sukses.length){
+        toast(sukses.length+'/'+ids.length+' '+La('terhapus di cadangan, sisanya dicoba lagi nanti.',
+                                                  'deleted in backup, the rest will retry later.'));
+      } else {
+        toast(La('Belum terhapus di cadangan. Akan dicoba lagi saat mencadangkan.',
+                 'Not deleted in backup yet. It will retry on the next backup.'));
+      }
+    }
+    if(typeof updatePip==='function') updatePip();
+    return sukses.length;
+  }
+  window.anggaranHapusDiSheet=hapusDiSheet;
+
+  /* ============ BUNGKUS TOMBOL HAPUS ============
+     Bandingkan daftar anggaran sebelum & sesudah untuk tahu persis ID mana
+     yang dihapus, lalu kirim penghapusannya seketika. */
+  (function(){
+    var _hp=window.agHapusPeriode;
+    if(typeof _hp==='function' && !_hp.__agV9){
+      window.agHapusPeriode=async function(){
+        var sebelum=(window.AG||[]).map(function(r){ return String(r.id); });
+        var hasil=await _hp.apply(this, arguments);
+        /* beri kesempatan penulisan lokal selesai */
+        await new Promise(function(r){ setTimeout(r, 80); });
+        var ada={}; (window.AG||[]).forEach(function(r){ ada[String(r.id)]=1; });
+        var terhapus=sebelum.filter(function(id){ return !ada[id]; });
+        if(terhapus.length){
+          try{ await hapusDiSheet(terhapus, false); }catch(e){}
+          try{ if(typeof render==='function') render(); }catch(e){}
+        }
+        return hasil;
+      };
+      window.agHapusPeriode.__agV9=true;
+    }
+  })();
+
+  /* ============ HAPUS SATUAN LEWAT PENYIMPANAN ULANG ============
+     Saat menyimpan, kategori yang persennya/nominalnya dikosongkan akan
+     dihapus dari daftar. Kirim penghapusannya seketika juga. */
+  ['agSimpanPemasukan','agSimpanPengeluaran'].forEach(function(nm){
+    var f=window[nm];
+    if(typeof f==='function' && !f.__agV9){
+      window[nm]=async function(){
+        var sebelum=(window.AG||[]).map(function(r){ return String(r.id); });
+        var hasil=await f.apply(this, arguments);
+        await new Promise(function(r){ setTimeout(r, 120); });
+        var ada={}; (window.AG||[]).forEach(function(r){ ada[String(r.id)]=1; });
+        var terhapus=sebelum.filter(function(id){ return !ada[id]; });
+        if(terhapus.length){ try{ await hapusDiSheet(terhapus, true); }catch(e){} }
+        return hasil;
+      };
+      window[nm].__agV9=true;
+    }
+  });
+
+})();
+</script>
   
 </body>
 </html>
