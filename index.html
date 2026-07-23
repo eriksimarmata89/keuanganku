@@ -8573,7 +8573,20 @@ window.jsonp=function(params){
     var _td=window.tarikDariSheet;
     if(typeof _td==='function' && !_td.__agF){
       window.tarikDariSheet=bungkusSatuModal(async function(){
-        var r=await _td.apply(this, arguments);
+        /* Selama fungsi asli berjalan, nilai progresnya diskalakan ke
+           0-82% dan teks "Selesai" ditahan, sehingga tahap anggaran
+           menyambung mulus (85 -> 100) tanpa pernah mundur dari 100%. */
+        var _set=window.setProgress;
+        if(adaProg && tersambung()){
+          window.setProgress=function(p,s){
+            var teks=s;
+            if((Number(p)||0)>=100){ teks=La('Mengambil anggaran...','Fetching budget...'); }
+            try{ _set(Math.min(82, Math.round((Number(p)||0)*0.82)), teks); }catch(e){}
+          };
+        }
+        var r;
+        try{ r=await _td.apply(this, arguments); }
+        finally{ if(adaProg) window.setProgress=_set; }
         try{
           if(tersambung()){
             if(adaProg){ showProgress(La('Memulihkan data','Restoring data'));
@@ -8622,7 +8635,7 @@ window.jsonp=function(params){
   })();
 
 })();
-</script>  
+</script>
   
 </body>
 </html>
