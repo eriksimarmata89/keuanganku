@@ -1453,9 +1453,9 @@ function render(){
 /* ====== LOGIN / AKUN (NOMOR TELEPON) ====== */
 function renderLogin(){
   var html='<div class="login-wrap"><div class="logo-mark">'+logoMark(64)+'</div><div class="logo">KeuanganKu</div>'+
-    '<div class="logo-sub">Masuk atau daftar menggunakan nomor Telepon Anda. Data tersimpan di perangkat ini dan tercatat atas nama nomor tersebut.</div>'+
+    '<div class="logo-sub">Masuk atau daftar menggunakan email Anda. Data tersimpan di perangkat ini dan tercatat atas nama email tersebut.</div>'+
     '<label class="fl">Nama</label><input class="field" id="loginNama" placeholder="Nama Anda">'+
-    '<label class="fl">Nomor Telepon</label><input class="field" id="loginPhone" type="tel" inputmode="numeric" placeholder="08xxxxxxxxxx" oninput="onLoginPhone(this)">'+
+    '<label class="fl">Alamat Email</label><input class="field" id="loginPhone" type="tel" inputmode="numeric" placeholder="...............@gmail.com" oninput="onLoginPhone(this)">'+
     '<button class="save pem" onclick="masukManual()">Masuk</button>'+
     '</div>';
   S().innerHTML=html;
@@ -1466,7 +1466,7 @@ async function masukManual(){
   var raw=(document.getElementById('loginPhone').value||'').trim();
   var hp=normalisasiHP(raw);
   if(!n){ toast('Nama belum diisi'); return; }
-  if(!validHP(hp)){ toast('Nomor Telepon tidak valid'); return; }
+  if(!validHP(hp)){ toast('Email tidak valid'); return; }
   var fotoTersimpan=null;
   try{ var rec=await avatarGet(hp); fotoTersimpan=rec?rec.picture:null; }catch(e){}
   setUser({phone:hp, name:n, picture:fotoTersimpan||''}); afterLogin();
@@ -2955,7 +2955,7 @@ function actAdd(kind){
           '<div class="about-line"><span>Status Aplikasi</span><b>Free to use</b></div>'+
           '<div class="about-line"><span>Penyimpanan</span><b>Di perangkat (offline)</b></div>'+
           '<div class="about-line"><span>Cadangan</span><b>Pencadangan pribadi (Google Drive)</b></div>'+
-          '<div class="about-line"><span>Login</span><b>Nomor Telepon</b></div>'+
+          '<div class="about-line"><span>Login</span><b>Google Mail</b></div>'+
         '</div>'+
         '<div class="sec-head" style="padding:2px 0 8px"><div class="t">Privasi dan Keamanan Data</div></div>'+
         '<div class="panel" style="margin:0 0 14px">'+
@@ -6053,8 +6053,7 @@ var KAMUS={
  "Ambil foto baru": "Take a new photo",
  "Kamera": "Camera",
  "Galeri": "Gallery",
- "Nomor Telepon": "Phone Number",
- "Google Email": "Google Email",
+ "Google Mail": "Google Mail",
  "Status Aplikasi": "App Status",
  "Pencatat keuangan pribadi": "Personal finance tracker",
  "Privasi dan Keamanan Data": "Data Privacy & Security",
@@ -6070,13 +6069,13 @@ var KAMUS={
  "Semua transaksi dihapus": "All transactions deleted",
  "Data lokal telah dihapus. Gunakan menu Cadangan untuk memulihkan data dari server.": "Local data has been deleted. Use the Backup menu to restore data from the server.",
  "Data yang belum dicadangkan tidak dapat dipulihkan. Pastikan pencadangan terakhir telah berhasil sebelum melanjutkan.": "Data that has not been backed up cannot be recovered. Make sure the last backup succeeded before continuing.",
- "Masuk atau daftar menggunakan nomor Telepon Anda. Data tersimpan di perangkat ini dan tercatat atas nama nomor tersebut.": "Sign in or register with your phone number. Data is stored on this device and recorded under that number.",
+ "Masuk atau daftar menggunakan Email Anda. Data tersimpan di perangkat ini dan tercatat atas nama email tersebut.": "Sign in or register with your gmail. Data is stored on this device and recorded under that gmail.",
  "Belum ada permintaan kode untuk nomor ini": "No code has been requested for this number",
  "Kode sudah kedaluwarsa": "The code has expired",
  "Kode salah": "Wrong code",
  "Kode disalin": "Code copied",
  "Nomor tidak valid": "Invalid number",
- "Nomor Telepon tidak valid": "Invalid phone number",
+ "Gmails tidak valid": "Gmail is invalid",
  "Gagal mengirim pesan": "Failed to send the message",
  "atas nama": "under the name",
  "Cadangkan Data": "Back Up Data",
