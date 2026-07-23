@@ -7709,13 +7709,16 @@ window.jsonp=function(params){
       '.ag-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 10px;margin-bottom:14px}'+
       '.ag-row .nm{grid-column:1;grid-row:1;font-size:14px;color:var(--tx);line-height:1.3;word-break:break-word}'+
       '.ag-row .ct{grid-column:2;grid-row:1;display:flex;align-items:center;gap:6px}'+
-      '.ag-row .ct input{width:62px;min-width:0;text-align:right;margin:0;padding:9px 10px;box-sizing:border-box}'+
+      '.ag-row .ct input{width:72px;min-width:0;text-align:right;margin:0;padding:9px 10px;box-sizing:border-box}'+
       '.ag-row .ct .pc{color:var(--tx3);font-size:13px}'+
       '.ag-row .rpv{grid-column:1 / -1;grid-row:2;text-align:right;font-size:11.5px;color:var(--tx3)}'+
       '.ag-kalk{flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:36px;height:36px;'+
         'padding:0;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--tx2);cursor:pointer}'+
       '.ag-rowin{display:flex;align-items:center;gap:10px;margin-bottom:10px}'+
-      '.ag-rowin .nm{flex:1;font-size:14px;color:var(--tx)}';
+      '.ag-rowin .nm{flex:0 1 auto;min-width:0;font-size:14px;color:var(--tx);'+
+        'overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'+
+      '.ag-rowin .nominal-wrap{flex:1 1 auto;min-width:0;margin:0}'+
+      '.ag-rowin .nominal-wrap input{width:100%;min-width:0;box-sizing:border-box;text-align:right}';
     document.head.appendChild(st);
   })();
   function setAgHead(aktif){
@@ -7991,7 +7994,7 @@ window.jsonp=function(params){
     var rows=(window.KAT_PEMASUKAN||[]).map(function(k){
       var val=eNilai[k]||0;
       return '<div class="ag-rowin"><span class="nm">'+esc(k)+'</span>'+
-        '<div class="nominal-wrap" style="margin:0;flex:0 0 auto;width:150px"><span class="rp">Rp</span>'+
+        '<div class="nominal-wrap"><span class="rp">Rp</span>'+
         '<input inputmode="numeric" placeholder="0" value="'+(val?(+val).toLocaleString('id-ID'):'')+'" '+
           'oninput="agInNilai(\''+esc(k)+'\',this)"></div></div>';
     }).join('');
@@ -8322,11 +8325,23 @@ window.jsonp=function(params){
   })();
 
   /* ================= INTEGRASI: BOTTOM SHEET (+) ================= */
+  function isiTeksSheet(btn){
+    var at=btn.querySelector('.at'), as=btn.querySelector('.as');
+    if(at) at.textContent=La('Buat Anggaran','Create Budget');
+    if(as) as.textContent=La('Rencana pemasukan dan pengeluaran','Plan income and expenses');
+  }
   function pasangItemSheet(){
     var acts=document.getElementById('acts');
     if(!acts) return false;
     var card=acts.querySelector('.acts-card');
-    if(!card || card.querySelector('#agSheetBtn')) return true;
+    if(!card) return false;
+    /* Bila tombol sudah ada, JANGAN berhenti: perbarui teksnya. Bottom sheet
+       berada di luar area render(), jadi pergantian bahasa tidak menyentuhnya
+       sendiri. Frasa ini juga tidak ada di KAMUS, sehingga penerjemah balik
+       tidak bisa memulihkannya. */
+    var lama=card.querySelector('#agSheetBtn');
+    if(lama){ isiTeksSheet(lama); return true; }
+
     var anchor=null;
     card.querySelectorAll('.acts-btn').forEach(function(b){
       if((b.getAttribute('onclick')||'').indexOf("actAdd('akun')")>=0) anchor=b;
@@ -8335,8 +8350,8 @@ window.jsonp=function(params){
     btn.className='acts-btn'; btn.id='agSheetBtn';
     btn.setAttribute('onclick',"actAdd('anggaran')");
     btn.innerHTML='<span class="acts-ic" style="background:#0F6E56">&#128202;</span>'+
-      '<div class="acts-tx"><div class="at">'+La('Buat Anggaran','Create Budget')+'</div>'+
-      '<div class="as">'+La('Rencanakan pemasukan dan pengeluaran Anda','Plan income and expenses')+'</div></div>';
+      '<div class="acts-tx"><div class="at"></div><div class="as"></div></div>';
+    isiTeksSheet(btn);
     if(anchor && anchor.parentNode){
       if(anchor.nextSibling) anchor.parentNode.insertBefore(btn, anchor.nextSibling);
       else anchor.parentNode.appendChild(btn);
@@ -8357,6 +8372,26 @@ window.jsonp=function(params){
         return _actAdd.apply(this, arguments);
       };
       window.actAdd.__agF=true;
+    }
+    /* pergantian bahasa: segarkan teks tombol di bottom sheet */
+    var _setLang=window.setLang;
+    if(typeof _setLang==='function' && !_setLang.__agF){
+      window.setLang=function(){
+        var r=_setLang.apply(this, arguments);
+        try{ setTimeout(pasangItemSheet, 0); }catch(e){}
+        return r;
+      };
+      window.setLang.__agF=true;
+    }
+    /* jaring pengaman: segarkan juga tiap kali sheet dibuka */
+    var _openFab=window.openFabMenu;
+    if(typeof _openFab==='function' && !_openFab.__agF){
+      window.openFabMenu=function(){
+        var r=_openFab.apply(this, arguments);
+        try{ pasangItemSheet(); }catch(e){}
+        return r;
+      };
+      window.openFabMenu.__agF=true;
     }
   })();
 
