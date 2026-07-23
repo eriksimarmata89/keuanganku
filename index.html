@@ -8267,6 +8267,249 @@ window.jsonp=function(params){
 
 })();
 </script>
+
+<!-- =====================================================================
+     PATCH KATEGORI ID v1  (KeuanganKu)
+     Tempel PERSIS SEBELUM </body> di FILE HTML UTAMA, PALING AKHIR
+     (setelah PATCH KATEGORI KUSTOM, PATCH BAHASA, PATCH MATA UANG,
+     PATCH KATEGORI DWIBAHASA, dan PATCH ANGGARAN).
+
+     MASALAH YANG DIPERBAIKI
+     Kategori selama ini disimpan sebagai TEKS. Bila pengguna mencatat
+     saat bahasa Inggris, tersimpan "Food & Drinks"; saat bahasa Indonesia
+     tersimpan "Makan & Minum". Di Google Sheet keduanya jadi dua kategori
+     berbeda, padahal sama.
+
+     SOLUSI
+     Kategori diikat ke ID stabil (mis. k_makan). Label Indonesia/Inggris
+     hanya tampilan dari ID yang sama.
+
+     CARA KERJA (tanpa membongkar 15 titik penulisan)
+     - Semua penulisan transaksi bermuara ke idbPut/idbBulkPut. Kedua
+       fungsi itu dibungkus: setiap record otomatis mendapat kategoriId,
+       dan field kategori dinormalkan ke label Indonesia kanonik.
+     - sortTX() dibungkus: TX di memori dinormalkan saat dimuat, sehingga
+       laporan/daftar/anggaran otomatis MENYATUKAN data lama berbahasa
+       Inggris dengan yang Indonesia — tanpa mengubah data lama di Sheet.
+     - kirimNoCors dibungkus: payload 'sync' menyertakan kategoriId
+       sehingga kolom baru di Google Sheet ikut terisi.
+
+     DATA LAMA
+     Sesuai pilihan: data lama di Sheet DIBIARKAN apa adanya. Hanya
+     tampilan yang menyatu, dan hanya data baru (atau data lama yang
+     kebetulan dicadangkan ulang) yang tersimpan dalam bentuk kanonik.
+
+     BACKEND: tambahkan kolom kategoriId (lihat TAMBAHAN_GAS_KATEGORI_ID.txt)
+====================================================================== -->
+<script>
+(function(){
+  "use strict";
+
+  /* ============ 1) REGISTRI KATEGORI ============
+     id     : identitas stabil, tidak pernah berubah
+     tipe   : 'pengeluaran' | 'pemasukan'
+     id_lbl : label Bahasa Indonesia (kanonik untuk penyimpanan)
+     en_lbl : label Bahasa Inggris (tampilan saja)
+     Pasangan label mengikuti kamus terjemahan yang sudah dipakai aplikasi. */
+  var REG = [
+    /* --- pengeluaran bawaan --- */
+    {id:'k_belanja',    tipe:'pengeluaran', id_lbl:'Belanja',              en_lbl:'Shopping'},
+    {id:'k_makan',      tipe:'pengeluaran', id_lbl:'Makan & Minum',        en_lbl:'Food & Drinks'},
+    {id:'k_transport',  tipe:'pengeluaran', id_lbl:'Transportasi',         en_lbl:'Transportation'},
+    {id:'k_listrik',    tipe:'pengeluaran', id_lbl:'Listrik & Air',        en_lbl:'Electricity & Water'},
+    {id:'k_pulsa',      tipe:'pengeluaran', id_lbl:'Pulsa & Internet',     en_lbl:'Phone & Internet'},
+    {id:'k_kesehatan',  tipe:'pengeluaran', id_lbl:'Kesehatan',            en_lbl:'Health'},
+    {id:'k_pendidikan', tipe:'pengeluaran', id_lbl:'Pendidikan',           en_lbl:'Education'},
+    {id:'k_hiburan',    tipe:'pengeluaran', id_lbl:'Hiburan',              en_lbl:'Entertainment'},
+    {id:'k_lainnya',    tipe:'pengeluaran', id_lbl:'Lainnya',              en_lbl:'Others'},
+    /* --- kategori tambahan yang punya pasangan terjemahan di kamus --- */
+    {id:'k_pakaian',    tipe:'pengeluaran', id_lbl:'Pakaian',              en_lbl:'Clothing'},
+    {id:'k_perkakas',   tipe:'pengeluaran', id_lbl:'Peralatan & Perkakas', en_lbl:'Tools & Equipment'},
+    {id:'k_sosial',     tipe:'pengeluaran', id_lbl:'Dana Sosial',          en_lbl:'Social Fund'},
+    /* --- pemasukan bawaan --- */
+    {id:'k_gaji',       tipe:'pemasukan',   id_lbl:'Gaji',                 en_lbl:'Salary'},
+    {id:'k_bonus',      tipe:'pemasukan',   id_lbl:'Bonus',                en_lbl:'Bonus'},
+    {id:'k_usaha',      tipe:'pemasukan',   id_lbl:'Usaha',                en_lbl:'Business'},
+    {id:'k_hadiah',     tipe:'pemasukan',   id_lbl:'Hadiah',               en_lbl:'Gift'},
+    {id:'k_lainnya_in', tipe:'pemasukan',   id_lbl:'Lainnya',              en_lbl:'Others'}
+  ];
+
+  /* indeks pencarian cepat: teks (apa pun bahasanya) -> entri */
+  var byId={}, byTeks={};
+  function daftarkan(e){
+    byId[e.id]=e;
+    byTeks[e.tipe+'|'+norm(e.id_lbl)]=e;
+    byTeks[e.tipe+'|'+norm(e.en_lbl)]=e;
+  }
+  function norm(s){ return String(s||'').trim().toLowerCase().replace(/\s+/g,' '); }
+  REG.forEach(daftarkan);
+
+  /* kategori tambahan bikinan pengguna: id diturunkan dari namanya agar stabil */
+  function idKustom(teks){
+    return 'k_c_'+norm(teks).replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,40);
+  }
+
+  /* ============ 2) API PUBLIK ============ */
+
+  /* teks apa pun (ID/EN) + tipe  ->  id kategori */
+  function katId(teks, tipe){
+    if(!teks) return '';
+    var t=String(teks).trim();
+    if(byId[t]) return t;                       /* sudah berupa id */
+    var e=byTeks[(tipe||'pengeluaran')+'|'+norm(t)];
+    if(e) return e.id;
+    /* coba tipe lain (jaga-jaga bila tipe tak dikirim / salah) */
+    var lain=(tipe==='pemasukan')?'pengeluaran':'pemasukan';
+    e=byTeks[lain+'|'+norm(t)];
+    if(e) return e.id;
+    return idKustom(t);                          /* kategori tambahan pengguna */
+  }
+  /* id -> label sesuai bahasa aktif (untuk tampilan) */
+  function katLabel(id, teksCadangan){
+    var e=byId[id];
+    if(e) return (window.LANG==='en') ? e.en_lbl : e.id_lbl;
+    return teksCadangan || teksKustomDari(id) || '';
+  }
+  /* id -> label Indonesia kanonik (untuk penyimpanan) */
+  function katKanonik(id, teksCadangan){
+    var e=byId[id];
+    if(e) return e.id_lbl;
+    return teksCadangan || teksKustomDari(id) || '';
+  }
+  /* untuk id kustom, cari teks aslinya dari daftar kategori yang aktif */
+  function teksKustomDari(id){
+    var semua=[].concat(window.KAT_PENGELUARAN||[], window.KAT_PEMASUKAN||[]);
+    for(var i=0;i<semua.length;i++){ if(idKustom(semua[i])===id) return semua[i]; }
+    return '';
+  }
+
+  window.katId=katId;
+  window.katLabel=katLabel;
+  window.katKanonik=katKanonik;
+
+  /* ============ 3) NORMALISASI RECORD ============
+     Setiap record transaksi dipastikan punya:
+     - kategoriId : id stabil
+     - kategori   : label Indonesia kanonik (agar Sheet mudah dibaca)   */
+  function normalkanRecord(r){
+    if(!r || typeof r!=='object') return r;
+    if(!('kategori' in r) && !('kategoriId' in r)) return r;   /* bukan record transaksi */
+    var tipe=r.tipe||'pengeluaran';
+    var id=r.kategoriId || katId(r.kategori, tipe);
+    if(!id) return r;
+    r.kategoriId=id;
+    var kanonik=katKanonik(id, r.kategori);
+    if(kanonik) r.kategori=kanonik;
+    return r;
+  }
+  window.normalkanKategoriRecord=normalkanRecord;
+
+  /* ============ 4) HOOK PENULISAN (idbPut / idbBulkPut) ============
+     Semua jalur simpan transaksi (manual, struk, OCR, multi-barang,
+     diskon) bermuara ke sini, jadi cukup satu tempat. */
+  (function(){
+    var _put=window.idbPut;
+    if(typeof _put==='function' && !_put.__katHooked){
+      window.idbPut=function(item){ try{ normalkanRecord(item); }catch(e){} return _put.call(this, item); };
+      window.idbPut.__katHooked=true;
+    }
+    var _bulk=window.idbBulkPut;
+    if(typeof _bulk==='function' && !_bulk.__katHooked){
+      window.idbBulkPut=function(items){
+        try{ (items||[]).forEach(normalkanRecord); }catch(e){}
+        return _bulk.call(this, items);
+      };
+      window.idbBulkPut.__katHooked=true;
+    }
+  })();
+
+  /* ============ 5) HOOK PEMUATAN (sortTX) ============
+     Menyatukan tampilan data lama: record berbahasa Inggris dinormalkan
+     di MEMORI saja, sehingga laporan/daftar/anggaran melihatnya sebagai
+     satu kategori. Data di Google Sheet tidak diubah. */
+  (function(){
+    var _sort=window.sortTX;
+    if(typeof _sort==='function' && !_sort.__katHooked){
+      window.sortTX=function(){
+        try{ (window.TX||[]).forEach(normalkanRecord); }catch(e){}
+        return _sort.apply(this, arguments);
+      };
+      window.sortTX.__katHooked=true;
+    }
+  })();
+
+  /* ============ 6) HOOK PENGIRIMAN KE GAS ============
+     Menyertakan kategoriId pada payload sinkron transaksi. */
+  (function(){
+    var _kirim=window.kirimNoCors;
+    if(typeof _kirim==='function' && !_kirim.__katHooked){
+      window.kirimNoCors=function(action, extra){
+        try{
+          if(action==='sync' && extra && Array.isArray(extra.items)){
+            extra.items.forEach(function(it){
+              if(it && (it.kategori || it.kategoriId)){
+                var id=it.kategoriId || katId(it.kategori, it.tipe);
+                it.kategoriId=id;
+                var kan=katKanonik(id, it.kategori);
+                if(kan) it.kategori=kan;
+              }
+            });
+          }
+        }catch(e){}
+        return _kirim.call(this, action, extra);
+      };
+      window.kirimNoCors.__katHooked=true;
+    }
+  })();
+
+  /* ============ 7) HOOK PENARIKAN DARI GAS ============
+     Record dari Sheet ikut dinormalkan saat masuk ke IndexedDB
+     (lewat idbBulkPut yang sudah dibungkus di atas), jadi tidak perlu
+     penanganan khusus. Bagian ini hanya memastikan TX di memori ikut
+     rapi setelah pemulihan. */
+  (function(){
+    var _tarik=window.tarikDariSheet;
+    if(typeof _tarik==='function' && !_tarik.__katHooked){
+      window.tarikDariSheet=async function(){
+        var r=await _tarik.apply(this, arguments);
+        try{ (window.TX||[]).forEach(normalkanRecord); if(typeof render==='function') render(); }catch(e){}
+        return r;
+      };
+      window.tarikDariSheet.__katHooked=true;
+    }
+  })();
+
+  /* ============ 8) ANGGARAN IKUT MEMAKAI ID ============
+     Record anggaran diberi kategoriId agar cocok lintas bahasa. */
+  (function(){
+    if(!window.AG) return;
+    try{
+      (window.AG||[]).forEach(function(r){
+        if(r && r.kategori && !r.kategoriId){
+          r.kategoriId=katId(r.kategori, r.tipe);
+          var kan=katKanonik(r.kategoriId, r.kategori);
+          if(kan) r.kategori=kan;
+        }
+      });
+    }catch(e){}
+  })();
+
+  /* ============ 9) NORMALISASI SAAT PATCH DIMUAT ============ */
+  (function(){
+    var coba=0;
+    (function tunggu(){
+      coba++;
+      if(window.TX && window.TX.length!==undefined){
+        try{
+          TX.forEach(normalkanRecord);
+          if(typeof render==='function' && typeof view!=='undefined' && view) render();
+        }catch(e){}
+      } else if(coba<80){ setTimeout(tunggu, 100); }
+    })();
+  })();
+
+})();
+</script>
   
 </body>
 </html>
