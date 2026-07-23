@@ -9281,6 +9281,418 @@ window.jsonp=function(params){
 
 })();
 </script>
+
+<!-- =====================================================================
+     PATCH ANGGARAN KALKULATOR & DESIMAL v10  (KeuanganKu)
+     Tempel PERSIS SEBELUM </body>, PALING AKHIR — setelah PATCH ANGGARAN
+     SINKRON v8 dan PATCH ANGGARAN HAPUS v9.
+
+     ISI
+     1. Ikon kalkulator di tiap kategori pada "Alokasi pengeluaran".
+        Hasil hitungan dipakai sebagai jumlah rupiah, dan persennya
+        dihitung otomatis: hasil / total pemasukan x 100.
+        Mengisi persen langsung tetap bisa seperti biasa.
+     2. Persen mendukung DESIMAL (mis. 2,5%). Koma maupun titik diterima.
+     3. Perbaikan hitungan ganda di tab Pencadangan: menambah 1 anggaran
+        sempat terhitung 2 karena dua lapis patch sama-sama menambahkan.
+        Sekarang angkanya dihitung ulang dari sumbernya (idempoten).
+
+     CATATAN TEKNIS
+     Nilai persen desimal disimpan sebagai angka pecahan di IndexedDB dan
+     Google Sheet (kolom persen). Target rupiah tetap = persen% x total
+     pemasukan, jadi tidak ada perubahan pada rumus mana pun.
+====================================================================== -->
+<script>
+(function(){
+  "use strict";
+
+  function La(id,en){ return (window.LANG==='en') ? en : id; }
+  function pad2(n){ return (n<10?'0':'')+n; }
+  function uang(n){ return (typeof rp==='function') ? rp(n) : ('Rp '+(Number(n)||0).toLocaleString('id-ID')); }
+
+  /* ================================================================
+   * A) PELACAK PERIODE AKTIF
+   *    Modul anggaran menyimpan basis/periode di dalam closure. Kita
+   *    melacaknya sendiri dengan membungkus fungsi yang sudah diekspor,
+   *    memakai logika yang sama persis.
+   * ================================================================ */
+  var sBasis='bulan';
+  var sPeriode=bulanIni();
+
+  function bulanIni(){ var d=new Date(); return d.getFullYear()+'-'+pad2(d.getMonth()+1); }
+  function seninDari(dObj){
+    var d=new Date(dObj); d.setHours(0,0,0,0);
+    var h=d.getDay(), mundur=(h===0?6:h-1);
+    d.setDate(d.getDate()-mundur);
+    return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+  }
+  function mingguIni(){ return seninDari(new Date()); }
+  function defaultPeriode(){ return (sBasis==='minggu') ? mingguIni() : bulanIni(); }
+  function geser(arah){
+    if(sBasis==='minggu'){ var d=new Date(sPeriode+'T00:00:00'); d.setDate(d.getDate()+7*arah); return seninDari(d); }
+    var p=sPeriode.split('-'); var b=new Date(+p[0], (+p[1])-1+arah, 1);
+    return b.getFullYear()+'-'+pad2(b.getMonth()+1);
+  }
+  sPeriode=defaultPeriode();
+
+  (function(){
+    var _buka=window.bukaAnggaran;
+    if(typeof _buka==='function' && !_buka.__v10){
+      window.bukaAnggaran=function(){ sPeriode=defaultPeriode(); return _buka.apply(this, arguments); };
+      window.bukaAnggaran.__v10=true;
+    }
+    var _basis=window.agSetBasis;
+    if(typeof _basis==='function' && !_basis.__v10){
+      window.agSetBasis=function(b){ sBasis=b; sPeriode=defaultPeriode(); return _basis.apply(this, arguments); };
+      window.agSetBasis.__v10=true;
+    }
+    var _geser=window.agGeser;
+    if(typeof _geser==='function' && !_geser.__v10){
+      window.agGeser=function(arah){ sPeriode=geser(arah); return _geser.apply(this, arguments); };
+      window.agGeser.__v10=true;
+    }
+  })();
+
+  /* total pemasukan yang dianggarkan pada periode aktif */
+  function totalPemasukan(){
+    return (window.AG||[]).filter(function(r){
+      return r.tipe==='pemasukan' && r.basis===sBasis && r.periode===sPeriode;
+    }).reduce(function(s,r){ return s+(Number(r.nilai)||0); }, 0);
+  }
+
+  /* ================================================================
+   * B) PERSEN DESIMAL
+   * ================================================================ */
+  function keAngka(teks){
+    var raw=String(teks||'').replace(/[^0-9.,]/g,'').replace(',', '.');
+    /* bila ada lebih dari satu pemisah, ambil yang terakhir sebagai desimal */
+    var v=parseFloat(raw);
+    return isFinite(v) ? Math.max(0, Math.min(100, v)) : 0;
+  }
+  function tampilAngka(v){
+    if(!isFinite(v) || v===0) return '';
+    var s=(Math.round(v*100)/100).toString();
+    return (window.LANG==='en') ? s : s.replace('.', ',');
+  }
+  function idKat(k){ try{ return btoa(unescape(encodeURIComponent(k))).replace(/=/g,''); }catch(e){ return ''; } }
+
+  function barisPersen(){
+    return Array.prototype.slice.call(
+      document.querySelectorAll('input[oninput^="agOnPengeluaran"]'));
+  }
+  function katDariInput(el){
+    var m=(el.getAttribute('oninput')||'').match(/agOnPengeluaran\('([^']*)'/);
+    return m ? m[1] : '';
+  }
+
+  /* perbarui tampilan rupiah tiap baris + total, memakai nilai desimal */
+  function perbaruiTampilan(){
+    var total=totalPemasukan(), sum=0;
+    barisPersen().forEach(function(el){
+      var k=katDariInput(el);
+      var v=keAngka(el.value);
+      sum+=v;
+      var span=document.getElementById('agTk_'+idKat(k));
+      if(span && total>0) span.textContent=uang(Math.round(total*v/100));
+      else if(span && total<=0) span.textContent=uang(0);
+    });
+    sum=Math.round(sum*100)/100;
+    var elP=document.getElementById('agSumPct');
+    if(elP){
+      elP.textContent=tampilAngka(sum)===''?'0%':(tampilAngka(sum)+'%');
+      elP.style.color = sum>100 ? '#E24B4A' : (sum===100 ? '#1D9E75' : 'var(--tx2)');
+    }
+    var elR=document.getElementById('agSumRp');
+    if(elR) elR.textContent=uang(Math.round(total*sum/100));
+  }
+
+  /* handler input persen: menerima desimal */
+  (function(){
+    var _asli=window.agOnPengeluaran;
+    if(typeof _asli==='function' && !_asli.__v10){
+      window.agOnPengeluaran=function(k, el){
+        var v=keAngka(el.value);
+        /* isi state internal modul dengan bilangan bulat agar record tetap
+           dibuat (nilai pastinya dikoreksi saat menyimpan) */
+        try{ _asli(k, { value: String(v>0 ? Math.max(1, Math.round(v)) : 0) }); }catch(e){}
+        perbaruiTampilan();
+      };
+      window.agOnPengeluaran.__v10=true;
+    }
+  })();
+
+  /* ================================================================
+   * C) KALKULATOR
+   * ================================================================ */
+  function hitungEkspresi(ek){
+    var bersih=String(ek||'').replace(/[^0-9+\-*/().]/g,'');
+    if(!bersih) return null;
+    try{
+      var hasil=Function('"use strict";return ('+bersih+')')();
+      return (typeof hasil==='number' && isFinite(hasil)) ? hasil : null;
+    }catch(e){ return null; }
+  }
+
+  var kalkTarget=null;   /* input persen yang sedang dihitung */
+
+  function bukaKalkulator(el){
+    kalkTarget=el;
+    var total=totalPemasukan();
+    var lama=document.getElementById('agKalk');
+    if(lama) lama.remove();
+
+    var ov=document.createElement('div');
+    ov.id='agKalk';
+    ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);'+
+      'display:flex;align-items:flex-end;justify-content:center';
+    var tombol=[['7','8','9','/'],['4','5','6','*'],['1','2','3','-'],['0','000','.','+']];
+    ov.innerHTML=
+      '<div style="width:100%;max-width:var(--maxw,480px);background:var(--card);'+
+        'border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px))">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+          '<span style="font-size:14px;font-weight:700;color:var(--tx)">'+La('Kalkulator','Calculator')+'</span>'+
+          '<button id="agKalkTutup" style="border:none;background:none;font-size:22px;color:var(--tx3);line-height:1">&times;</button>'+
+        '</div>'+
+        '<input id="agKalkEk" inputmode="decimal" placeholder="0" '+
+          'style="width:100%;box-sizing:border-box;text-align:right;font-size:20px;font-weight:700;'+
+          'padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--page);color:var(--tx)">'+
+        '<div id="agKalkHasil" style="text-align:right;font-size:12px;color:var(--tx3);margin:6px 2px 10px">&nbsp;</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">'+
+          tombol.map(function(baris){
+            return baris.map(function(t){
+              var ops=/[+\-*/]/.test(t) && t.length===1;
+              return '<button class="agKalkBtn" data-k="'+t+'" style="padding:14px 0;border-radius:12px;'+
+                'border:1px solid var(--line);background:'+(ops?'var(--page)':'transparent')+';'+
+                'color:var(--tx);font-size:17px;font-weight:600">'+t+'</button>';
+            }).join('');
+          }).join('')+
+          '<button class="agKalkBtn" data-k="C" style="padding:14px 0;border-radius:12px;border:1px solid var(--line);'+
+            'background:transparent;color:var(--merah-tx,#c0392b);font-size:15px;font-weight:700">C</button>'+
+          '<button class="agKalkBtn" data-k="DEL" style="padding:14px 0;border-radius:12px;border:1px solid var(--line);'+
+            'background:transparent;color:var(--tx);font-size:15px;font-weight:700">&#9003;</button>'+
+          '<button id="agKalkPakai" style="grid-column:span 2;padding:14px 0;border-radius:12px;border:none;'+
+            'background:#1D9E75;color:#fff;font-size:15px;font-weight:700">'+La('Gunakan','Use')+'</button>'+
+        '</div>'+
+        (total>0
+          ? '<div style="font-size:11px;color:var(--tx3);margin-top:10px;text-align:center">'+
+              La('Total pemasukan','Total income')+': '+uang(total)+' &middot; '+
+              La('persen dihitung otomatis','percent computed automatically')+'</div>'
+          : '<div style="font-size:11px;color:var(--merah-tx,#c0392b);margin-top:10px;text-align:center">'+
+              La('Total pemasukan masih 0. Isi target pemasukan dahulu.',
+                 'Total income is still 0. Set the income target first.')+'</div>')+
+      '</div>';
+    document.body.appendChild(ov);
+
+    var ek=ov.querySelector('#agKalkEk');
+    var hasilEl=ov.querySelector('#agKalkHasil');
+    function segarkan(){
+      var h=hitungEkspresi(ek.value);
+      if(h===null){ hasilEl.textContent='\u00a0'; return; }
+      var teks='= '+uang(Math.round(h));
+      if(total>0) teks+='  ('+tampilAngka(Math.round(h/total*10000)/100)+'%)';
+      hasilEl.textContent=teks;
+    }
+    ek.addEventListener('input', segarkan);
+    ov.querySelectorAll('.agKalkBtn').forEach(function(b){
+      b.addEventListener('click', function(){
+        var k=b.getAttribute('data-k');
+        if(k==='C') ek.value='';
+        else if(k==='DEL') ek.value=ek.value.slice(0,-1);
+        else ek.value+=k;
+        segarkan();
+      });
+    });
+    function tutup(){ ov.remove(); kalkTarget=null; }
+    ov.querySelector('#agKalkTutup').addEventListener('click', tutup);
+    ov.addEventListener('click', function(e){ if(e.target===ov) tutup(); });
+
+    ov.querySelector('#agKalkPakai').addEventListener('click', function(){
+      var h=hitungEkspresi(ek.value);
+      if(h===null){ if(typeof toast==='function') toast(La('Hitungan belum benar','Invalid calculation')); return; }
+      var t=totalPemasukan();
+      if(t<=0){ if(typeof toast==='function') toast(La('Isi target pemasukan dahulu','Set the income target first')); return; }
+      var persen=Math.round((h/t)*10000)/100;      /* 2 angka desimal */
+      persen=Math.max(0, Math.min(100, persen));
+      if(kalkTarget){
+        kalkTarget.value=tampilAngka(persen);
+        try{ window.agOnPengeluaran(katDariInput(kalkTarget), kalkTarget); }catch(e){}
+      }
+      tutup();
+    });
+
+    setTimeout(function(){ try{ ek.focus(); }catch(e){} }, 50);
+  }
+
+  /* ================================================================
+   * D) SUNTIKAN KE FORM ALOKASI PENGELUARAN
+   * ================================================================ */
+  function suntikForm(){
+    var baris=barisPersen();
+    if(!baris.length) return;
+    baris.forEach(function(el){
+      /* izinkan papan ketik desimal */
+      el.setAttribute('inputmode','decimal');
+      var k=katDariInput(el);
+      var span=document.getElementById('agTk_'+idKat(k));
+      if(!span || span.parentNode.querySelector('.agKalkIkon')) return;
+      var b=document.createElement('button');
+      b.className='agKalkIkon';
+      b.type='button';
+      b.title=La('Kalkulator','Calculator');
+      b.style.cssText='flex:0 0 auto;margin-left:8px;border:1px solid var(--line);background:transparent;'+
+        'color:var(--tx2);border-radius:9px;width:34px;height:32px;font-size:15px;line-height:1;cursor:pointer';
+      b.innerHTML='&#128425;';
+      b.addEventListener('click', function(){ bukaKalkulator(el); });
+      span.parentNode.appendChild(b);
+    });
+    perbaruiTampilan();
+  }
+
+  (function(){
+    var _rae=window.renderAnggaranEdit;
+    if(typeof _rae==='function' && !_rae.__v10){
+      window.renderAnggaranEdit=function(){
+        var r=_rae.apply(this, arguments);
+        try{ setTimeout(suntikForm, 0); }catch(e){}
+        return r;
+      };
+      window.renderAnggaranEdit.__v10=true;
+    }
+  })();
+
+  /* ================================================================
+   * E) SIMPAN: koreksi nilai persen ke desimal yang sebenarnya
+   * ================================================================ */
+  function bacaPersenForm(){
+    var out={};
+    barisPersen().forEach(function(el){
+      var k=katDariInput(el);
+      if(k) out[k]=keAngka(el.value);
+    });
+    return out;
+  }
+
+  (function(){
+    var _simpan=window.agSimpanPengeluaran;
+    if(typeof _simpan==='function' && !_simpan.__v10){
+      window.agSimpanPengeluaran=async function(){
+        var peta=bacaPersenForm();
+        var basis=sBasis, periode=sPeriode;
+
+        /* Pengaman: modul asli memvalidasi dengan bilangan bulat hasil
+           pembulatan. Bila pembulatan membuat jumlah melewati 100 padahal
+           nilai desimalnya tidak, turunkan sementara agar tidak ditolak. */
+        var sumDes=0; Object.keys(peta).forEach(function(k){ sumDes+=peta[k]; });
+        sumDes=Math.round(sumDes*100)/100;
+        if(sumDes<=100){
+          var bulat={}, sumBulat=0;
+          Object.keys(peta).forEach(function(k){
+            bulat[k]= peta[k]>0 ? Math.max(1, Math.round(peta[k])) : 0;
+            sumBulat+=bulat[k];
+          });
+          if(sumBulat>100){
+            var urut=Object.keys(bulat).sort(function(a,b){ return bulat[b]-bulat[a]; });
+            var i=0;
+            while(sumBulat>100 && i<urut.length*100){
+              var k2=urut[i%urut.length];
+              if(bulat[k2]>1){ bulat[k2]--; sumBulat--; }
+              i++;
+            }
+          }
+          /* tuliskan nilai bulat yang aman ke state internal modul */
+          barisPersen().forEach(function(el){
+            var k=katDariInput(el);
+            try{
+              /* panggil handler asli langsung agar tidak memicu koreksi ganda */
+              var f=window.agOnPengeluaran;
+              if(f) f(k, { value:String(bulat[k]||0), getAttribute:function(){ return "agOnPengeluaran('"+k+"',this)"; } });
+            }catch(e){}
+          });
+        }
+
+        var hasil=await _simpan.apply(this, arguments);
+
+        /* koreksi ke nilai desimal sebenarnya */
+        try{
+          var ubah=[];
+          (window.AG||[]).forEach(function(r){
+            if(r.tipe!=='pengeluaran' || r.basis!==basis || r.periode!==periode) return;
+            var v=peta[r.kategori];
+            if(v===undefined) return;
+            var bulatSekarang=Number(r.persen)||0;
+            if(Math.abs(bulatSekarang-v)>0.0001){
+              r.persen=v; r.terkirim=false; r.updatedAt=new Date().toISOString();
+              ubah.push(r);
+            }
+          });
+          if(ubah.length && typeof DB!=='undefined' && DB && DB.objectStoreNames.contains('anggaran')){
+            await new Promise(function(res){
+              var t=DB.transaction('anggaran','readwrite'), st=t.objectStore('anggaran');
+              ubah.forEach(function(r){ st.put(r); });
+              t.oncomplete=function(){ res(); }; t.onerror=function(){ res(); };
+            });
+          }
+          if(ubah.length){
+            if(typeof updatePip==='function') updatePip();
+            try{ if(typeof render==='function') render(); }catch(e){}
+          }
+        }catch(e){}
+        return hasil;
+      };
+      window.agSimpanPengeluaran.__v10=true;
+    }
+  })();
+
+  /* ================================================================
+   * F) PERBAIKAN HITUNGAN GANDA DI TAB PENCADANGAN
+   *    Dihitung ulang dari sumber, bukan menambah angka yang tampil,
+   *    sehingga berapa pun lapis patch yang aktif hasilnya tetap benar.
+   * ================================================================ */
+  function hitungUlangSinkron(){
+    if(typeof dalamRentang!=='function') return;
+    var nAg=(window.AG||[]).filter(function(r){ return !r.terkirim; }).length;
+
+    var dalam=(window.TX||[]).filter(function(t){ return dalamRentang(t.tanggal); });
+    var dalamTr=(window.TR||[]).filter(function(t){ return dalamRentang(t.tanggal); });
+    var belum=dalam.filter(function(t){ return !t.terkirim; }).length
+            + dalamTr.filter(function(t){ return !t.terkirim; }).length;
+
+    var stat=document.querySelector('.big-stat');
+    if(stat){
+      var kotak=stat.querySelectorAll('.bs');
+      if(kotak.length>=2){
+        var e0=kotak[0].querySelector('.n'), e1=kotak[1].querySelector('.n');
+        if(e0) e0.textContent=(dalam.length+nAg);
+        if(e1) e1.textContent=(belum+nAg);
+        var k0=kotak[0].querySelector('.k');
+        if(k0 && nAg) k0.textContent=La('data pada rentang (termasuk anggaran)','records in range (incl. budget)');
+      }
+    }
+    var btn=document.getElementById('btnKirim');
+    if(btn && nAg){
+      btn.disabled=!(typeof getGasUrl==='function' && getGasUrl());
+      btn.textContent=La('Cadangkan ','Back up ')+(dalam.length+nAg)+La(' data',' records');
+    }
+    document.querySelectorAll('.sec-head .t').forEach(function(el){
+      var m=(el.textContent||'').match(/^(.*)\((\d+)\)\s*$/);
+      if(m && /rentang|range/i.test(m[1])) el.textContent=m[1]+'('+(dalam.length+dalamTr.length+nAg)+')';
+    });
+  }
+
+  (function(){
+    var _rs=window.renderSinkron;
+    if(typeof _rs==='function' && !_rs.__v10){
+      window.renderSinkron=function(){
+        var r=_rs.apply(this, arguments);
+        try{ hitungUlangSinkron(); }catch(e){}
+        return r;
+      };
+      window.renderSinkron.__v10=true;
+    }
+  })();
+
+})();
+</script>
   
 </body>
 </html>
