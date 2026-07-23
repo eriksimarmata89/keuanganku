@@ -8788,6 +8788,368 @@ window.jsonp=function(params){
 
 })();
 </script>
+
+<!-- =====================================================================
+     PATCH ANGGARAN SINKRON v8  (KeuanganKu)
+     Tempel PERSIS SEBELUM </body>, PALING AKHIR — setelah semua patch lain
+     (PATCH ANGGARAN, PATCH KATEGORI ID, PATCH ANGGARAN FIX v7).
+
+     Patch ini MENGAMBIL ALIH seluruh alur pencadangan & pemulihan anggaran.
+     Patch v7 boleh tetap terpasang: fungsinya dinetralkan oleh patch ini
+     (tombol ganda dihapus, dan v8 berjalan lebih dulu sehingga logika lama
+     tidak menemukan pekerjaan tersisa).
+
+     ================= AKAR MASALAH YANG DIPERBAIKI =================
+     ID anggaran bersifat deterministik: "pengeluaran|bulan|2026-07|Belanja".
+     Artinya menghapus anggaran lalu membuatnya lagi menghasilkan ID yang
+     SAMA PERSIS. Padahal ID yang dihapus disimpan di antrean hapus
+     (kk_delqueue_anggaran). Akibatnya dua kerusakan sekaligus:
+       (1) saat menarik dari Sheet, record dengan ID yang ada di antrean
+           dibuang diam-diam -> muncul "Tidak ada data anggaran di cadangan"
+           walaupun datanya ADA di Google Sheet;
+       (2) saat mencadangkan, antrean hapus dikirim SETELAH data baru
+           dikirim -> baris yang baru saja ditulis langsung terhapus lagi.
+
+     ================= ALUR BARU (sesuai permintaan) =================
+     A. Simpan anggaran
+        input -> IndexedDB -> ID dikeluarkan dari antrean hapus ->
+        badge & hitungan "belum tercadang" bertambah ->
+        (tekan Cadangkan) -> terkirim ke Sheet -> status berubah hijau.
+
+     B. Pulihkan
+        satu tombol "Pulihkan data cadangan" menarik transaksi, hutang,
+        akun, transfer, DAN anggaran (pemasukan + pengeluaran).
+
+     Urutan pencadangan yang benar: kirim penghapusan DULU, baru kirim
+     data baru. Tidak pernah sebaliknya.
+====================================================================== -->
+<script>
+(function(){
+  "use strict";
+
+  function La(id,en){ return (window.LANG==='en') ? en : id; }
+  function u(){ return (typeof emailUser==='function' && emailUser()) || ''; }
+  function samaUser(a,b){ return String(a||'').trim().toLowerCase()===String(b||'').trim().toLowerCase(); }
+  function tersambung(){ return !!(typeof getGasUrl==='function' && getGasUrl()); }
+
+  /* ============ ANTREAN HAPUS ============ */
+  var LSQ='kk_delqueue_anggaran';
+  function qGet(){ try{ var a=JSON.parse(localStorage.getItem(LSQ)||'[]'); return Array.isArray(a)?a.map(String):[]; }catch(e){ return []; } }
+  function qSet(a){ try{ localStorage.setItem(LSQ, JSON.stringify(a||[])); }catch(e){} }
+  function qAdd(ids){ var q=qGet(); (ids||[]).forEach(function(id){ if(q.indexOf(String(id))<0) q.push(String(id)); }); qSet(q); }
+  function qRemove(ids){ var s={}; (ids||[]).forEach(function(id){ s[String(id)]=1; }); qSet(qGet().filter(function(id){ return !s[id]; })); }
+
+  /* ============ AKSES INDEXEDDB 'anggaran' ============ */
+  function adaStore(){
+    try{ return !!(typeof DB!=='undefined' && DB && DB.objectStoreNames.contains('anggaran')); }catch(e){ return false; }
+  }
+  function agTulis(puts, dels){
+    return new Promise(function(res){
+      if(!adaStore()){ res(); return; }
+      try{
+        var t=DB.transaction('anggaran','readwrite'), st=t.objectStore('anggaran');
+        (puts||[]).forEach(function(r){ st.put(r); });
+        (dels||[]).forEach(function(id){ st.delete(id); });
+        t.oncomplete=function(){ res(); };
+        t.onerror=function(){ res(); };
+      }catch(e){ res(); }
+    });
+  }
+  async function segarkanAG(){
+    if(typeof muatAnggaran==='function'){ try{ await muatAnggaran(); }catch(e){} }
+  }
+  function belumTerkirim(){ return (window.AG||[]).filter(function(r){ return !r.terkirim; }); }
+
+  /* ============ BACA DAFTAR ANGGARAN DARI SHEET ============
+     Mengembalikan {ok, data, alasan} dengan diagnosis yang jelas. */
+  async function bacaSheet(){
+    if(!tersambung()) return {ok:false, data:[], alasan:'takTersambung'};
+    if(typeof jsonp!=='function') return {ok:false, data:[], alasan:'takAdaJsonp'};
+    var d;
+    try{
+      d = await jsonp('action=listAnggaran&user='+encodeURIComponent(u()));
+    }catch(e){
+      return {ok:false, data:[], alasan:'jaringan', pesan:(e && e.message)||String(e)};
+    }
+    if(!d || typeof d!=='object') return {ok:false, data:[], alasan:'balasanAneh'};
+    /* Bila server tidak mengenali perintah, ia mengembalikan pesan default
+       tanpa properti data -> tanda kode GAS belum ter-deploy versi baru. */
+    if(!('data' in d)) return {ok:false, data:[], alasan:'perintahTakDikenal', pesan:d.message||''};
+    return {ok:true, data:Array.isArray(d.data)?d.data:[]};
+  }
+
+  function rapikanRecord(r){
+    return {
+      id:String(r.id),
+      tipe:r.tipe, basis:r.basis,
+      periode:String(r.periode||'').replace(/^'/,''),
+      kategori:r.kategori,
+      nilai:Number(r.nilai)||0,
+      persen:Number(r.persen)||0,
+      mode:r.mode||'',
+      user:r.user||u(),
+      createdAt:r.createdAt||'',
+      updatedAt:r.updatedAt||'',
+      terkirim:true
+    };
+  }
+
+  /* ============ KIRIM PENGHAPUSAN (dijalankan LEBIH DULU saat mencadangkan) ============
+     Pengaman: ID yang masih ada di daftar lokal TIDAK ikut dihapus. Karena
+     ID anggaran deterministik, kategori/periode yang pernah dihapus lalu
+     dibuat lagi memakai ID yang sama; tanpa pengaman ini data baru akan
+     ikut terhapus di Sheet. */
+  async function kirimPenghapusan(){
+    var q=qGet();
+    if(!q.length) return 0;
+    var punya={}; (window.AG||[]).forEach(function(r){ punya[String(r.id)]=1; });
+    var bentrok=q.filter(function(id){ return punya[id]; });
+    if(bentrok.length){ qRemove(bentrok); q=qGet(); }
+    if(!q.length) return 0;
+    if(!tersambung() || typeof kirimNoCors!=='function') return 0;
+    try{
+      await kirimNoCors('deleteAnggaran',{ids:q, user:u()});
+      /* verifikasi: id yang benar-benar hilang dari Sheet dikeluarkan dari antrean */
+      var cek=await bacaSheet();
+      if(cek.ok){
+        var masihAda={}; cek.data.forEach(function(r){ masihAda[String(r.id)]=1; });
+        var sudah=q.filter(function(id){ return !masihAda[id]; });
+        qRemove(sudah);
+        return sudah.length;
+      }
+      qSet([]);
+      return q.length;
+    }catch(e){ return 0; }
+  }
+
+  /* ============ KIRIM DATA BARU ============ */
+  async function kirimAnggaran(){
+    var belum=belumTerkirim();
+    if(!belum.length) return {n:0, total:0};
+    if(!tersambung() || typeof kirimNoCors!=='function') return {n:0, total:belum.length, gagal:'takTersambung'};
+    var items=belum.map(function(r){
+      return {id:r.id, tipe:r.tipe, basis:r.basis, periode:r.periode, kategori:r.kategori,
+              nilai:Number(r.nilai)||0, persen:Number(r.persen)||0, mode:r.mode||'',
+              user:r.user||u(), createdAt:r.createdAt||'', updatedAt:r.updatedAt||''};
+    });
+    try{
+      await kirimNoCors('syncAnggaran',{items:items});
+    }catch(e){
+      return {n:0, total:belum.length, gagal:'kirim', pesan:(e&&e.message)||String(e)};
+    }
+    /* verifikasi lewat pembacaan ulang */
+    var cek=await bacaSheet();
+    var ok=belum;
+    if(cek.ok){
+      var ada={}; cek.data.forEach(function(r){ ada[String(r.id)]=1; });
+      var cocok=belum.filter(function(r){ return ada[String(r.id)]; });
+      if(cocok.length) ok=cocok;
+    }
+    ok.forEach(function(r){ r.terkirim=true; });
+    await agTulis(ok.slice(), []);
+    return {n:ok.length, total:belum.length};
+  }
+
+  /* ============ TARIK DARI SHEET ============
+     PENTING: pemulihan bersifat MENAMBAH SAJA. Antrean hapus tidak pernah
+     dikirim di sini, agar "Pulihkan" tidak mungkin menghapus apa pun di
+     Google Sheet. ID yang berhasil dipulihkan dikeluarkan dari antrean
+     hapus, supaya pencadangan berikutnya tidak menghapusnya lagi. */
+  async function tarikAnggaran(diam){
+    if(!tersambung()){
+      if(!diam) toast(La('Layanan pencadangan belum terhubung.','Backup service is not connected.'));
+      return 0;
+    }
+
+    var hasil=await bacaSheet();
+    if(!hasil.ok){
+      if(!diam){
+        if(hasil.alasan==='perintahTakDikenal'){
+          toast(La('Server belum mengenali perintah anggaran. Buka Apps Script lalu Deploy > Manage deployments > New version.',
+                   'Server does not recognize the budget command yet. Open Apps Script then Deploy > Manage deployments > New version.'));
+        } else if(hasil.alasan==='jaringan'){
+          toast(La('Jaringan bermasalah: ','Network problem: ')+(hasil.pesan||''));
+        } else {
+          toast(La('Gagal membaca data anggaran dari cadangan.','Failed to read budget data from backup.'));
+        }
+      }
+      return 0;
+    }
+
+    var semua=hasil.data.filter(function(r){ return r && r.id; });
+    var milik=semua.filter(function(r){ return !r.user || samaUser(r.user, u()); }).map(rapikanRecord);
+
+    if(milik.length){
+      await agTulis(milik, []);
+      /* data yang dipulihkan berarti dikehendaki ada: keluarkan dari antrean hapus */
+      qRemove(milik.map(function(r){ return r.id; }));
+    }
+    await segarkanAG();
+    if(typeof updatePip==='function') updatePip();
+    try{ if(typeof render==='function') render(); }catch(e){}
+
+    if(!diam){
+      if(milik.length){
+        toast(milik.length+' '+La('data anggaran dipulihkan','budget records restored'));
+      } else if(semua.length){
+        /* ada barisnya, tapi milik akun lain */
+        toast(La('Data anggaran di cadangan milik akun lain ('+semua.length+' baris).',
+                 'Budget data in backup belongs to another account ('+semua.length+' rows).'));
+      } else {
+        toast(La('Belum ada data anggaran di cadangan.','No budget data in backup yet.'));
+      }
+    }
+    return milik.length;
+  }
+  window.anggaranTarik=tarikAnggaran;
+
+  /* ============ PENCADANGAN LENGKAP ANGGARAN ============ */
+  async function cadangkanAnggaran(diam){
+    if(!tersambung()){
+      if(!diam) toast(La('Layanan pencadangan belum terhubung.','Backup service is not connected.'));
+      return 0;
+    }
+    await kirimPenghapusan();          /* 1) penghapusan dulu */
+    var r=await kirimAnggaran();       /* 2) baru data baru   */
+    await segarkanAG();
+    if(typeof updatePip==='function') updatePip();
+    try{
+      var v=(typeof view!=='undefined')?view:window.view;
+      if(v==='anggaran'||v==='sinkron') render();
+    }catch(e){}
+    if(!diam && r.gagal){
+      toast(La('Gagal mencadangkan anggaran','Failed to back up budget')+(r.pesan?(': '+r.pesan):''));
+    }
+    return r.n;
+  }
+  window.anggaranCadangkan=cadangkanAnggaran;
+
+  /* ============ SAAT MENYIMPAN: KELUARKAN ID DARI ANTREAN HAPUS ============
+     ID anggaran deterministik, jadi membuat ulang kategori/periode yang
+     pernah dihapus akan memakai ID lama. Bila ID itu masih tertinggal di
+     antrean hapus, data baru akan ikut terhapus di Sheet. */
+  (function(){
+    function bersihkanAntrean(){
+      try{
+        var q=qGet();
+        if(!q.length) return;
+        var punya={}; (window.AG||[]).forEach(function(r){ punya[String(r.id)]=1; });
+        var bentrok=q.filter(function(id){ return punya[id]; });
+        if(bentrok.length) qRemove(bentrok);
+      }catch(e){}
+    }
+    /* jalankan tiap kali daftar anggaran berubah lewat penyimpanan */
+    ['agSimpanPemasukan','agSimpanPengeluaran','agSalinLalu'].forEach(function(nm){
+      var f=window[nm];
+      if(typeof f==='function' && !f.__agV8){
+        window[nm]=async function(){
+          var r=await f.apply(this, arguments);
+          setTimeout(bersihkanAntrean, 60);
+          setTimeout(function(){ if(typeof updatePip==='function') updatePip(); }, 80);
+          return r;
+        };
+        window[nm].__agV8=true;
+      }
+    });
+    /* bersihkan sekali saat patch dimuat, memperbaiki antrean yang sudah kadung kotor */
+    var c=0;
+    (function tunggu(){
+      c++;
+      if(window.AG){ bersihkanAntrean(); }
+      else if(c<80) setTimeout(tunggu,100);
+    })();
+  })();
+
+  /* ============ SATU TOMBOL PULIHKAN ============ */
+  (function(){
+    var _td=window.tarikDariSheet;
+    if(typeof _td==='function' && !_td.__agV8){
+      window.tarikDariSheet=async function(){
+        var r=await _td.apply(this, arguments);   /* transaksi, hutang, akun, transfer */
+        try{ await tarikAnggaran(true); }catch(e){}
+        return r;
+      };
+      window.tarikDariSheet.__agV8=true;
+    }
+  })();
+
+  /* ============ CADANGKAN: SERTAKAN ANGGARAN ============ */
+  (function(){
+    var _kr=window.kirimRentang;
+    if(typeof _kr==='function' && !_kr.__agV8){
+      window.kirimRentang=async function(){
+        var nAg=0;
+        try{ nAg=await cadangkanAnggaran(true); }catch(e){}
+        var adaTx=false;
+        try{ adaTx=(window.TX||[]).some(function(t){ return dalamRentang(t.tanggal); }); }catch(e){}
+
+        if(!adaTx){
+          if(nAg>0){
+            toast(nAg+' '+La('data anggaran tercadang','budget records backed up'));
+            if(typeof updatePip==='function') updatePip();
+            try{ render(); }catch(e){}
+            return;
+          }
+          return _kr.apply(this, arguments);   /* biarkan pesan asli muncul */
+        }
+        var r=await _kr.apply(this, arguments);
+        if(nAg>0) toast(nAg+' '+La('data anggaran tercadang','budget records backed up'));
+        try{ if(typeof updatePip==='function') updatePip(); render(); }catch(e){}
+        return r;
+      };
+      window.kirimRentang.__agV8=true;
+    }
+  })();
+
+  /* ============ TAB PENCADANGAN: HITUNGAN + HAPUS TOMBOL GANDA ============ */
+  function rapikanSinkron(){
+    /* buang tombol tambahan dari patch v7 agar tombol pulihkan hanya satu */
+    var ganda=document.getElementById('btnTarikAg');
+    if(ganda && ganda.parentNode) ganda.parentNode.removeChild(ganda);
+
+    var nAg=belumTerkirim().length;
+    if(!nAg) return;
+
+    var stat=document.querySelector('.big-stat');
+    if(stat){
+      var kotak=stat.querySelectorAll('.bs');
+      if(kotak.length>=2){
+        var e0=kotak[0].querySelector('.n'), e1=kotak[1].querySelector('.n');
+        var n0=parseInt(e0?e0.textContent:'0',10); if(isNaN(n0)) n0=0;
+        var n1=parseInt(e1?e1.textContent:'0',10); if(isNaN(n1)) n1=0;
+        if(e0) e0.textContent=(n0+nAg);
+        if(e1) e1.textContent=(n1+nAg);
+        var k0=kotak[0].querySelector('.k');
+        if(k0) k0.textContent=La('data pada rentang (termasuk anggaran)','records in range (incl. budget)');
+      }
+      var btn=document.getElementById('btnKirim');
+      if(btn){
+        var tot=0;
+        try{ tot=(window.TX||[]).filter(function(t){ return dalamRentang(t.tanggal); }).length; }catch(e){}
+        btn.disabled=!tersambung();
+        btn.textContent=La('Cadangkan ','Back up ')+(tot+nAg)+La(' data',' records');
+      }
+    }
+    document.querySelectorAll('.sec-head .t').forEach(function(el){
+      var m=(el.textContent||'').match(/^(.*)\((\d+)\)\s*$/);
+      if(m && /rentang|range/i.test(m[1])) el.textContent=m[1]+'('+((+m[2])+nAg)+')';
+    });
+  }
+
+  (function(){
+    var _rs=window.renderSinkron;
+    if(typeof _rs==='function' && !_rs.__agV8){
+      window.renderSinkron=function(){
+        var r=_rs.apply(this, arguments);
+        try{ rapikanSinkron(); }catch(e){}
+        return r;
+      };
+      window.renderSinkron.__agV8=true;
+    }
+  })();
+
+})();
+</script>
   
 </body>
 </html>
