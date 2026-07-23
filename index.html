@@ -8510,6 +8510,284 @@ window.jsonp=function(params){
 
 })();
 </script>
+
+<!-- =====================================================================
+     PATCH ANGGARAN FIX v7  (KeuanganKu)
+     Tempel PERSIS SEBELUM </body>, PALING AKHIR — setelah PATCH ANGGARAN
+     dan PATCH KATEGORI ID. Patch ini hanya menambal, tidak menggantikan.
+
+     MEMPERBAIKI
+     1. Tarik anggaran dari Google Sheet tidak memunculkan data.
+        Akar masalah: tombol "Cadangkan" DINONAKTIFKAN bila tidak ada
+        transaksi pada rentang, dan kirimRentang() berhenti lebih awal
+        dengan pesan "Tidak ada transaksi pada rentang ini". Akibatnya
+        anggaran tidak pernah terkirim ke Sheet, sehingga saat ditarik
+        memang tidak ada apa-apa. Ditambah galat penarikan selama ini
+        ditelan diam-diam sehingga tidak terlihat.
+        Perbaikan: pengiriman anggaran tidak lagi bergantung pada adanya
+        transaksi; penarikan memberi umpan balik yang jelas; pencocokan
+        pengguna tidak lagi peka huruf besar/kecil.
+
+     2. Tab Pencadangan: "transaksi pada rentang" dan "belum tercadang"
+        kini menjumlahkan data anggaran yang belum terkirim. Tombol
+        Cadangkan ikut aktif bila hanya anggaran yang belum terkirim.
+
+     3. Garis pembatas di bawah header modul Anggaran dihilangkan agar
+        seragam dengan header lain.
+====================================================================== -->
+<script>
+(function(){
+  "use strict";
+
+  function La(id,en){ return (window.LANG==='en') ? en : id; }
+  function u(){ return (typeof emailUser==='function' && emailUser()) || ''; }
+  function samaUser(a,b){ return String(a||'').trim().toLowerCase()===String(b||'').trim().toLowerCase(); }
+  function agBelumTerkirim(){ return (window.AG||[]).filter(function(r){ return !r.terkirim; }); }
+
+  /* ================================================================
+   * 3) HEADER ANGGARAN: hilangkan garis pembatas bawah
+   * ================================================================ */
+  (function(){
+    if(document.getElementById('ag-style-fix')) return;
+    var st=document.createElement('style');
+    st.id='ag-style-fix';
+    st.textContent='.ag-fhead{border-bottom:none !important}';
+    document.head.appendChild(st);
+  })();
+
+  /* ================================================================
+   * 1) PENARIKAN ANGGARAN YANG ANDAL
+   *    - kirim parameter user secara eksplisit
+   *    - pencocokan user tidak peka huruf besar/kecil
+   *    - galat ditampilkan, tidak ditelan diam-diam
+   * ================================================================ */
+  async function tarikAnggaranKuat(diam){
+    if(!(typeof getGasUrl==='function' && getGasUrl())){
+      if(!diam) toast(La('Layanan pencadangan belum terhubung.','Backup service is not connected.'));
+      return 0;
+    }
+    if(typeof jsonp!=='function'){
+      if(!diam) toast(La('Fungsi koneksi tidak tersedia.','Connection function unavailable.'));
+      return 0;
+    }
+    try{
+      var d=await jsonp('action=listAnggaran&user='+encodeURIComponent(u()));
+      var semua=(d && d.data) ? d.data : [];
+      /* buang yang sedang diantrekan untuk dihapus */
+      var q=[]; try{ q=JSON.parse(localStorage.getItem('kk_delqueue_anggaran')||'[]'); }catch(e){}
+      var qset={}; q.forEach(function(id){ qset[String(id)]=1; });
+
+      var milik=semua.filter(function(r){
+        return r && r.id && !qset[String(r.id)] && (!r.user || samaUser(r.user, u()));
+      }).map(function(r){
+        return { id:String(r.id), tipe:r.tipe, basis:r.basis,
+                 periode:String(r.periode||'').replace(/^'/,''),
+                 kategori:r.kategori, nilai:Number(r.nilai)||0, persen:Number(r.persen)||0,
+                 mode:r.mode||'', user:u(),
+                 createdAt:r.createdAt||'', updatedAt:r.updatedAt||'', terkirim:true };
+      });
+
+      if(milik.length && typeof DB!=='undefined' && DB){
+        await new Promise(function(res,rej){
+          var t=DB.transaction('anggaran','readwrite'), st=t.objectStore('anggaran');
+          milik.forEach(function(r){ st.put(r); });
+          t.oncomplete=function(){ res(); }; t.onerror=function(){ rej(t.error); };
+        });
+      }
+      if(typeof muatAnggaran==='function') await muatAnggaran();
+      if(typeof updatePip==='function') updatePip();
+      try{ if(typeof render==='function') render(); }catch(e){}
+
+      if(!diam){
+        toast(milik.length
+          ? (milik.length+' '+La('data anggaran dipulihkan','budget records restored'))
+          : La('Tidak ada data anggaran di cadangan','No budget data found in backup'));
+      }
+      return milik.length;
+    }catch(e){
+      if(!diam) toast(La('Gagal memulihkan anggaran: ','Failed to restore budget: ')+(e && e.message ? e.message : e));
+      return 0;
+    }
+  }
+  window.tarikAnggaranKuat=tarikAnggaranKuat;
+
+  /* pasang ke tombol "Pulihkan data cadangan" (menggantikan hook lama) */
+  (function(){
+    var _td=window.tarikDariSheet;
+    if(typeof _td==='function' && !_td.__agFix7){
+      window.tarikDariSheet=async function(){
+        var r=await _td.apply(this, arguments);
+        try{ await tarikAnggaranKuat(true); }catch(e){}
+        return r;
+      };
+      window.tarikDariSheet.__agFix7=true;
+    }
+  })();
+
+  /* ================================================================
+   * 1b) PENGIRIMAN ANGGARAN TIDAK LAGI BERGANTUNG PADA TRANSAKSI
+   *     kirimRentang() berhenti lebih awal bila rentang kosong, maka
+   *     kita dorong anggaran lebih dulu (sebelum fungsi asli jalan).
+   * ================================================================ */
+  async function dorongAnggaranKuat(diam){
+    var belum=agBelumTerkirim();
+    if(!belum.length) return 0;
+    if(!(typeof getGasUrl==='function' && getGasUrl() && typeof kirimNoCors==='function')){
+      if(!diam) toast(La('Layanan pencadangan belum terhubung.','Backup service is not connected.'));
+      return 0;
+    }
+    try{
+      var items=belum.map(function(r){
+        return {id:r.id,tipe:r.tipe,basis:r.basis,periode:r.periode,kategori:r.kategori,
+          nilai:Number(r.nilai)||0,persen:Number(r.persen)||0,mode:r.mode||'',
+          user:r.user||u(),createdAt:r.createdAt||'',updatedAt:r.updatedAt||''};
+      });
+      await kirimNoCors('syncAnggaran',{items:items});
+
+      /* verifikasi: baca ulang dari Sheet, tandai yang benar-benar sampai */
+      var sampai={};
+      try{
+        var d=await jsonp('action=listAnggaran&user='+encodeURIComponent(u()));
+        ((d && d.data)||[]).forEach(function(r){ sampai[String(r.id)]=1; });
+      }catch(e){ /* bila verifikasi gagal, anggap terkirim */ }
+
+      var ok=belum.filter(function(r){ return !Object.keys(sampai).length || sampai[String(r.id)]; });
+      ok.forEach(function(r){ r.terkirim=true; });
+
+      if(ok.length && typeof DB!=='undefined' && DB){
+        await new Promise(function(res){
+          var t=DB.transaction('anggaran','readwrite'), st=t.objectStore('anggaran');
+          ok.forEach(function(r){ st.put(r); });
+          t.oncomplete=function(){ res(); }; t.onerror=function(){ res(); };
+        });
+      }
+      /* kirim antrean hapus anggaran bila ada */
+      try{
+        var q=JSON.parse(localStorage.getItem('kk_delqueue_anggaran')||'[]');
+        if(q.length){
+          await kirimNoCors('deleteAnggaran',{ids:q, user:u()});
+          localStorage.setItem('kk_delqueue_anggaran','[]');
+        }
+      }catch(e){}
+
+      if(typeof updatePip==='function') updatePip();
+      try{ var v=(typeof view!=='undefined')?view:window.view; if(v==='anggaran'||v==='sinkron') render(); }catch(e){}
+      if(!diam) toast(ok.length+' '+La('data anggaran tercadang','budget records backed up'));
+      return ok.length;
+    }catch(e){
+      if(!diam) toast(La('Gagal mencadangkan anggaran: ','Failed to back up budget: ')+(e && e.message ? e.message : e));
+      return 0;
+    }
+  }
+  window.dorongAnggaranKuat=dorongAnggaranKuat;
+
+  (function(){
+    var _kr=window.kirimRentang;
+    if(typeof _kr==='function' && !_kr.__agFix7){
+      window.kirimRentang=async function(){
+        /* dorong anggaran DULU, agar tetap terkirim walau rentang transaksi kosong */
+        var nAg=0;
+        try{ nAg=await dorongAnggaranKuat(true); }catch(e){}
+        var adaTx=false;
+        try{ adaTx=(window.TX||[]).some(function(t){ return dalamRentang(t.tanggal); }); }catch(e){}
+        if(!adaTx){
+          /* fungsi asli akan berhenti dengan pesan "tidak ada transaksi";
+             beri pesan yang sesuai bila anggaran sudah terkirim */
+          if(nAg>0){
+            toast(nAg+' '+La('data anggaran tercadang','budget records backed up'));
+            if(typeof updatePip==='function') updatePip();
+            try{ render(); }catch(e){}
+            return;
+          }
+          return _kr.apply(this, arguments);
+        }
+        var r=await _kr.apply(this, arguments);
+        if(nAg>0) toast(nAg+' '+La('data anggaran tercadang','budget records backed up'));
+        try{ if(typeof updatePip==='function') updatePip(); render(); }catch(e){}
+        return r;
+      };
+      window.kirimRentang.__agFix7=true;
+    }
+  })();
+
+  /* ================================================================
+   * 2) TAB PENCADANGAN: sertakan jumlah anggaran belum terkirim
+   * ================================================================ */
+  function suntikHitunganAnggaran(){
+    var nAg=agBelumTerkirim().length;
+    var stat=document.querySelector('.big-stat');
+    if(!stat) return;
+    var kotak=stat.querySelectorAll('.bs');
+    if(kotak.length<2) return;
+
+    /* angka asli disimpan sekali agar tidak berlipat saat render ulang */
+    var nTx=parseInt((kotak[0].querySelector('.n')||{}).textContent,10); if(isNaN(nTx)) nTx=0;
+    var nBelum=parseInt((kotak[1].querySelector('.n')||{}).textContent,10); if(isNaN(nBelum)) nBelum=0;
+
+    if(nAg>0){
+      kotak[0].querySelector('.n').textContent = (nTx + nAg);
+      kotak[1].querySelector('.n').textContent = (nBelum + nAg);
+      /* keterangan diperjelas */
+      var k0=kotak[0].querySelector('.k'), k1=kotak[1].querySelector('.k');
+      if(k0) k0.textContent = La('data pada rentang (termasuk anggaran)','records in range (incl. budget)');
+      if(k1) k1.textContent = La('belum tercadang','not backed up');
+
+      /* tombol Cadangkan: aktifkan & perbarui label */
+      var btn=document.getElementById('btnKirim');
+      if(btn){
+        btn.disabled = !(typeof getGasUrl==='function' && getGasUrl());
+        btn.textContent = La('Cadangkan ','Back up ')+(nTx+nAg)+La(' data',' records');
+      }
+      /* judul daftar */
+      var judul=document.querySelectorAll('.sec-head .t');
+      judul.forEach(function(el){
+        var m=(el.textContent||'').match(/^(.*)\((\d+)\)\s*$/);
+        if(m && /rentang|range/i.test(m[1])) el.textContent = m[1]+'('+((+m[2])+nAg)+')';
+      });
+    }
+  }
+
+  (function(){
+    var _rs=window.renderSinkron;
+    if(typeof _rs==='function' && !_rs.__agFix7){
+      window.renderSinkron=function(){
+        var r=_rs.apply(this, arguments);
+        try{ suntikHitunganAnggaran(); }catch(e){}
+        return r;
+      };
+      window.renderSinkron.__agFix7=true;
+    }
+  })();
+
+  /* ================================================================
+   * TOMBOL BANTU: pulihkan anggaran saja (muncul di tab Pencadangan)
+   * Berguna bila hanya ingin menarik anggaran tanpa menarik semuanya.
+   * ================================================================ */
+  function suntikTombolTarikAnggaran(){
+    var btnTarik=document.getElementById('btnTarik');
+    if(!btnTarik || document.getElementById('btnTarikAg')) return;
+    var b=document.createElement('button');
+    b.className='btn-line'; b.id='btnTarikAg';
+    b.style.cssText='margin-top:8px';
+    b.disabled = !(typeof getGasUrl==='function' && getGasUrl());
+    b.textContent=La('Pulihkan data anggaran','Restore budget data');
+    b.onclick=function(){ tarikAnggaranKuat(false); };
+    btnTarik.parentNode.insertBefore(b, btnTarik.nextSibling);
+  }
+  (function(){
+    var _rs2=window.renderSinkron;
+    if(typeof _rs2==='function' && !_rs2.__agFix7b){
+      window.renderSinkron=function(){
+        var r=_rs2.apply(this, arguments);
+        try{ suntikTombolTarikAnggaran(); }catch(e){}
+        return r;
+      };
+      window.renderSinkron.__agFix7b=true;
+    }
+  })();
+
+})();
+</script>
   
 </body>
 </html>
