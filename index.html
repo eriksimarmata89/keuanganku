@@ -9749,6 +9749,53 @@ window.jsonp=function(params){
 
 })();
 </script>
+
+<!-- =====================================================================
+     PATCH ANGGARAN PROGRES TUNGGAL v12  (KeuanganKu)
+     Tempel PERSIS SEBELUM </body>, PALING AKHIR — setelah PATCH ANGGARAN
+     v11.1. Patch kecil, hanya menambal, tidak menggantikan apa pun.
+
+     MASALAH
+     Saat mencadangkan (dan memulihkan), modal progres muncul DUA kali:
+     sekali untuk transaksi/hutang/penampung saldo, lalu tertutup, lalu
+     muncul lagi khusus anggaran. Penyebabnya: fungsi asli menutup modal
+     (hideProgress) di akhir prosesnya, lalu lapisan anggaran membuka
+     modal baru.
+
+     PERBAIKAN
+     Selama kirimRentang / tarikDariSheet berjalan, hideProgress ditunda
+     (tidak menutup modal). Semua tahap tampil berurutan dalam SATU modal,
+     dan modal ditutup sekali saja di ujung proses.
+====================================================================== -->
+<script>
+(function(){
+  "use strict";
+
+  if(typeof window.hideProgress!=='function') return;   /* tak ada sistem progres */
+
+  function bungkusSatuModal(nama){
+    var f=window[nama];
+    if(typeof f!=='function' || f.__v12) return;
+    window[nama]=async function(){
+      var _hide=window.hideProgress;
+      var ditunda=false;
+      /* selama proses: penutupan modal hanya dicatat, tidak dijalankan */
+      window.hideProgress=function(){ ditunda=true; };
+      try{
+        return await f.apply(this, arguments);
+      } finally {
+        window.hideProgress=_hide;      /* pulihkan fungsi asli */
+        try{ _hide(); }catch(e){}       /* tutup sekali di ujung */
+      }
+    };
+    window[nama].__v12=true;
+  }
+
+  bungkusSatuModal('kirimRentang');     /* Cadangkan: transaksi -> ... -> anggaran, satu modal */
+  bungkusSatuModal('tarikDariSheet');   /* Pulihkan : transaksi -> ... -> anggaran, satu modal */
+
+})();
+</script>  
   
 </body>
 </html>
