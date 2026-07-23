@@ -6897,8 +6897,8 @@ try{ if(window.AppInventor && AppInventor.setWebViewString) AppInventor.setWebVi
         (wajib?'':'<button onclick="document.getElementById(\'curOverlay\').remove()" style="border:none;background:none;color:var(--tx2);font-size:15px;padding:0 0 12px">&#8592; '+L('Kembali','Back')+'</button>')+
         '<div style="font-size:20px;font-weight:700;color:var(--tx)">'+L('Pilih Mata Uang','Choose Currency')+'</div>'+
         '<div style="font-size:12.5px;color:var(--tx2);margin-top:4px;line-height:1.5">'+
-          L('Menentukan lambang dan format tampilan di seluruh aplikasi. Nilai transaksi tidak dikonversi.',
-            'Sets the symbol and number format across the app. Transaction values are not converted.')+'</div>'+
+          L('Tentukan jenis mata uang Anda. Nilai tidak dikonversi.',
+            'Sets your currencies. Values are not converted.')+'</div>'+
       '</div>'+
       '<div style="flex:1;overflow-y:auto;padding:4px 16px 12px">'+
         Object.keys(CUR).map(baris).join('')+
@@ -8042,7 +8042,7 @@ window.jsonp=function(params){
     }).join('');
     S().innerHTML=headerA(La('Alokasi pengeluaran','Expense allocation'),'anggaran')+
       '<div class="form">'+infoPeriode()+peringatan+
-        '<div style="font-size:11px;color:var(--tx3);margin-bottom:12px">'+La('Isi persentase tiap kategori. Target rupiah = persen x total pemasukan.','Enter a percentage per category. Rupiah target = percent x total income.')+'</div>'+
+        '<div style="font-size:11px;color:var(--tx3);margin-bottom:12px">'+La('Isi persentase setiap kategori. Alokasi = persen x total pemasukan.','Enter the percentage for each category. Total amount = percentage × total income.')+'</div>'+
         rows+
         '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--tx2);margin:6px 2px 4px">'+
           '<span>'+La('Jumlah persentase','Total percentage')+'</span><span id="agSumPct">0%</span></div>'+
