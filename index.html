@@ -9283,7 +9283,7 @@ window.jsonp=function(params){
 </script>
 
 <!-- =====================================================================
-     PATCH ANGGARAN KALKULATOR & DESIMAL v10  (KeuanganKu)
+     PATCH ANGGARAN KALKULATOR & DESIMAL v10.1  (KeuanganKu)  - GANTIKAN v10
      Tempel PERSIS SEBELUM </body>, PALING AKHIR — setelah PATCH ANGGARAN
      SINKRON v8 dan PATCH ANGGARAN HAPUS v9.
 
@@ -9526,38 +9526,65 @@ window.jsonp=function(params){
   /* ================================================================
    * D) SUNTIKAN KE FORM ALOKASI PENGELUARAN
    * ================================================================ */
+  var sedangSuntik=false;
   function suntikForm(){
+    if(sedangSuntik) return;                 /* cegah pemanggilan berulang */
     var baris=barisPersen();
     if(!baris.length) return;
-    baris.forEach(function(el){
-      /* izinkan papan ketik desimal */
-      el.setAttribute('inputmode','decimal');
-      var k=katDariInput(el);
-      var span=document.getElementById('agTk_'+idKat(k));
-      if(!span || span.parentNode.querySelector('.agKalkIkon')) return;
-      var b=document.createElement('button');
-      b.className='agKalkIkon';
-      b.type='button';
-      b.title=La('Kalkulator','Calculator');
-      b.style.cssText='flex:0 0 auto;margin-left:8px;border:1px solid var(--line);background:transparent;'+
-        'color:var(--tx2);border-radius:9px;width:34px;height:32px;font-size:15px;line-height:1;cursor:pointer';
-      b.innerHTML='&#128425;';
-      b.addEventListener('click', function(){ bukaKalkulator(el); });
-      span.parentNode.appendChild(b);
-    });
-    perbaruiTampilan();
+    sedangSuntik=true;
+    try{
+      var adaBaru=false;
+      baris.forEach(function(el){
+        /* izinkan papan ketik desimal */
+        el.setAttribute('inputmode','decimal');
+        var k=katDariInput(el);
+        var span=document.getElementById('agTk_'+idKat(k));
+        if(!span || span.parentNode.querySelector('.agKalkIkon')) return;
+        var b=document.createElement('button');
+        b.className='agKalkIkon';
+        b.type='button';
+        b.title=La('Kalkulator','Calculator');
+        b.style.cssText='flex:0 0 auto;margin-left:8px;border:1px solid var(--line);background:transparent;'+
+          'color:var(--tx2);border-radius:9px;width:34px;height:32px;font-size:15px;line-height:1;cursor:pointer';
+        b.innerHTML='&#128425;';
+        b.addEventListener('click', function(){ bukaKalkulator(el); });
+        span.parentNode.appendChild(b);
+        adaBaru=true;
+      });
+      /* hanya segarkan angka bila memang baru dipasang, agar observer
+         tidak terpicu berulang oleh perubahan teks kita sendiri */
+      if(adaBaru) perbaruiTampilan();
+    } finally {
+      setTimeout(function(){ sedangSuntik=false; }, 0);
+    }
   }
 
+  /* Modul anggaran memanggil renderAnggaranEdit() dari dalam closure-nya,
+     sehingga membungkus window.renderAnggaranEdit tidak pernah terpanggil.
+     Karena itu kita membungkus window.render (fungsi global) dan menyuntik
+     setelah layar apa pun selesai digambar. Pemasangan bersifat idempoten:
+     baris yang sudah punya ikon dilewati. */
   (function(){
-    var _rae=window.renderAnggaranEdit;
-    if(typeof _rae==='function' && !_rae.__v10){
-      window.renderAnggaranEdit=function(){
-        var r=_rae.apply(this, arguments);
+    var _render=window.render;
+    if(typeof _render==='function' && !_render.__v10){
+      window.render=function(){
+        var r=_render.apply(this, arguments);
         try{ setTimeout(suntikForm, 0); }catch(e){}
         return r;
       };
-      window.renderAnggaranEdit.__v10=true;
+      window.render.__v10=true;
     }
+    /* jaring pengaman: bila ada penggambaran ulang yang tidak lewat render(),
+       amati perubahan isi layar dan pasang ulang ikon bila perlu. */
+    try{
+      var wadah=document.getElementById('scroll') || document.body;
+      if(wadah && window.MutationObserver && !window.__agKalkObs){
+        window.__agKalkObs=new MutationObserver(function(){
+          if(document.querySelector('input[oninput^="agOnPengeluaran"]')) suntikForm();
+        });
+        window.__agKalkObs.observe(wadah, {childList:true, subtree:true});
+      }
+    }catch(e){}
   })();
 
   /* ================================================================
