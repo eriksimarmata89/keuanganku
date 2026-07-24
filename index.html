@@ -9307,9 +9307,13 @@ window.jsonp=function(params){
     var h=harianBerikutnya();
     if(h) keluar.push(h);
     keluar.sort(function(a,b){ return a.ts-b.ts; });
-    return keluar.map(function(j){
+    return keluar.map(function(j,i){
       var w=bagianWaktu(j.ts);
-      return { id:j.id, y:w.y, mo:w.mo, d:w.d, h:w.h, mi:w.mi,
+      /* n = id BERANGKA untuk ekstensi alarm, karena AlarmManager memakai
+         requestCode bertipe integer dan menolak id berupa teks.
+         Nomor urut aman dipakai karena semua alarm lama selalu dibatalkan
+         lebih dulu sebelum dipasang ulang. */
+      return { n:i+1, id:j.id, y:w.y, mo:w.mo, d:w.d, h:w.h, mi:w.mi,
                judul:String(j.judul),
                pesan:String(j.pesan).replace(/<[^>]*>/g,'').replace(/&middot;/g,'-'),
                aksi:j.aksi||'' };
