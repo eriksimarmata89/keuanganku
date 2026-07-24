@@ -9271,24 +9271,74 @@ window.jsonp=function(params){
   }
   window.kejarNotifikasi=kejarTertinggal;
 
-  /* Kirim jadwal ke Kodular agar bisa dipasang sebagai alarm. */
+  /* Pecah waktu menjadi komponen, sesuai kebutuhan AlarmExtension
+     (ScheduleOnceAtDate meminta year/month/day/hour/minute terpisah). */
+  function bagianWaktu(ts){
+    var d=new Date(ts);
+    return { y:d.getFullYear(), mo:d.getMonth()+1, d:d.getDate(),
+             h:d.getHours(), mi:d.getMinutes() };
+  }
+
+  /* Pengingat harian berikutnya: hari ini bila jamnya belum lewat DAN
+     belum ada transaksi hari ini; selain itu besok. Dihitung ulang tiap
+     kali jadwal disegarkan, jadi begitu pengguna mencatat transaksi,
+     alarm hari ini otomatis digeser ke besok. */
+  function harianBerikutnya(){
+    var p=pengaturan();
+    if(!p.harian) return null;
+    var hariIni=hariIniISO();
+    var sudahCatat=(window.TX||[]).some(function(t){ return t.tanggal===hariIni; });
+    var tsHariIni=waktuPada(hariIni,p.harianJam);
+    var pakai=(!sudahCatat && Date.now()<tsHariIni) ? tsHariIni
+                                                    : waktuPada(geserHari(hariIni,1),p.harianJam);
+    return { id:'harian', ts:pakai,
+             judul:La('Sudah catat pengeluaran hari ini?','Logged today\u2019s spending?'),
+             pesan:La('Sebentar saja untuk mencatat transaksi hari ini.','It only takes a moment to log today\u2019s transactions.'),
+             aksi:'tambah', jenis:'harian' };
+  }
+
+  /* Daftar untuk Kodular: hanya yang akan datang, sudah terpecah
+     komponen tanggalnya, pengingat harian diringkas jadi satu. */
+  function jadwalKodular(){
+    var sekarang=Date.now();
+    var keluar=hitungJadwal().filter(function(j){
+      return j.jenis!=='harian' && j.ts>sekarang;
+    }).slice(0,40);
+    var h=harianBerikutnya();
+    if(h) keluar.push(h);
+    keluar.sort(function(a,b){ return a.ts-b.ts; });
+    return keluar.map(function(j){
+      var w=bagianWaktu(j.ts);
+      return { id:j.id, y:w.y, mo:w.mo, d:w.d, h:w.h, mi:w.mi,
+               judul:String(j.judul),
+               pesan:String(j.pesan).replace(/<[^>]*>/g,'').replace(/&middot;/g,'-'),
+               aksi:j.aksi||'' };
+    });
+  }
+  window.jadwalUntukKodular=jadwalKodular;
+
+  /* Kirim jadwal ke Kodular agar dipasang sebagai alarm. */
   function kirimKeKodular(){
     try{
       if(!(window.AppInventor && window.AppInventor.setWebViewString)) return false;
-      var p=pengaturan();
-      var jadwal=hitungJadwal().filter(function(j){ return j.ts>Date.now(); }).slice(0,50);
-      var muatan={ v:1, harian:{aktif:!!p.harian, jam:p.harianJam},
-                   tempo:{aktif:!!p.tempo, jam:p.tempoJam},
-                   items:jadwal.map(function(j){
-                     return {id:j.id, ts:j.ts, judul:j.judul,
-                             pesan:String(j.pesan).replace(/<[^>]*>/g,'').replace(/&middot;/g,'-'),
-                             aksi:j.aksi};
-                   }) };
-      window.AppInventor.setWebViewString('JADWAL|'+JSON.stringify(muatan));
+      window.AppInventor.setWebViewString('JADWAL|'+JSON.stringify({ v:2, items:jadwalKodular() }));
       return true;
     }catch(e){ return false; }
   }
   window.kirimJadwalKeKodular=kirimKeKodular;
+
+  /* Dipanggil dari Kodular saat notifikasi ditekan: notifDariAlarm('<id>').
+     Id-nya sama dengan yang dikirim di jadwal, mis. "ut_u1_h3" atau "harian". */
+  window.notifDariAlarm=function(id){
+    try{
+      id=String(id||'');
+      if(id.indexOf('ut_')===0){ if(typeof goView==='function') goView('utang'); return true; }
+      if(id==='harian'){ if(typeof goView==='function') goView('add'); return true; }
+      if(id.indexOf('ag_')===0 && typeof bukaAnggaran==='function'){ bukaAnggaran(); return true; }
+      if(typeof goView==='function') goView('notifikasi');
+      return true;
+    }catch(e){ return false; }
+  };
 
   window.cekJadwal=function(){
     var j=hitungJadwal().filter(function(x){ return x.ts>Date.now(); });
