@@ -478,7 +478,7 @@
 
 <script type="text/plain" id="gasCode">
 var SHEET_NAME = 'Transaksi';
-var HEADERS = ['id', 'tanggal', 'tipe', 'kategori', 'nominal', 'keterangan', 'catatan', 'createdAt', 'user', 'akunId'];
+var HEADERS = ['id', 'tanggal', 'tipe', 'kategori', 'nominal', 'keterangan', 'catatan', 'createdAt', 'user', 'akunId', 'kategoriId'];
 var SHEET_UTANG = 'Utang';
 var HEADERS_UTANG = ['id', 'jenis', 'pihak', 'pokok', 'tanggal', 'jatuhTempo', 'catatan', 'pembayaran', 'createdAt', 'user', 'akunId'];
 var SHEET_AKUN = 'Akun';
@@ -507,6 +507,9 @@ function doPost(e) {
     else if (action === 'deleteTransfer') out = deleteTransfer(body.ids);
     else if (action === 'kirimOtp') out = kirimOtp(body.phone);
     else if (action === 'verifikasiOtp') out = verifikasiOtp(body.phone, body.code);
+    else if (action === 'listAnggaran')   out = listAnggaran(body.user);
+    else if (action === 'syncAnggaran')   out = syncAnggaran(body.items);
+    else if (action === 'deleteAnggaran') out = deleteAnggaran(body.ids);
     else out = { ok: false, error: 'Aksi tidak dikenal: ' + action };
     return json(out);
   } catch (err) {
@@ -522,6 +525,7 @@ function doGet(e) {
   if (p.action === 'listAkun') out = listAkun(p.user);
   if (p.action === 'listTransfer') out = listTransfer(p.user);
   if (p.action === 'cekKuota') out = cekKuota();
+  if (p.action === 'listAnggaran') out = listAnggaran(p.user);
   if (p.callback) {
     return ContentService.createTextOutput(p.callback + '(' + JSON.stringify(out) + ')')
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
@@ -552,7 +556,8 @@ function rowDari(item) {
     item.catatan || '',
     item.createdAt || new Date().toISOString(),
     item.user || '',
-    item.akunId || ''
+    item.akunId || '',
+    item.kategoriId || ''          /* <-- BARIS BARU */
   ];
 }
 
@@ -569,7 +574,8 @@ function listTransaksi(user) {
       id: String(r[0]), tanggal: formatTanggal(r[1]), tipe: r[2], kategori: r[3],
       nominal: Number(r[4]) || 0, keterangan: r[5], catatan: r[6],
       createdAt: r[7] ? String(r[7]) : '', user: u,
-      akunId: r[9] != null ? String(r[9]) : ''
+      akunId: r[9] != null ? String(r[9]) : '',
+      kategoriId: r[10] != null ? String(r[10]) : ''     /* <-- BARIS BARU */
     });
   }
   return { ok: true, data: data };
@@ -699,7 +705,13 @@ function deleteUtang(ids) {
   }
   return { ok: true, deleted: n };
 }
-  
+
+/* =======================================================================
+ * VERIFIKASI NOMOR TELEPON (OTP VIA FONNTE)
+ * Sebelum dipakai: daftar gratis di fonnte.com, hubungkan satu nomor WA
+ * lewat scan QR di menu Device, salin Token-nya, lalu simpan sebagai
+ * Script Property bernama FONNTE_TOKEN (Project Settings > Script Properties).
+ * ======================================================================= */
 var SHEET_OTP = 'OTP';
 var OTP_MASA_BERLAKU_DETIK = 300; // 5 menit
 
@@ -763,6 +775,9 @@ function verifikasiOtp(phone, code) {
   }
 }
 
+/* =======================================================================
+ * PENAMPUNG SALDO (AKUN: BANK, KARTU KREDIT, DOMPET DIGITAL)
+ * ======================================================================= */
 function sheetAkun() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(SHEET_AKUN);
@@ -833,6 +848,9 @@ function deleteAkun(ids) {
   return { ok: true, deleted: n };
 }
 
+/* =======================================================================
+ * PERPINDAHAN SALDO ANTAR AKUN (TRANSFER)
+ * ======================================================================= */
 function sheetTransfer() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sh = ss.getSheetByName(SHEET_TRANSFER);
@@ -904,6 +922,9 @@ function deleteTransfer(ids) {
   return { ok: true, deleted: n };
 }
 
+/* Cek sisa penyimpanan Google Drive milik pemilik lembar data, untuk
+   mengantisipasi Drive penuh karena data transaksi dan perpindahan saldo
+   yang terus bertambah. Dipanggil aplikasi saat Simpan & Sambungkan. */
 function cekKuota() {
   try {
     // Baris di bawah tidak pernah dijalankan. Tujuannya hanya agar Apps Script
@@ -935,6 +956,138 @@ function cekKuota() {
 function ujiIzin() {
   var sh = sheet();
   Logger.log('Lembar data siap: ' + sh.getName());
+}
+
+/* =====================================================================
+   TAMBAHAN BACKEND GAS: ANGGARAN
+   Tempel di editor Apps Script pencadangan (berkas yang sama dengan
+   scriptgas.txt). Setelah menempel, WAJIB Deploy -> Manage deployments
+   -> New version, agar /exec menjalankan kode baru.
+
+   Langkah:
+   1. Tambahkan konstanta SHEET_ANGGARAN & HEADERS_ANGGARAN di bagian atas
+      (dekat var SHEET_TRANSFER ...).
+   2. Tambahkan 3 baris routing di dalam doPost (bagian else if ...).
+   3. Tambahkan 1 baris routing di dalam doGet (bagian if p.action ...).
+   4. Tempel blok fungsi Anggaran di bawah (di mana saja, mis. setelah
+      blok TRANSFER).
+===================================================================== */
+
+
+/* ---------- 1) KONSTANTA (taruh dekat konstanta sheet lain) ---------- */
+var SHEET_ANGGARAN = 'Anggaran';
+var HEADERS_ANGGARAN = ['id','tipe','basis','periode','kategori','nilai','persen','mode','user','createdAt','updatedAt'];
+
+
+/* ---------- 4) BLOK FUNGSI ANGGARAN ---------- */
+
+function sheetAnggaran() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(SHEET_ANGGARAN);
+  if (!sh) { sh = ss.insertSheet(SHEET_ANGGARAN); sh.appendRow(HEADERS_ANGGARAN); }
+  if (sh.getLastRow() === 0) sh.appendRow(HEADERS_ANGGARAN);
+  return sh;
+}
+
+function rowAnggaran(item) {
+  return [
+    item.id,
+    item.tipe || '',
+    item.basis || '',
+    "'" + (item.periode || ''),      // apostrof: cegah Sheets memformat '2026-07' jadi tanggal
+    item.kategori || '',
+    Number(item.nilai) || 0,
+    Number(item.persen) || 0,
+    item.mode || '',
+    item.user || '',
+    item.createdAt || new Date().toISOString(),
+    item.updatedAt || new Date().toISOString()
+  ];
+}
+
+function listAnggaran(user) {
+  var sh = sheetAnggaran();
+  var values = sh.getDataRange().getValues();
+  var data = [];
+  for (var i = 1; i < values.length; i++) {
+    var r = values[i];
+    if (!r[0]) continue;
+    var us = r[8] != null ? String(r[8]) : '';
+    if (user && us !== String(user)) continue;
+    data.push({
+      id: String(r[0]), tipe: r[1], basis: r[2],
+      periode: String(r[3]).replace(/^'/, ''),
+      kategori: r[4], nilai: Number(r[5]) || 0, persen: Number(r[6]) || 0,
+      mode: r[7], user: us,
+      createdAt: r[9] ? String(r[9]) : '', updatedAt: r[10] ? String(r[10]) : ''
+    });
+  }
+  return { ok: true, data: data };
+}
+
+function syncAnggaran(items) {
+  if (!items || !items.length) return { ok: true, count: 0 };
+  var sh = sheetAnggaran();
+  var values = sh.getDataRange().getValues();
+  var indeks = {};
+  for (var i = 1; i < values.length; i++) {
+    if (values[i][0]) indeks[String(values[i][0])] = i + 1;
+  }
+  var barisBaru = [];
+  for (var j = 0; j < items.length; j++) {
+    var it = items[j];
+    var baris = rowAnggaran(it);
+    var adaDi = indeks[String(it.id)];
+    if (adaDi) sh.getRange(adaDi, 1, 1, HEADERS_ANGGARAN.length).setValues([baris]);
+    else barisBaru.push(baris);
+  }
+  if (barisBaru.length) sh.getRange(sh.getLastRow() + 1, 1, barisBaru.length, HEADERS_ANGGARAN.length).setValues(barisBaru);
+  return { ok: true, count: items.length };
+}
+
+function deleteAnggaran(ids) {
+  if (!ids || !ids.length) return { ok: true, deleted: 0 };
+  var sh = sheetAnggaran();
+  var values = sh.getDataRange().getValues();
+  var buang = {};
+  for (var k = 0; k < ids.length; k++) buang[String(ids[k])] = 1;
+  var n = 0;
+  for (var i = values.length - 1; i >= 1; i--) {
+    if (values[i][0] && buang[String(values[i][0])]) { sh.deleteRow(i + 1); n++; }
+  }
+  return { ok: true, deleted: n };
+}
+
+function rapikanKategoriLama() {
+  var PETA = {
+    'Food & Drinks': 'Makan & Minum',
+    'Electricity & Water': 'Listrik & Air',
+    'Phone & Internet': 'Pulsa & Internet',
+    'Tools & Equipment': 'Peralatan & Perkakas',
+    'Social Fund': 'Dana Sosial',
+    'Transportation': 'Transportasi',
+    'Health': 'Kesehatan',
+    'Education': 'Pendidikan',
+    'Entertainment': 'Hiburan',
+    'Clothing': 'Pakaian',
+    'Shopping': 'Belanja',
+    'Others': 'Lainnya',
+    'Salary': 'Gaji',
+    'Gift': 'Hadiah',
+    'Business': 'Usaha'
+  };
+  var sh = sheet();
+  var last = sh.getLastRow();
+  if (last < 2) return 'Tidak ada data.';
+  var rng = sh.getRange(2, 4, last - 1, 1);   // kolom D = kategori
+  var val = rng.getValues();
+  var n = 0;
+  for (var i = 0; i < val.length; i++) {
+    var k = String(val[i][0] || '').trim();
+    if (PETA[k]) { val[i][0] = PETA[k]; n++; }
+  }
+  if (n) rng.setValues(val);
+  return n + ' baris dirapikan.';
 }
 </script>
 
@@ -8610,24 +8763,33 @@ window.jsonp=function(params){
     var _td=window.tarikDariSheet;
     if(typeof _td==='function' && !_td.__agF){
       window.tarikDariSheet=bungkusSatuModal(async function(){
-        /* Selama fungsi asli berjalan, nilai progresnya diskalakan ke
-           0-82% dan teks "Selesai" ditahan, sehingga tahap anggaran
-           menyambung mulus (85 -> 100) tanpa pernah mundur dari 100%. */
-        var _set=window.setProgress;
-        if(adaProg && tersambung()){
-          window.setProgress=function(p,s){
-            var teks=s;
-            if((Number(p)||0)>=100){ teks=La('Mengambil anggaran...','Fetching budget...'); }
-            try{ _set(Math.min(82, Math.round((Number(p)||0)*0.82)), teks); }catch(e){}
-          };
+        /* Fungsi asli menanyakan konfirmasi LEBIH DULU, baru memanggil
+           showProgress. Jadi bila showProgress tidak pernah terpanggil,
+           berarti pengguna membatalkan -> tahap anggaran dilewati.
+           Selama fungsi asli berjalan, progresnya diskalakan ke 0-82%
+           dan teks "Selesai" ditahan, agar tahap anggaran menyambung
+           (85 -> 100) dalam SATU bilah tanpa pernah mundur. */
+        var _set=window.setProgress, _show=window.showProgress;
+        var berjalan=false;
+        if(adaProg){
+          window.showProgress=function(){ berjalan=true; return _show.apply(this, arguments); };
+          if(tersambung()){
+            window.setProgress=function(p,s){
+              var teks=s;
+              if((Number(p)||0)>=100){ teks=La('Mengambil anggaran...','Fetching budget...'); }
+              try{ _set(Math.min(82, Math.round((Number(p)||0)*0.82)), teks); }catch(e){}
+            };
+          }
         }
         var r;
         try{ r=await _td.apply(this, arguments); }
-        finally{ if(adaProg) window.setProgress=_set; }
+        finally{ if(adaProg){ window.setProgress=_set; window.showProgress=_show; } }
+
+        if(adaProg && !berjalan) return r;      /* dibatalkan pengguna */
+
         try{
           if(tersambung()){
-            if(adaProg){ showProgress(La('Memulihkan data','Restoring data'));
-              setProgress(85, La('Mengambil anggaran...','Fetching budget...')); }
+            if(adaProg) setProgress(85, La('Mengambil anggaran...','Fetching budget...'));
             var n=await tarikAnggaran(true);
             if(adaProg){ setProgress(100, La('Selesai','Done')); await jeda(350); }
             toast(n>0 ? (n+' '+La('data anggaran dipulihkan','budget records restored'))
