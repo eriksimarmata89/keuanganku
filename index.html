@@ -8837,70 +8837,123 @@ window.jsonp=function(params){
 </script>
 
 <!-- =====================================================================
-     PATCH NOTIFIKASI v2  (KeuanganKu)  — GANTIKAN "PATCH PERINGATAN
-     ANGGARAN v1" SEPENUHNYA. Hapus blok v1 lalu tempel berkas ini
-     PALING AKHIR sebelum </body> (setelah PATCH ANGGARAN FINAL).
+     PATCH NOTIFIKASI v3  (KeuanganKu)
+     GANTIKAN "PATCH NOTIFIKASI v2" SEPENUHNYA. Hapus blok v2 lalu tempel
+     berkas ini PALING AKHIR sebelum </body> (setelah PATCH ANGGARAN FINAL).
 
-     ============ PERBAIKAN DARI v1 ============
-     1. Anggaran yang SUDAH lewat 100% sebelumnya tidak pernah memberi
-        peringatan. Sebabnya v1 hanya memicu saat "menembus" ambang:
-        bila sebelum dan sesudah sama-sama di atas 100%, tidak ada
-        penembusan sehingga dibungkam.
-        Sekarang dipakai INGATAN TINGKAT per kategori+periode: peringatan
-        muncul bila tingkat sekarang lebih tinggi daripada yang terakhir
-        diberitahukan. Anggaran yang terlanjur lewat akan memberi
-        peringatan sekali pada transaksi berikutnya, lalu diam.
-     2. Nama kategori beda bahasa. Patch ini berjalan sebelum PATCH
-        KATEGORI ID sempat menormalkan nama, sehingga "Food & Drinks"
-        tidak cocok dengan anggaran "Makan & Minum". Kini nama kategori
-        dinormalkan dulu (memakai katKanonik bila tersedia).
+     ============ ISI ============
+     A. Peringatan anggaran saat menyimpan transaksi   (dari v2)
+     B. Pusat notifikasi + lonceng di header           (dari v2)
+     C. BARU: mesin penjadwalan
+        - Jatuh tempo hutang & piutang: H-3, H-1, hari-H, dan H+1
+          (terlambat). Hanya untuk catatan yang belum lunas.
+        - Pengingat mencatat harian pada jam pilihan, dan HANYA muncul
+          bila hari itu belum ada transaksi tercatat.
+        - Layar pengaturan sendiri (ikon gerigi di modul Notifikasi).
+     D. BARU: jembatan ke Kodular
+        Jadwal dikirim lewat WebViewString: "JADWAL|<json>", agar Kodular
+        bisa memasang alarm untuk pengingat SAAT APLIKASI TERTUTUP.
 
-     ============ TAMBAHAN: PUSAT NOTIFIKASI ============
-     - Ikon lonceng di header, di sebelah KIRI ikon pengguna, lengkap
-       dengan penanda jumlah notifikasi belum dibaca.
-     - Modul "Notifikasi": daftar seluruh notifikasi dikelompokkan per
-       TANGGAL dan menampilkan JAM tiap entri.
-     - Notifikasi tersimpan (bertahan setelah aplikasi ditutup), maksimal
-       200 entri terakhir, per pengguna.
-     - Ditekan -> membuka layar terkait (mis. modul Anggaran).
-     - Tandai semua dibaca / hapus semua.
+     ============ PENTING: BISA JALAN TANPA KODULAR ============
+     JavaScript berhenti ketika aplikasi ditutup, jadi alarm latar
+     belakang memang butuh Kodular. Namun patch ini memakai mekanisme
+     SUSULAN: setiap aplikasi dibuka atau kembali aktif, semua pengingat
+     yang waktunya sudah lewat namun belum pernah ditampilkan akan
+     langsung dimasukkan ke pusat notifikasi. Jadi fitur ini sudah
+     berguna sekarang; blok Kodular hanya menambahkan dorongan saat
+     aplikasi tidak dibuka. Panduan blok ada di berkas terpisah.
 
-     Semua di dalam WebView. Tidak memakai notifikasi Android/Kodular.
-
-     PENGATURAN
-       setPeringatanAnggaran(false)  -> matikan peringatan anggaran
-       setPeringatanAnggaran(true)   -> nyalakan
-       cekPeringatanAnggaran()       -> alat bantu: tampilkan status
-                                        anggaran periode berjalan
+     ============ PENGATURAN CEPAT ============
+       setPeringatanAnggaran(true/false)
+       cekPeringatanAnggaran()      -> status anggaran bulan berjalan
+       cekJadwal()                  -> daftar pengingat yang akan datang
 ====================================================================== -->
 <script>
 (function(){
   "use strict";
-  if(window.__PATCH_NOTIFIKASI) return;
-  window.__PATCH_NOTIFIKASI=true;
+  if(window.__PATCH_NOTIFIKASI_V3) return;
+  window.__PATCH_NOTIFIKASI_V3=true;
 
   var AMBANG_LEMBUT=80, AMBANG_TEGAS=100;
-  var LS_AKTIF='kk_peringatan_anggaran';
-  var AMBER='#EF9F27', MERAH='#E24B4A', BIRU='#3B82F6';
+  var AMBER='#EF9F27', MERAH='#E24B4A', BIRU='#3B82F6', HIJAU='#1D9E75';
 
+  /* ================= UTIL ================= */
   function La(id,en){ return (window.LANG==='en') ? en : id; }
   function u(){ return (typeof emailUser==='function' && emailUser()) || ''; }
   function uangS(n){ return (typeof fmtRp==='function') ? fmtRp(n) : (typeof rp==='function' ? rp(n) : n); }
   function pad2(n){ return (n<10?'0':'')+n; }
   function esc2(s){ return (typeof esc==='function') ? esc(s) : String(s==null?'':s); }
-  function aktif(){ try{ return localStorage.getItem(LS_AKTIF)!=='0'; }catch(e){ return true; } }
+  function hariIniISO(){ var d=new Date(); return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+  function lsGet(k,bawaan){ try{ var v=localStorage.getItem(k); return v===null?bawaan:v; }catch(e){ return bawaan; } }
+  function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+  function jsonGet(k,bawaan){ try{ var v=JSON.parse(localStorage.getItem(k)||'null'); return v==null?bawaan:v; }catch(e){ return bawaan; } }
+  function jsonSet(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+
+  /* ================= PENGATURAN ================= */
+  function kunciSet(){ return 'kk_notif_set_'+(u()||'anon'); }
+  var SET_BAWAAN={
+    anggaran:true,
+    tempo:true,      tempoJam:'08:00',   tempoHari:[3,1,0],
+    harian:true,     harianJam:'21:00'
+  };
+  function pengaturan(){
+    var s=jsonGet(kunciSet(),{});
+    var out={};
+    Object.keys(SET_BAWAAN).forEach(function(k){ out[k] = (s[k]===undefined) ? SET_BAWAAN[k] : s[k]; });
+    return out;
+  }
+  function simpanPengaturan(p){ jsonSet(kunciSet(), p); }
+  window.notifPengaturan=pengaturan;
 
   window.setPeringatanAnggaran=function(v){
-    try{ localStorage.setItem(LS_AKTIF, v?'1':'0'); }catch(e){}
+    var p=pengaturan(); p.anggaran=!!v; simpanPengaturan(p);
     if(typeof toast==='function') toast(v?La('Peringatan anggaran dinyalakan','Budget alerts enabled')
                                           :La('Peringatan anggaran dimatikan','Budget alerts disabled'));
     return !!v;
   };
-  window.peringatanAnggaranAktif=aktif;
+  window.peringatanAnggaranAktif=function(){ return pengaturan().anggaran; };
 
-  /* ================= NORMALISASI KATEGORI =================
-     Patch ini berjalan sebelum PATCH KATEGORI ID menormalkan record,
-     jadi nama kategori disamakan dulu ke bentuk kanonik Indonesia. */
+  /* ================= SIMPANAN NOTIFIKASI ================= */
+  function kunciNotif(){ return 'kk_notif_'+(u()||'anon'); }
+  function daftarNotif(){ var a=jsonGet(kunciNotif(),[]); return Array.isArray(a)?a:[]; }
+  function simpanNotif(a){ jsonSet(kunciNotif(), (a||[]).slice(0,200)); }
+  function tambahNotif(n){
+    var a=daftarNotif();
+    n.id = n.id || ('n'+Date.now()+Math.random().toString(36).slice(2,7));
+    n.ts = n.ts || Date.now();
+    n.dibaca=false;
+    a.unshift(n); simpanNotif(a); perbaruiLonceng();
+    return n;
+  }
+  window.notifTambah=tambahNotif;            /* untuk pengembangan berikutnya */
+  function belumDibaca(){ return daftarNotif().filter(function(n){ return !n.dibaca; }).length; }
+  window.notifBelumDibaca=belumDibaca;
+
+  window.notifTandaiSemua=function(){
+    var a=daftarNotif(); a.forEach(function(n){ n.dibaca=true; });
+    simpanNotif(a); perbaruiLonceng(); if(typeof render==='function') render();
+  };
+  window.notifHapusSemua=async function(){
+    var pesan=La('Hapus semua notifikasi?','Delete all notifications?');
+    var ok=(typeof confirmModal==='function') ? await confirmModal(pesan,{danger:true}) : window.confirm(pesan);
+    if(!ok) return;
+    simpanNotif([]); perbaruiLonceng();
+    if(typeof toast==='function') toast(La('Notifikasi dihapus','Notifications cleared'));
+    if(typeof render==='function') render();
+  };
+  window.notifBuka=function(id){
+    var a=daftarNotif(), n=null;
+    a.forEach(function(x){ if(x.id===id){ x.dibaca=true; n=x; } });
+    simpanNotif(a); perbaruiLonceng();
+    if(n && n.aksi){
+      if(n.aksi==='anggaran' && typeof bukaAnggaran==='function'){ bukaAnggaran(); return; }
+      if(n.aksi.indexOf('utang')===0 && typeof goView==='function'){ goView('utang'); return; }
+      if(n.aksi==='tambah' && typeof goView==='function'){ goView('add'); return; }
+    }
+    if(typeof render==='function') render();
+  };
+
+  /* ================= NORMALISASI KATEGORI ================= */
   function katKanon(nama, tipe){
     try{
       if(typeof window.katId==='function' && typeof window.katKanonik==='function'){
@@ -8912,18 +8965,18 @@ window.jsonp=function(params){
     return nama;
   }
 
-  /* ================= PERIODE ================= */
+  /* ================= PERIODE & ANGGARAN ================= */
   function seninDari(x){
     var d=new Date(x); d.setHours(0,0,0,0);
     var h=d.getDay(); d.setDate(d.getDate()-(h===0?6:h-1));
     return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
   }
-  function periodeDari(tgl, basis){
+  function periodeDari(tgl,basis){
     if(!tgl) return '';
     if(basis==='minggu') return seninDari(tgl+'T00:00:00');
     return String(tgl).slice(0,7);
   }
-  function dalamPeriode(tgl, basis, periode){
+  function dalamPeriode(tgl,basis,periode){
     if(!tgl) return false;
     if(basis==='minggu'){
       var b=new Date(periode+'T00:00:00'); b.setDate(b.getDate()+6);
@@ -8932,8 +8985,6 @@ window.jsonp=function(params){
     }
     return String(tgl).slice(0,7)===periode;
   }
-
-  /* ================= HITUNGAN ANGGARAN ================= */
   function recAG(tipe,basis,periode,kategori){
     return (window.AG||[]).filter(function(r){
       return r.tipe===tipe && r.basis===basis && r.periode===periode &&
@@ -8955,56 +9006,12 @@ window.jsonp=function(params){
     }).reduce(function(s,t){ return s+(Number(t.nominal)||0); },0);
   }
 
-  /* ================= SIMPANAN NOTIFIKASI ================= */
-  function kunciNotif(){ return 'kk_notif_'+(u()||'anon'); }
-  function daftarNotif(){
-    try{ var a=JSON.parse(localStorage.getItem(kunciNotif())||'[]'); return Array.isArray(a)?a:[]; }
-    catch(e){ return []; }
-  }
-  function simpanNotif(a){
-    try{ localStorage.setItem(kunciNotif(), JSON.stringify((a||[]).slice(0,200))); }catch(e){}
-  }
-  function tambahNotif(n){
-    var a=daftarNotif();
-    n.id = n.id || ('n'+Date.now()+Math.random().toString(36).slice(2,7));
-    n.ts = n.ts || Date.now();
-    n.dibaca = false;
-    a.unshift(n);
-    simpanNotif(a);
-    perbaruiLonceng();
-    return n;
-  }
-  function belumDibaca(){ return daftarNotif().filter(function(n){ return !n.dibaca; }).length; }
-  window.notifBelumDibaca=belumDibaca;
-
-  window.notifTandaiSemua=function(){
-    var a=daftarNotif(); a.forEach(function(n){ n.dibaca=true; });
-    simpanNotif(a); perbaruiLonceng();
-    if(typeof render==='function') render();
-  };
-  window.notifHapusSemua=async function(){
-    var pesan=La('Hapus semua notifikasi?','Delete all notifications?');
-    var ok=(typeof confirmModal==='function') ? await confirmModal(pesan,{danger:true}) : window.confirm(pesan);
-    if(!ok) return;
-    simpanNotif([]); perbaruiLonceng();
-    if(typeof toast==='function') toast(La('Notifikasi dihapus','Notifications cleared'));
-    if(typeof render==='function') render();
-  };
-  window.notifBuka=function(id){
-    var a=daftarNotif(), n=null;
-    a.forEach(function(x){ if(x.id===id){ x.dibaca=true; n=x; } });
-    simpanNotif(a); perbaruiLonceng();
-    if(n && n.aksi==='anggaran' && typeof bukaAnggaran==='function'){ bukaAnggaran(); return; }
-    if(typeof render==='function') render();
-  };
-
   /* ================= GAYA ================= */
   (function(){
     if(document.getElementById('nt-style')) return;
     var st=document.createElement('style');
     st.id='nt-style';
     st.textContent=
-      /* kartu melayang */
       '#paWrap{position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:var(--maxw);'+
         'z-index:120;box-sizing:border-box;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 0;pointer-events:none}'+
       '.pa-card{pointer-events:auto;background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:8px;'+
@@ -9018,7 +9025,6 @@ window.jsonp=function(params){
       '.pa-bar{height:5px;background:var(--page,#eee);border-radius:99px;overflow:hidden;margin-top:7px}'+
       '.pa-bar>div{height:100%;border-radius:99px}'+
       '.pa-x{flex:0 0 auto;background:none;border:none;color:var(--tx3);font-size:18px;line-height:1;padding:2px 4px;cursor:pointer}'+
-      /* lonceng di header */
       '.nt-bell{position:relative;width:38px;height:38px;border-radius:50%;border:none;background:var(--card);'+
         'color:var(--tx2);display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.05);'+
         'margin-right:8px;padding:0;cursor:pointer}'+
@@ -9027,18 +9033,34 @@ window.jsonp=function(params){
         'color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;'+
         'border:2px solid var(--page);box-sizing:content-box}'+
       '.appbar .kanan{display:flex;align-items:center}'+
-      /* modul notifikasi */
       '.nt-fhead{position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:var(--maxw);'+
-        'z-index:30;display:flex;align-items:center;gap:10px;box-sizing:border-box;'+
+        'z-index:30;display:flex;align-items:center;gap:6px;box-sizing:border-box;'+
         'padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 12px;background:var(--page)}'+
       '.nt-fhead .bk{background:none;border:none;font-size:22px;color:var(--tx);line-height:1;padding:4px;cursor:pointer}'+
       '.nt-fhead .ti{font-size:17px;font-weight:700;color:var(--tx);flex:1}'+
+      '.nt-fhead .ak{background:none;border:none;color:var(--tx2);line-height:0;padding:6px;cursor:pointer}'+
       '.scroll.has-nthead{padding-top:calc(60px + env(safe-area-inset-top,0px))}'+
       '.nt-tgl{font-size:11.5px;font-weight:700;color:var(--tx3);margin:16px 2px 8px;letter-spacing:.3px}'+
       '.nt-item{display:flex;gap:11px;align-items:flex-start;background:var(--card);border-radius:12px;'+
         'padding:11px 13px;margin-bottom:8px;cursor:pointer}'+
       '.nt-item.baru{box-shadow:inset 3px 0 0 '+BIRU+'}'+
-      '.nt-jam{font-size:10.5px;color:var(--tx3);flex:0 0 auto;margin-top:2px;min-width:38px;text-align:right}';
+      '.nt-jam{font-size:10.5px;color:var(--tx3);flex:0 0 auto;margin-top:2px;min-width:38px;text-align:right}'+
+      '.nt-baris{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:12px;'+
+        'padding:13px 14px;margin-bottom:9px}'+
+      '.nt-baris .nm{flex:1;min-width:0}'+
+      '.nt-baris .nm b{display:block;font-size:13.5px;color:var(--tx);font-weight:600}'+
+      '.nt-baris .nm span{display:block;font-size:11.5px;color:var(--tx3);margin-top:3px;line-height:1.4}'+
+      '.nt-sw{flex:0 0 auto;width:46px;height:27px;border-radius:99px;border:none;background:var(--line);'+
+        'position:relative;cursor:pointer;transition:background .18s}'+
+      '.nt-sw.on{background:'+HIJAU+'}'+
+      '.nt-sw i{position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#fff;'+
+        'transition:transform .18s}'+
+      '.nt-sw.on i{transform:translateX(19px)}'+
+      '.nt-jamin{flex:0 0 auto;width:96px;text-align:center;padding:9px 6px;box-sizing:border-box}'+
+      '.nt-chip{display:inline-flex;align-items:center;justify-content:center;min-width:44px;padding:7px 10px;'+
+        'margin:0 6px 6px 0;border-radius:9px;border:1px solid var(--line);background:transparent;'+
+        'color:var(--tx2);font-size:12px;cursor:pointer}'+
+      '.nt-chip.on{background:'+BIRU+'1a;border-color:'+BIRU+';color:'+BIRU+';font-weight:700}';
     document.head.appendChild(st);
   })();
 
@@ -9051,17 +9073,15 @@ window.jsonp=function(params){
     return w;
   }
   function tampilkanKartu(info){
-    var tegas=info.level>=AMBANG_TEGAS, warna=tegas?MERAH:AMBER;
+    var warna = info.warna || (info.level>=AMBANG_TEGAS?MERAH:AMBER);
     var card=document.createElement('div');
     card.className='pa-card';
     card.innerHTML=
-      '<span class="pa-ic" style="background:'+warna+'22;color:'+warna+'">'+(tegas?'&#9888;':'&#9201;')+'</span>'+
-      '<div class="pa-tx">'+
-        '<div class="pa-jd">'+esc2(info.judul)+'</div>'+
+      '<span class="pa-ic" style="background:'+warna+'22;color:'+warna+'">'+(info.lambang||'&#9888;')+'</span>'+
+      '<div class="pa-tx"><div class="pa-jd">'+esc2(info.judul)+'</div>'+
         '<div class="pa-sb">'+info.pesan+'</div>'+
-        '<div class="pa-bar"><div style="width:'+Math.min(100,info.persen)+'%;background:'+warna+'"></div></div>'+
-      '</div>'+
-      '<button class="pa-x" aria-label="tutup">&times;</button>';
+        (info.persen!==undefined?('<div class="pa-bar"><div style="width:'+Math.min(100,info.persen)+'%;background:'+warna+'"></div></div>'):'')+
+      '</div><button class="pa-x" aria-label="tutup">&times;</button>';
     var t=null;
     function tutup(){
       if(t){ clearTimeout(t); t=null; }
@@ -9069,93 +9089,225 @@ window.jsonp=function(params){
       setTimeout(function(){ if(card.parentNode) card.parentNode.removeChild(card); },240);
     }
     card.querySelector('.pa-x').addEventListener('click',function(e){ e.stopPropagation(); tutup(); });
-    card.addEventListener('click',function(){ tutup(); try{ if(typeof bukaAnggaran==='function') bukaAnggaran(); }catch(e){} });
+    card.addEventListener('click',function(){
+      tutup();
+      try{
+        if(info.aksi==='anggaran' && typeof bukaAnggaran==='function') bukaAnggaran();
+        else if(info.aksi && info.aksi.indexOf('utang')===0) goView('utang');
+        else if(info.aksi==='tambah') goView('add');
+      }catch(e){}
+    });
     wadah().appendChild(card);
     requestAnimationFrame(function(){ card.classList.add('tampil'); });
-    t=setTimeout(tutup, tegas?9000:7000);
+    t=setTimeout(tutup, 8000);
   }
 
-  /* ================= INGATAN TINGKAT ================= */
+  /* ================= A. PERINGATAN ANGGARAN ================= */
   function kunciTingkat(){ return 'kk_pa_tingkat_'+(u()||'anon'); }
-  function petaTingkat(){
-    try{ return JSON.parse(localStorage.getItem(kunciTingkat())||'{}')||{}; }catch(e){ return {}; }
-  }
-  function setTingkat(k,v){
-    var p=petaTingkat(); p[k]=v;
-    try{ localStorage.setItem(kunciTingkat(), JSON.stringify(p)); }catch(e){}
-  }
+  function petaTingkat(){ return jsonGet(kunciTingkat(),{})||{}; }
+  function setTingkat(k,v){ var p=petaTingkat(); p[k]=v; jsonSet(kunciTingkat(),p); }
 
-  /* ================= PEMERIKSAAN ================= */
-  function periksa(daftar){
-    if(!aktif() || !daftar.length) return;
+  function periksaAnggaran(daftar){
+    if(!pengaturan().anggaran || !daftar.length) return;
     var hasil=[], sudah={};
-
     daftar.forEach(function(t){
       if(t.tipe!=='pengeluaran') return;
-      if((Number(t.nominal)||0)<=0) return;          /* potongan: abaikan */
+      if((Number(t.nominal)||0)<=0) return;
       var kategori=katKanon(t.kategori,'pengeluaran');
-
       ['bulan','minggu'].forEach(function(basis){
-        var periode=periodeDari(t.tanggal, basis);
+        var periode=periodeDari(t.tanggal,basis);
         if(!periode) return;
         var kunci=kategori+'|'+basis+'|'+periode;
-        if(sudah[kunci]) return;
-        sudah[kunci]=1;
-
-        var target=targetKat(kategori, basis, periode);
-        if(target<=0) return;                        /* tidak dianggarkan */
-
-        var pakai=realisasiKat(kategori, basis, periode);
+        if(sudah[kunci]) return; sudah[kunci]=1;
+        var target=targetKat(kategori,basis,periode);
+        if(target<=0) return;
+        var pakai=realisasiKat(kategori,basis,periode);
         var persen=Math.round(pakai/target*100);
-
-        var tingkat = persen>=AMBANG_TEGAS ? AMBANG_TEGAS
-                    : (persen>=AMBANG_LEMBUT ? AMBANG_LEMBUT : 0);
+        var tingkat = persen>=AMBANG_TEGAS?AMBANG_TEGAS:(persen>=AMBANG_LEMBUT?AMBANG_LEMBUT:0);
         if(!tingkat) return;
-
-        /* hanya beri tahu bila tingkatnya NAIK dibanding yang terakhir
-           diberitahukan untuk kategori+periode ini */
-        var lalu=Number(petaTingkat()[kunci]||0);
-        if(tingkat<=lalu) return;
-        setTingkat(kunci, tingkat);
-
-        hasil.push({ kategori:kategori, basis:basis, periode:periode,
-                     target:target, pakai:pakai, persen:persen, level:tingkat });
+        if(tingkat<=Number(petaTingkat()[kunci]||0)) return;
+        setTingkat(kunci,tingkat);
+        hasil.push({kategori:kategori,basis:basis,target:target,pakai:pakai,persen:persen,level:tingkat});
       });
     });
-
     if(!hasil.length) return;
-    hasil.sort(function(a,b){ return (b.level-a.level) || (b.persen-a.persen); });
-
+    hasil.sort(function(a,b){ return (b.level-a.level)||(b.persen-a.persen); });
     hasil.forEach(function(h,i){
       var tegas=h.level>=AMBANG_TEGAS;
-      var judul = tegas ? La('Anggaran '+h.kategori+' terlampaui','Over budget: '+h.kategori)
-                        : La('Anggaran '+h.kategori+' hampir habis','Budget almost used: '+h.kategori);
-      var basisTeks = h.basis==='minggu' ? La('anggaran mingguan','weekly budget') : La('anggaran bulanan','monthly budget');
-      var pesan = tegas
+      var judul=tegas?La('Anggaran '+h.kategori+' terlampaui','Over budget: '+h.kategori)
+                     :La('Anggaran '+h.kategori+' hampir habis','Budget almost used: '+h.kategori);
+      var basisTeks=h.basis==='minggu'?La('anggaran mingguan','weekly budget'):La('anggaran bulanan','monthly budget');
+      var pesan=tegas
         ? La('Terpakai '+uangS(h.pakai)+' dari '+uangS(h.target)+' &middot; lewat '+uangS(h.pakai-h.target)+' &middot; '+h.persen+'% &middot; '+basisTeks,
              'Spent '+uangS(h.pakai)+' of '+uangS(h.target)+' &middot; over by '+uangS(h.pakai-h.target)+' &middot; '+h.persen+'% &middot; '+basisTeks)
         : La('Terpakai '+uangS(h.pakai)+' dari '+uangS(h.target)+' &middot; sisa '+uangS(h.target-h.pakai)+' &middot; '+h.persen+'% &middot; '+basisTeks,
              'Spent '+uangS(h.pakai)+' of '+uangS(h.target)+' &middot; '+uangS(h.target-h.pakai)+' left &middot; '+h.persen+'% &middot; '+basisTeks);
-
-      tambahNotif({ jenis:'anggaran', judul:judul, pesan:pesan, level:h.level,
-                    persen:h.persen, aksi:'anggaran' });
-      if(i===0) tampilkanKartu({ judul:judul, pesan:pesan, persen:h.persen, level:h.level });
+      tambahNotif({jenis:'anggaran',judul:judul,pesan:pesan,level:h.level,persen:h.persen,aksi:'anggaran'});
+      if(i===0) tampilkanKartu({judul:judul,pesan:pesan,persen:h.persen,level:h.level,aksi:'anggaran',
+        lambang: tegas?'&#9888;':'&#9201;'});
     });
   }
 
-  /* alat bantu diagnosis */
   window.cekPeringatanAnggaran=function(){
-    var bulan=new Date().toISOString().slice(0,10).slice(0,7);
+    var bulan=hariIniISO().slice(0,7);
     var baris=recAG('pengeluaran','bulan',bulan).map(function(r){
-      var tgt=targetKat(r.kategori,'bulan',bulan);
-      var pk=realisasiKat(r.kategori,'bulan',bulan);
+      var tgt=targetKat(r.kategori,'bulan',bulan), pk=realisasiKat(r.kategori,'bulan',bulan);
       return r.kategori+': '+pk+'/'+tgt+' = '+(tgt>0?Math.round(pk/tgt*100):0)+'%';
     });
-    var pesan = baris.length ? baris.join(' | ') : La('Belum ada anggaran pengeluaran bulan ini','No expense budget this month');
+    var pesan=baris.length?baris.join(' | '):La('Belum ada anggaran pengeluaran bulan ini','No expense budget this month');
     if(typeof toast==='function') toast(pesan);
-    try{ console.log('[Peringatan Anggaran]', {aktif:aktif(), periode:bulan, rincian:baris, tingkat:petaTingkat()}); }catch(e){}
+    try{ console.log('[Anggaran]',{aktif:pengaturan().anggaran,periode:bulan,rincian:baris,tingkat:petaTingkat()}); }catch(e){}
     return pesan;
   };
+
+  /* ================= C. MESIN PENJADWALAN ================= */
+  function kunciTerpicu(){ return 'kk_notif_picu_'+(u()||'anon'); }
+  function terpicu(){ return jsonGet(kunciTerpicu(),{})||{}; }
+  function tandaiPicu(id){
+    var p=terpicu(); p[id]=Date.now();
+    /* buang catatan lebih tua dari 120 hari agar tidak menumpuk */
+    var batas=Date.now()-120*86400000;
+    Object.keys(p).forEach(function(k){ if(p[k]<batas) delete p[k]; });
+    jsonSet(kunciTerpicu(),p);
+  }
+  function sudahPicu(id){ return !!terpicu()[id]; }
+
+  function waktuPada(tglISO, jamHHMM){
+    var j=String(jamHHMM||'08:00').split(':');
+    var d=new Date(tglISO+'T00:00:00');
+    d.setHours(Number(j[0])||0, Number(j[1])||0, 0, 0);
+    return d.getTime();
+  }
+  function geserHari(tglISO, n){
+    var d=new Date(tglISO+'T00:00:00'); d.setDate(d.getDate()+n);
+    return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+  }
+  function utBelumLunas(x){
+    try{
+      if(typeof utStatus==='function') return utStatus(x)!=='lunas';
+      var bayar=(x.pembayaran||[]).reduce(function(s,p){ return s+(Number(p.nominal)||0); },0);
+      return (Number(x.pokok)||0)-bayar > 0;
+    }catch(e){ return true; }
+  }
+  function utSisaAman(x){
+    try{ if(typeof utSisa==='function') return utSisa(x); }catch(e){}
+    var bayar=(x.pembayaran||[]).reduce(function(s,p){ return s+(Number(p.nominal)||0); },0);
+    return Math.max(0,(Number(x.pokok)||0)-bayar);
+  }
+
+  /* Susun seluruh pengingat. Mengembalikan array {id, ts, judul, pesan, aksi, jenis} */
+  function hitungJadwal(){
+    var p=pengaturan(), keluar=[];
+
+    /* --- jatuh tempo hutang & piutang --- */
+    if(p.tempo){
+      (window.UT||[]).forEach(function(x){
+        if(!x || !x.jatuhTempo || !utBelumLunas(x)) return;
+        var piutang = x.jenis==='piutang';
+        var sisa=utSisaAman(x);
+        var pihak=x.pihak||'-';
+
+        (p.tempoHari||[3,1,0]).forEach(function(h){
+          var tglPicu=geserHari(x.jatuhTempo, -h);
+          var judul = h===0
+            ? (piutang?La('Piutang jatuh tempo hari ini','Receivable due today'):La('Hutang jatuh tempo hari ini','Debt due today'))
+            : (piutang?La('Piutang jatuh tempo '+h+' hari lagi','Receivable due in '+h+' days')
+                      :La('Hutang jatuh tempo '+h+' hari lagi','Debt due in '+h+' days'));
+          var pesan = (piutang?La('Tagih ','Collect from '):La('Bayar ke ','Pay to '))+esc2(pihak)+
+            ' &middot; '+uangS(sisa)+' &middot; '+esc2(x.jatuhTempo);
+          keluar.push({ id:'ut_'+x.id+'_h'+h, ts:waktuPada(tglPicu,p.tempoJam),
+                        judul:judul, pesan:pesan, aksi:'utang:'+x.id, jenis:'tempo',
+                        warna: h===0?MERAH:AMBER });
+        });
+
+        /* terlambat: sehari setelah jatuh tempo, sekali saja */
+        var judulT=piutang?La('Piutang terlambat','Receivable overdue'):La('Hutang terlambat','Debt overdue');
+        var pesanT=esc2(pihak)+' &middot; '+uangS(sisa)+' &middot; '+
+          La('jatuh tempo ','due ')+esc2(x.jatuhTempo);
+        keluar.push({ id:'ut_'+x.id+'_lewat', ts:waktuPada(geserHari(x.jatuhTempo,1),p.tempoJam),
+                      judul:judulT, pesan:pesanT, aksi:'utang:'+x.id, jenis:'tempo', warna:MERAH });
+      });
+    }
+
+    /* --- pengingat mencatat harian (untuk 7 hari ke depan) --- */
+    if(p.harian){
+      for(var i=0;i<7;i++){
+        var tgl=geserHari(hariIniISO(), i);
+        keluar.push({ id:'harian_'+tgl, ts:waktuPada(tgl,p.harianJam),
+          judul:La('Sudah catat pengeluaran hari ini?','Logged today\u2019s spending?'),
+          pesan:La('Sebentar saja untuk mencatat transaksi hari ini.','It only takes a moment to log today\u2019s transactions.'),
+          aksi:'tambah', jenis:'harian', warna:BIRU });
+      }
+    }
+    keluar.sort(function(a,b){ return a.ts-b.ts; });
+    return keluar;
+  }
+  window.hitungJadwalNotif=hitungJadwal;
+
+  /* Jalankan pengingat yang waktunya sudah lewat namun belum ditampilkan. */
+  function kejarTertinggal(){
+    var sekarang=Date.now();
+    var batasLama=sekarang-14*86400000;      /* jangan tampilkan yang terlalu usang */
+    var jadwal=hitungJadwal(), tampil=0;
+
+    jadwal.forEach(function(j){
+      if(j.ts>sekarang || j.ts<batasLama) return;
+      if(sudahPicu(j.id)) return;
+
+      /* pengingat harian hanya bila hari itu belum ada transaksi */
+      if(j.jenis==='harian'){
+        var tgl=j.id.slice('harian_'.length);
+        var ada=(window.TX||[]).some(function(t){ return t.tanggal===tgl; });
+        if(ada){ tandaiPicu(j.id); return; }
+      }
+      tandaiPicu(j.id);
+      tambahNotif({ jenis:j.jenis, judul:j.judul, pesan:j.pesan, aksi:j.aksi, warna:j.warna });
+      if(tampil===0) tampilkanKartu({ judul:j.judul, pesan:j.pesan, aksi:j.aksi,
+        warna:j.warna, lambang: j.jenis==='harian'?'&#128221;':'&#128197;' });
+      tampil++;
+    });
+    if(tampil) { try{ if(typeof render==='function') render(); }catch(e){} }
+    return tampil;
+  }
+  window.kejarNotifikasi=kejarTertinggal;
+
+  /* Kirim jadwal ke Kodular agar bisa dipasang sebagai alarm. */
+  function kirimKeKodular(){
+    try{
+      if(!(window.AppInventor && window.AppInventor.setWebViewString)) return false;
+      var p=pengaturan();
+      var jadwal=hitungJadwal().filter(function(j){ return j.ts>Date.now(); }).slice(0,50);
+      var muatan={ v:1, harian:{aktif:!!p.harian, jam:p.harianJam},
+                   tempo:{aktif:!!p.tempo, jam:p.tempoJam},
+                   items:jadwal.map(function(j){
+                     return {id:j.id, ts:j.ts, judul:j.judul,
+                             pesan:String(j.pesan).replace(/<[^>]*>/g,'').replace(/&middot;/g,'-'),
+                             aksi:j.aksi};
+                   }) };
+      window.AppInventor.setWebViewString('JADWAL|'+JSON.stringify(muatan));
+      return true;
+    }catch(e){ return false; }
+  }
+  window.kirimJadwalKeKodular=kirimKeKodular;
+
+  window.cekJadwal=function(){
+    var j=hitungJadwal().filter(function(x){ return x.ts>Date.now(); });
+    try{ console.log('[Jadwal]', j.map(function(x){ return new Date(x.ts).toLocaleString()+' - '+x.judul; })); }catch(e){}
+    if(typeof toast==='function') toast(j.length+' '+La('pengingat terjadwal','scheduled reminders'));
+    return j;
+  };
+
+  /* jalankan susulan + kirim jadwal pada saat yang tepat */
+  var jadwalTertunda=null;
+  function segarkanJadwal(){
+    if(jadwalTertunda) clearTimeout(jadwalTertunda);
+    jadwalTertunda=setTimeout(function(){
+      jadwalTertunda=null;
+      try{ kejarTertinggal(); }catch(e){}
+      try{ kirimKeKodular(); }catch(e){}
+    }, 800);
+  }
+  window.segarkanJadwalNotif=segarkanJadwal;
 
   /* ================= PENANGKAP PENYIMPANAN ================= */
   var antre=[], timer=null, diam=0;
@@ -9164,7 +9316,7 @@ window.jsonp=function(params){
     return String(x).trim().toLowerCase()===String(u()).trim().toLowerCase();
   }
   function kumpulkan(items){
-    if(diam>0 || !aktif()) return;
+    if(diam>0) return;
     (items||[]).forEach(function(t){
       if(!t || typeof t!=='object') return;
       if(t.tipe!=='pengeluaran' || t.terkirim) return;
@@ -9175,79 +9327,81 @@ window.jsonp=function(params){
     if(timer) clearTimeout(timer);
     timer=setTimeout(function(){
       var d=antre.slice(); antre=[]; timer=null;
-      try{ periksa(d); }catch(e){}
+      try{ periksaAnggaran(d); }catch(e){}
     }, 350);
   }
   (function(){
     var _put=window.idbPut;
     if(typeof _put==='function' && !_put.__ntHooked){
-      window.idbPut=function(item){ try{ kumpulkan([item]); }catch(e){} return _put.apply(this, arguments); };
+      window.idbPut=function(item){ try{ kumpulkan([item]); }catch(e){} return _put.apply(this,arguments); };
       window.idbPut.__ntHooked=true;
     }
     var _bulk=window.idbBulkPut;
     if(typeof _bulk==='function' && !_bulk.__ntHooked){
-      window.idbBulkPut=function(items){ try{ kumpulkan(items); }catch(e){} return _bulk.apply(this, arguments); };
+      window.idbBulkPut=function(items){ try{ kumpulkan(items); }catch(e){} return _bulk.apply(this,arguments); };
       window.idbBulkPut.__ntHooked=true;
     }
+    /* perubahan hutang/piutang -> jadwal disusun ulang */
+    ['simpanUtang','hapusUtang','uPut','uBulkPut','bayarUtang'].forEach(function(nm){
+      var f=window[nm];
+      if(typeof f==='function' && !f.__ntHooked){
+        window[nm]=function(){
+          var r=f.apply(this,arguments);
+          try{ segarkanJadwal(); }catch(e){}
+          return r;
+        };
+        window[nm].__ntHooked=true;
+      }
+    });
   })();
   ['tarikDariSheet','muatAkun','claimOrphans'].forEach(function(nm){
     var f=window[nm];
     if(typeof f==='function' && !f.__ntHooked){
       window[nm]=async function(){
         diam++;
-        try{ return await f.apply(this, arguments); }
+        try{ return await f.apply(this,arguments); }
         finally{
           antre=[]; if(timer){ clearTimeout(timer); timer=null; }
-          setTimeout(function(){ diam=Math.max(0,diam-1); }, 600);
+          setTimeout(function(){ diam=Math.max(0,diam-1); segarkanJadwal(); }, 600);
         }
       };
       window[nm].__ntHooked=true;
     }
   });
 
-  /* ================= LONCENG DI HEADER ================= */
+  /* ================= LONCENG ================= */
   var IKON_LONCENG='<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" '+
     'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'+
-    '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>'+
-    '<path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>';
+    '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>';
+  var IKON_GERIGI='<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" '+
+    'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/>'+
+    '<path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>';
 
   function htmlLonceng(){
     var n=belumDibaca();
-    return '<button class="nt-bell" id="ntBell" onclick="goView(\'notifikasi\')" aria-label="'+
-      La('Notifikasi','Notifications')+'">'+IKON_LONCENG+
-      (n>0?('<span class="nt-dot">'+(n>99?'99+':n)+'</span>'):'')+'</button>';
+    return '<button class="nt-bell" id="ntBell" onclick="goView(\'notifikasi\')" aria-label="'+La('Notifikasi','Notifications')+'">'+
+      IKON_LONCENG+(n>0?('<span class="nt-dot">'+(n>99?'99+':n)+'</span>'):'')+'</button>';
   }
   function perbaruiLonceng(){
-    var b=document.getElementById('ntBell');
-    if(!b) return;
-    var n=belumDibaca();
-    var dot=b.querySelector('.nt-dot');
+    var b=document.getElementById('ntBell'); if(!b) return;
+    var n=belumDibaca(), dot=b.querySelector('.nt-dot');
     if(n>0){
       if(dot) dot.textContent=(n>99?'99+':n);
-      else {
-        var s=document.createElement('span');
-        s.className='nt-dot'; s.textContent=(n>99?'99+':n);
-        b.appendChild(s);
-      }
+      else { var s=document.createElement('span'); s.className='nt-dot'; s.textContent=(n>99?'99+':n); b.appendChild(s); }
     } else if(dot){ dot.parentNode.removeChild(dot); }
   }
-
-  /* sisipkan lonceng di kiri ikon pengguna pada appbar */
   (function(){
     var _ab=window.appBar;
     if(typeof _ab!=='function' || _ab.__ntHooked) return;
     window.appBar=function(){
-      var h=_ab.apply(this, arguments);
+      var h=_ab.apply(this,arguments);
       try{
         if(h.indexOf('nt-bell')>=0) return h;
         var i=h.indexOf('<button class="appbar-ava"');
         if(i>=0){
-          /* ada avatar: bungkus lonceng + avatar dalam satu wadah kanan */
           var tutupDiv=h.lastIndexOf('</div>');
-          var avatar=h.slice(i, tutupDiv);
-          return h.slice(0,i)+'<div class="kanan">'+htmlLonceng()+avatar+'</div>'+h.slice(tutupDiv);
+          return h.slice(0,i)+'<div class="kanan">'+htmlLonceng()+h.slice(i,tutupDiv)+'</div>'+h.slice(tutupDiv);
         }
-        /* tanpa avatar: taruh lonceng di ujung kanan */
         var j=h.lastIndexOf('</div>');
         return h.slice(0,j)+'<div class="kanan">'+htmlLonceng()+'</div>'+h.slice(j);
       }catch(e){ return h; }
@@ -9256,9 +9410,9 @@ window.jsonp=function(params){
   })();
 
   /* ================= MODUL NOTIFIKASI ================= */
-  function setNtHead(aktifkan){
+  function setNtHead(on){
     try{ var s=(typeof S==='function')?S():document.getElementById('scroll');
-      if(s) s.classList.toggle('has-nthead', !!aktifkan); }catch(e){}
+      if(s) s.classList.toggle('has-nthead',!!on); }catch(e){}
   }
   function labelTanggal(ts){
     var d=new Date(ts); d.setHours(0,0,0,0);
@@ -9266,68 +9420,150 @@ window.jsonp=function(params){
     var selisih=Math.round((kini-d)/86400000);
     if(selisih===0) return La('Hari ini','Today');
     if(selisih===1) return La('Kemarin','Yesterday');
-    try{
-      return new Date(ts).toLocaleDateString(window.LANG==='en'?'en-US':'id-ID',
-        {weekday:'long', day:'numeric', month:'long', year:'numeric'});
-    }catch(e){ return new Date(ts).toDateString(); }
+    try{ return new Date(ts).toLocaleDateString(window.LANG==='en'?'en-US':'id-ID',
+      {weekday:'long',day:'numeric',month:'long',year:'numeric'}); }
+    catch(e){ return new Date(ts).toDateString(); }
   }
   function labelJam(ts){
-    try{
-      return new Date(ts).toLocaleTimeString(window.LANG==='en'?'en-US':'id-ID',
-        {hour:'2-digit', minute:'2-digit'});
-    }catch(e){ var d=new Date(ts); return pad2(d.getHours())+':'+pad2(d.getMinutes()); }
+    try{ return new Date(ts).toLocaleTimeString(window.LANG==='en'?'en-US':'id-ID',{hour:'2-digit',minute:'2-digit'}); }
+    catch(e){ var d=new Date(ts); return pad2(d.getHours())+':'+pad2(d.getMinutes()); }
   }
-  function ikonJenis(n){
-    var warna = n.level>=AMBANG_TEGAS ? MERAH : (n.level>=AMBANG_LEMBUT ? AMBER : BIRU);
-    var lambang = n.level>=AMBANG_TEGAS ? '&#9888;' : (n.level>=AMBANG_LEMBUT ? '&#9201;' : '&#128276;');
+  function ikonNotif(n){
+    var warna = n.warna || (n.level>=AMBANG_TEGAS?MERAH:(n.level>=AMBANG_LEMBUT?AMBER:BIRU));
+    var lambang = n.jenis==='harian' ? '&#128221;'
+                : n.jenis==='tempo' ? '&#128197;'
+                : (n.level>=AMBANG_TEGAS?'&#9888;':'&#9201;');
     return '<span class="pa-ic" style="background:'+warna+'22;color:'+warna+'">'+lambang+'</span>';
   }
 
   function renderNotifikasi(){
-    var a=daftarNotif();
-    var isi='';
+    var a=daftarNotif(), isi='';
     if(!a.length){
       isi='<div class="empty" style="line-height:1.6">'+
-        La('Belum ada notifikasi. Peringatan anggaran akan muncul di sini saat pengeluaran mendekati atau melewati batas.',
-           'No notifications yet. Budget alerts will appear here when spending approaches or exceeds its limit.')+'</div>';
+        La('Belum ada notifikasi. Peringatan anggaran, jatuh tempo, dan pengingat harian akan muncul di sini.',
+           'No notifications yet. Budget alerts, due dates, and daily reminders will appear here.')+'</div>';
     } else {
       var tglTerakhir='';
       a.forEach(function(n){
         var tgl=labelTanggal(n.ts);
         if(tgl!==tglTerakhir){ isi+='<div class="nt-tgl">'+esc2(tgl.toUpperCase())+'</div>'; tglTerakhir=tgl; }
         isi+='<div class="nt-item'+(n.dibaca?'':' baru')+'" onclick="notifBuka(\''+n.id+'\')">'+
-          ikonJenis(n)+
-          '<div class="pa-tx"><div class="pa-jd">'+esc2(n.judul)+'</div>'+
-            '<div class="pa-sb">'+n.pesan+'</div></div>'+
-          '<span class="nt-jam">'+labelJam(n.ts)+'</span>'+
-        '</div>';
+          ikonNotif(n)+'<div class="pa-tx"><div class="pa-jd">'+esc2(n.judul)+'</div>'+
+          '<div class="pa-sb">'+n.pesan+'</div></div>'+
+          '<span class="nt-jam">'+labelJam(n.ts)+'</span></div>';
       });
     }
-    var adaBelum=belumDibaca()>0;
     S().innerHTML=
       '<div class="nt-fhead"><button class="bk" onclick="goView(\'home\')">&#8592;</button>'+
         '<div class="ti">'+La('Notifikasi','Notifications')+'</div>'+
-        (a.length?('<button class="bk" style="font-size:18px" title="'+La('Hapus semua','Clear all')+'" onclick="notifHapusSemua()">&#128465;</button>'):'')+
+        '<button class="ak" title="'+La('Pengaturan','Settings')+'" onclick="goView(\'notifSet\')">'+IKON_GERIGI+'</button>'+
+        (a.length?('<button class="bk" style="font-size:17px" title="'+La('Hapus semua','Clear all')+'" onclick="notifHapusSemua()">&#128465;</button>'):'')+
       '</div>'+
       '<div class="form" style="padding-bottom:24px">'+
-        (adaBelum?('<button class="save" style="background:var(--card);color:var(--tx);box-shadow:none;border:1px solid var(--line);margin-bottom:6px" onclick="notifTandaiSemua()">'+
+        (belumDibaca()?('<button class="save" style="background:var(--card);color:var(--tx);box-shadow:none;border:1px solid var(--line);margin-bottom:6px" onclick="notifTandaiSemua()">'+
           La('Tandai semua sudah dibaca','Mark all as read')+'</button>'):'')+
-        isi+
+        isi+'</div>';
+  }
+
+  /* ---------- layar pengaturan ---------- */
+  function sw(on){ return '<span class="nt-sw'+(on?' on':'')+'"><i></i></span>'; }
+  window.ntToggle=function(k){
+    var p=pengaturan(); p[k]=!p[k]; simpanPengaturan(p);
+    segarkanJadwal(); render();
+  };
+  window.ntJam=function(k,el){
+    var p=pengaturan(); p[k]=el.value||'08:00'; simpanPengaturan(p);
+    segarkanJadwal();
+  };
+  window.ntHari=function(h){
+    var p=pengaturan(), a=(p.tempoHari||[]).slice();
+    var i=a.indexOf(h);
+    if(i>=0) a.splice(i,1); else a.push(h);
+    a.sort(function(x,y){ return y-x; });
+    p.tempoHari=a; simpanPengaturan(p);
+    segarkanJadwal(); render();
+  };
+
+  function renderNotifSet(){
+    var p=pengaturan();
+    var chips=[7,3,1,0].map(function(h){
+      var on=(p.tempoHari||[]).indexOf(h)>=0;
+      var teks = h===0 ? La('Hari-H','Due day') : ('H-'+h);
+      return '<button class="nt-chip'+(on?' on':'')+'" onclick="ntHari('+h+')">'+teks+'</button>';
+    }).join('');
+
+    S().innerHTML=
+      '<div class="nt-fhead"><button class="bk" onclick="goView(\'notifikasi\')">&#8592;</button>'+
+        '<div class="ti">'+La('Pengaturan notifikasi','Notification settings')+'</div></div>'+
+      '<div class="form" style="padding-bottom:24px">'+
+
+        '<div class="sec-head"><div class="t">'+La('Anggaran','Budget')+'</div></div>'+
+        '<div class="nt-baris" onclick="ntToggle(\'anggaran\')">'+
+          '<div class="nm"><b>'+La('Peringatan anggaran','Budget alerts')+'</b>'+
+          '<span>'+La('Muncul saat pengeluaran kategori mencapai 80% dan 100% dari anggaran.',
+                      'Appears when a category reaches 80% and 100% of its budget.')+'</span></div>'+sw(p.anggaran)+'</div>'+
+
+        '<div class="sec-head"><div class="t">'+La('Jatuh tempo','Due dates')+'</div></div>'+
+        '<div class="nt-baris" onclick="ntToggle(\'tempo\')">'+
+          '<div class="nm"><b>'+La('Pengingat hutang & piutang','Debt & receivable reminders')+'</b>'+
+          '<span>'+La('Hanya untuk catatan yang belum lunas dan punya tanggal jatuh tempo.',
+                      'Only for unpaid records that have a due date.')+'</span></div>'+sw(p.tempo)+'</div>'+
+        (p.tempo?(
+          '<div class="nt-baris"><div class="nm"><b>'+La('Jam pengingat','Reminder time')+'</b>'+
+            '<span>'+La('Waktu munculnya pengingat jatuh tempo.','When due-date reminders appear.')+'</span></div>'+
+            '<input class="field nt-jamin" type="time" value="'+esc2(p.tempoJam)+'" oninput="ntJam(\'tempoJam\',this)"></div>'+
+          '<div style="font-size:11.5px;color:var(--tx3);margin:2px 2px 8px">'+
+            La('Berapa hari sebelum jatuh tempo:','How many days before the due date:')+'</div>'+
+          '<div style="margin-bottom:10px">'+chips+'</div>'
+        ):'')+
+
+        '<div class="sec-head"><div class="t">'+La('Pengingat harian','Daily reminder')+'</div></div>'+
+        '<div class="nt-baris" onclick="ntToggle(\'harian\')">'+
+          '<div class="nm"><b>'+La('Ingatkan mencatat','Remind me to log')+'</b>'+
+          '<span>'+La('Dilewati bila hari itu sudah ada transaksi tercatat.',
+                      'Skipped if a transaction was already logged that day.')+'</span></div>'+sw(p.harian)+'</div>'+
+        (p.harian?(
+          '<div class="nt-baris"><div class="nm"><b>'+La('Jam pengingat','Reminder time')+'</b></div>'+
+            '<input class="field nt-jamin" type="time" value="'+esc2(p.harianJam)+'" oninput="ntJam(\'harianJam\',this)"></div>'
+        ):'')+
+
+        '<div style="font-size:11px;color:var(--tx3);line-height:1.6;margin-top:14px">'+
+          La('Pengingat muncul di dalam aplikasi. Agar tetap berbunyi saat aplikasi tertutup, diperlukan pemasangan alarm di Kodular.',
+             'Reminders appear inside the app. To also alert you while the app is closed, alarms must be set up in Kodular.')+'</div>'+
       '</div>';
   }
 
+  /* ================= INTEGRASI RENDER ================= */
   (function(){
     var _render=window.render;
     if(typeof _render!=='function' || _render.__ntHooked) return;
     window.render=function(){
       var v=(typeof view!=='undefined')?view:window.view;
       if(v==='notifikasi'){ if(typeof setNav==='function') setNav(); setNtHead(true); return renderNotifikasi(); }
+      if(v==='notifSet'){ if(typeof setNav==='function') setNav(); setNtHead(true); return renderNotifSet(); }
       setNtHead(false);
-      var r=_render.apply(this, arguments);
+      var r=_render.apply(this,arguments);
       try{ perbaruiLonceng(); }catch(e){}
       return r;
     };
     window.render.__ntHooked=true;
+  })();
+
+  /* ================= PEMICU SUSULAN ================= */
+  /* saat aplikasi dibuka, kembali aktif, dan tiap menit selagi terbuka */
+  document.addEventListener('visibilitychange', function(){
+    if(!document.hidden) segarkanJadwal();
+  });
+  window.addEventListener('focus', segarkanJadwal);
+  setInterval(function(){ if(!document.hidden) { try{ kejarTertinggal(); }catch(e){} } }, 60000);
+
+  (function(){
+    var c=0;
+    (function tunggu(){
+      c++;
+      if(window.TX && typeof render==='function'){ segarkanJadwal(); }
+      else if(c<100) setTimeout(tunggu,150);
+    })();
   })();
 
 })();
