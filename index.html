@@ -9577,11 +9577,35 @@ window.jsonp=function(params){
             '<input class="field nt-jamin" type="time" value="'+esc2(p.harianJam)+'" oninput="ntJam(\'harianJam\',this)"></div>'
         ):'')+
 
+        '<div class="sec-head"><div class="t">'+La('Izin Android','Android permissions')+'</div></div>'+
+        '<div style="font-size:11.5px;color:var(--tx3);line-height:1.6;margin:0 2px 10px">'+
+          La('Diperlukan agar pengingat tetap berbunyi saat aplikasi ditutup. Buka bila pengingat tidak pernah muncul.',
+             'Needed so reminders still fire while the app is closed. Open these if reminders never appear.')+'</div>'+
+        '<button class="save" style="background:var(--card);color:var(--tx);box-shadow:none;border:1px solid var(--line)" onclick="ntIzin(\'alarm\')">'+
+          La('Izin alarm & pengingat','Alarms & reminders permission')+'</button>'+
+        '<button class="save" style="background:var(--card);color:var(--tx);box-shadow:none;border:1px solid var(--line);margin-top:4px" onclick="ntIzin(\'notif\')">'+
+          La('Izin notifikasi','Notification permission')+'</button>'+
+        '<button class="save" style="background:var(--card);color:var(--tx);box-shadow:none;border:1px solid var(--line);margin-top:4px" onclick="ntIzin(\'baterai\')">'+
+          La('Pengaturan hemat daya','Battery saver settings')+'</button>'+
+
         '<div style="font-size:11px;color:var(--tx3);line-height:1.6;margin-top:14px">'+
           La('Pengingat muncul di dalam aplikasi. Agar tetap berbunyi saat aplikasi tertutup, diperlukan pemasangan alarm di Kodular.',
              'Reminders appear inside the app. To also alert you while the app is closed, alarms must be set up in Kodular.')+'</div>'+
       '</div>';
   }
+
+  /* Tombol izin: kirim perintah ke Kodular lewat pola WebViewString
+     yang sudah dipakai (BUKA_LINKI|, BAHASA|, TEMA|). Bila aplikasi
+     dibuka di browser biasa, tombol ini tidak melakukan apa-apa. */
+  window.ntIzin=function(jenis){
+    try{
+      if(window.AppInventor && window.AppInventor.setWebViewString){
+        window.AppInventor.setWebViewString('IZIN|'+jenis);
+      } else if(typeof toast==='function'){
+        toast(La('Hanya berfungsi di aplikasi Android.','Only works in the Android app.'));
+      }
+    }catch(e){}
+  };
 
   /* ================= INTEGRASI RENDER ================= */
   (function(){
