@@ -8835,6 +8835,301 @@ window.jsonp=function(params){
 
 })();
 </script>
+
+<!-- =====================================================================
+     PATCH PERINGATAN ANGGARAN v1  (KeuanganKu)
+     Tempel PERSIS SEBELUM </body>, PALING AKHIR — setelah
+     PATCH ANGGARAN FINAL.
+
+     APA INI
+     Peringatan di dalam aplikasi (WebView) yang muncul seketika setelah
+     transaksi pengeluaran disimpan, bila kategori itu menembus ambang
+     anggarannya. TIDAK memakai notifikasi Android/Kodular sama sekali.
+
+     PERILAKU
+     - Ambang: 80% (peringatan lembut) dan 100% (peringatan tegas).
+     - Hanya muncul saat transaksi tersebut MENYEBABKAN penembusan.
+       Transaksi berikutnya pada kategori yang sudah lewat tidak
+       mengulang peringatan yang sama, supaya tidak berisik.
+     - Berlaku untuk anggaran bulanan maupun mingguan; periode dihitung
+       dari TANGGAL transaksi, bukan tanggal hari ini.
+     - Menangkap semua jalur simpan: manual, struk/OCR, dan multi-barang.
+       Beberapa barang sekaligus digabung menjadi satu peringatan.
+     - Diam saat memulihkan cadangan / memuat ulang akun.
+     - Nominal mengikuti tombol mata (fmtRp), dan dwibahasa.
+     - Ditekan -> membuka modul Anggaran.
+
+     PENGATURAN
+     Aktif secara bawaan. Bisa dimatikan lewat konsol / tombol:
+       setPeringatanAnggaran(false)   -> matikan
+       setPeringatanAnggaran(true)    -> nyalakan
+       peringatanAnggaranAktif()      -> cek status
+====================================================================== -->
+<script>
+(function(){
+  "use strict";
+  if(window.__PATCH_PERINGATAN_ANGGARAN) return;
+  window.__PATCH_PERINGATAN_ANGGARAN=true;
+
+  var AMBANG_LEMBUT=80, AMBANG_TEGAS=100;
+  var LS_AKTIF='kk_peringatan_anggaran';
+  var HIJAU='#1D9E75', AMBER='#EF9F27', MERAH='#E24B4A';
+
+  function La(id,en){ return (window.LANG==='en') ? en : id; }
+  function u(){ return (typeof emailUser==='function' && emailUser()) || ''; }
+  function uangS(n){ return (typeof fmtRp==='function') ? fmtRp(n) : (typeof rp==='function' ? rp(n) : n); }
+  function pad2(n){ return (n<10?'0':'')+n; }
+  function aktif(){ try{ return localStorage.getItem(LS_AKTIF)!=='0'; }catch(e){ return true; } }
+
+  window.setPeringatanAnggaran=function(v){
+    try{ localStorage.setItem(LS_AKTIF, v?'1':'0'); }catch(e){}
+    if(typeof toast==='function') toast(v?La('Peringatan anggaran dinyalakan','Budget alerts enabled')
+                                          :La('Peringatan anggaran dimatikan','Budget alerts disabled'));
+    return !!v;
+  };
+  window.peringatanAnggaranAktif=aktif;
+
+  /* ================= PERIODE ================= */
+  function seninDari(x){
+    var d=new Date(x); d.setHours(0,0,0,0);
+    var h=d.getDay(); d.setDate(d.getDate()-(h===0?6:h-1));
+    return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+  }
+  function periodeDari(tgl, basis){
+    if(!tgl) return '';
+    if(basis==='minggu') return seninDari(tgl+'T00:00:00');
+    return String(tgl).slice(0,7);
+  }
+  function dalamPeriode(tgl, basis, periode){
+    if(!tgl) return false;
+    if(basis==='minggu'){
+      var b=new Date(periode+'T00:00:00'); b.setDate(b.getDate()+6);
+      var akhir=b.getFullYear()+'-'+pad2(b.getMonth()+1)+'-'+pad2(b.getDate());
+      return tgl>=periode && tgl<=akhir;
+    }
+    return String(tgl).slice(0,7)===periode;
+  }
+
+  /* ================= HITUNGAN ANGGARAN ================= */
+  function recAG(tipe,basis,periode,kategori){
+    return (window.AG||[]).filter(function(r){
+      return r.tipe===tipe && r.basis===basis && r.periode===periode &&
+             (kategori===undefined || r.kategori===kategori);
+    });
+  }
+  function totalPemasukan(basis,periode){
+    return recAG('pemasukan',basis,periode).reduce(function(s,r){ return s+(Number(r.nilai)||0); },0);
+  }
+  function targetKat(kategori,basis,periode){
+    var r=recAG('pengeluaran',basis,periode,kategori)[0];
+    if(!r) return 0;
+    return Math.round(totalPemasukan(basis,periode)*(Number(r.persen)||0)/100);
+  }
+  function realisasiKat(kategori,basis,periode){
+    return (window.TX||[]).filter(function(t){
+      return t.tipe==='pengeluaran' && t.kategori===kategori && dalamPeriode(t.tanggal,basis,periode);
+    }).reduce(function(s,t){ return s+(Number(t.nominal)||0); },0);
+  }
+
+  /* ================= TAMPILAN PERINGATAN ================= */
+  (function(){
+    if(document.getElementById('pa-style')) return;
+    var st=document.createElement('style');
+    st.id='pa-style';
+    st.textContent=
+      '#paWrap{position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:var(--maxw);'+
+        'z-index:120;box-sizing:border-box;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 0;'+
+        'pointer-events:none}'+
+      '.pa-card{pointer-events:auto;background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:8px;'+
+        'box-shadow:0 8px 24px rgba(0,0,0,.28);display:flex;gap:11px;align-items:flex-start;cursor:pointer;'+
+        'transform:translateY(-14px);opacity:0;transition:transform .22s ease,opacity .22s ease}'+
+      '.pa-card.tampil{transform:translateY(0);opacity:1}'+
+      '.pa-ic{flex:0 0 auto;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;'+
+        'justify-content:center;font-size:17px}'+
+      '.pa-tx{flex:1;min-width:0}'+
+      '.pa-jd{font-size:13px;font-weight:700;color:var(--tx);line-height:1.3}'+
+      '.pa-sb{font-size:11.5px;color:var(--tx2);margin-top:3px;line-height:1.45}'+
+      '.pa-bar{height:5px;background:var(--page,#eee);border-radius:99px;overflow:hidden;margin-top:7px}'+
+      '.pa-bar>div{height:100%;border-radius:99px}'+
+      '.pa-x{flex:0 0 auto;background:none;border:none;color:var(--tx3);font-size:18px;line-height:1;'+
+        'padding:2px 4px;cursor:pointer}';
+    document.head.appendChild(st);
+  })();
+
+  function wadah(){
+    var w=document.getElementById('paWrap');
+    if(w) return w;
+    w=document.createElement('div');
+    w.id='paWrap';
+    document.body.appendChild(w);
+    return w;
+  }
+
+  function tampilkan(info){
+    var tegas = info.level==='tegas';
+    var warna = tegas ? MERAH : AMBER;
+    var w=wadah();
+
+    var card=document.createElement('div');
+    card.className='pa-card';
+
+    var judul = tegas
+      ? La('Anggaran '+info.kategori+' terlampaui','Over budget: '+info.kategori)
+      : La('Anggaran '+info.kategori+' hampir habis','Budget almost used: '+info.kategori);
+
+    var rincian = tegas
+      ? La('Terpakai '+uangS(info.pakai)+' dari '+uangS(info.target)+' &middot; lewat '+uangS(info.pakai-info.target),
+           'Spent '+uangS(info.pakai)+' of '+uangS(info.target)+' &middot; over by '+uangS(info.pakai-info.target))
+      : La('Terpakai '+uangS(info.pakai)+' dari '+uangS(info.target)+' &middot; sisa '+uangS(info.target-info.pakai),
+           'Spent '+uangS(info.pakai)+' of '+uangS(info.target)+' &middot; '+uangS(info.target-info.pakai)+' left');
+
+    var basisTeks = info.basis==='minggu' ? La('anggaran mingguan','weekly budget') : La('anggaran bulanan','monthly budget');
+    var lain = info.lain>0 ? (' &middot; +'+info.lain+' '+La('kategori lain','other categories')) : '';
+
+    card.innerHTML=
+      '<span class="pa-ic" style="background:'+warna+'22;color:'+warna+'">'+(tegas?'&#9888;':'&#9201;')+'</span>'+
+      '<div class="pa-tx">'+
+        '<div class="pa-jd">'+judul+'</div>'+
+        '<div class="pa-sb">'+rincian+'</div>'+
+        '<div class="pa-bar"><div style="width:'+Math.min(100,info.persen)+'%;background:'+warna+'"></div></div>'+
+        '<div class="pa-sb" style="margin-top:5px;color:var(--tx3)">'+info.persen+'% &middot; '+basisTeks+lain+'</div>'+
+      '</div>'+
+      '<button class="pa-x" aria-label="tutup">&times;</button>';
+
+    var tutupTimer=null;
+    function tutup(){
+      if(tutupTimer){ clearTimeout(tutupTimer); tutupTimer=null; }
+      card.classList.remove('tampil');
+      setTimeout(function(){ if(card.parentNode) card.parentNode.removeChild(card); }, 240);
+    }
+    card.querySelector('.pa-x').addEventListener('click', function(e){ e.stopPropagation(); tutup(); });
+    card.addEventListener('click', function(){
+      tutup();
+      try{ if(typeof bukaAnggaran==='function') bukaAnggaran(); }catch(e){}
+    });
+
+    w.appendChild(card);
+    requestAnimationFrame(function(){ card.classList.add('tampil'); });
+    tutupTimer=setTimeout(tutup, tegas ? 9000 : 7000);
+  }
+
+  /* ================= DETEKSI PENEMBUSAN ================= */
+  /* Peringatan hanya muncul bila transaksi INI yang menyebabkan ambang
+     terlewati: persen sebelum < ambang <= persen sesudah. */
+  function periksa(daftar){
+    if(!aktif() || !daftar.length) return;
+    var hasil=[];
+
+    daftar.forEach(function(t){
+      var nominal=Number(t.nominal)||0;
+      if(nominal<=0) return;                     /* potongan/koreksi: abaikan */
+      if(t.tipe!=='pengeluaran') return;
+
+      ['bulan','minggu'].forEach(function(basis){
+        var periode=periodeDari(t.tanggal, basis);
+        if(!periode) return;
+        var target=targetKat(t.kategori, basis, periode);
+        if(target<=0) return;                    /* kategori ini tidak dianggarkan */
+
+        var sesudah=realisasiKat(t.kategori, basis, periode);
+        var sebelum=sesudah-nominal;
+        var pSesudah=Math.round(sesudah/target*100);
+        var pSebelum=Math.round(sebelum/target*100);
+
+        var level=null;
+        if(pSebelum<AMBANG_TEGAS && pSesudah>=AMBANG_TEGAS) level='tegas';
+        else if(pSebelum<AMBANG_LEMBUT && pSesudah>=AMBANG_LEMBUT) level='lembut';
+        if(!level) return;
+
+        hasil.push({ kategori:t.kategori, basis:basis, periode:periode,
+                     target:target, pakai:sesudah, persen:pSesudah, level:level });
+      });
+    });
+
+    if(!hasil.length) return;
+
+    /* satu peringatan saja: ambil yang paling parah, sisanya diringkas */
+    var unik={}, urut=[];
+    hasil.forEach(function(h){
+      var k=h.kategori+'|'+h.basis;
+      if(!unik[k]){ unik[k]=1; urut.push(h); }
+    });
+    urut.sort(function(a,b){
+      if(a.level!==b.level) return a.level==='tegas' ? -1 : 1;
+      return b.persen-a.persen;
+    });
+    var utama=urut[0];
+    utama.lain=urut.length-1;
+    tampilkan(utama);
+  }
+
+  /* ================= PENANGKAP PENYIMPANAN ================= */
+  /* Semua jalur simpan transaksi bermuara ke idbPut / idbBulkPut.
+     Penulisan dikumpulkan sebentar (debounce) agar satu struk berisi
+     banyak barang menghasilkan SATU peringatan. */
+  var antre=[], timer=null, diam=0;
+
+  function kumpulkan(items){
+    if(diam>0 || !aktif()) return;
+    (items||[]).forEach(function(t){
+      if(!t || typeof t!=='object') return;
+      if(t.tipe!=='pengeluaran') return;
+      if(t.terkirim) return;                     /* data dari cadangan: abaikan */
+      if(!t.kategori || !t.tanggal) return;
+      if(!samaUser(t.user)) return;
+      antre.push(t);
+    });
+    if(!antre.length) return;
+    if(timer) clearTimeout(timer);
+    timer=setTimeout(function(){
+      var d=antre.slice(); antre=[]; timer=null;
+      try{ periksa(d); }catch(e){}
+    }, 300);
+  }
+  function samaUser(x){
+    if(!x) return true;
+    return String(x).trim().toLowerCase()===String(u()).trim().toLowerCase();
+  }
+
+  (function(){
+    var _put=window.idbPut;
+    if(typeof _put==='function' && !_put.__paHooked){
+      window.idbPut=function(item){
+        try{ kumpulkan([item]); }catch(e){}
+        return _put.apply(this, arguments);
+      };
+      window.idbPut.__paHooked=true;
+    }
+    var _bulk=window.idbBulkPut;
+    if(typeof _bulk==='function' && !_bulk.__paHooked){
+      window.idbBulkPut=function(items){
+        try{ kumpulkan(items); }catch(e){}
+        return _bulk.apply(this, arguments);
+      };
+      window.idbBulkPut.__paHooked=true;
+    }
+  })();
+
+  /* Diam saat memulihkan cadangan / memuat ulang akun, supaya penulisan
+     massal tidak memunculkan peringatan beruntun. */
+  ['tarikDariSheet','muatAkun','claimOrphans'].forEach(function(nm){
+    var f=window[nm];
+    if(typeof f==='function' && !f.__paHooked){
+      window[nm]=async function(){
+        diam++;
+        try{ return await f.apply(this, arguments); }
+        finally{
+          antre=[];
+          if(timer){ clearTimeout(timer); timer=null; }
+          setTimeout(function(){ diam=Math.max(0,diam-1); }, 600);
+        }
+      };
+      window[nm].__paHooked=true;
+    }
+  });
+
+})();
+</script>
   
 </body>
 </html>
