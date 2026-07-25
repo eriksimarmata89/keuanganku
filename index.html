@@ -9554,14 +9554,14 @@ window.jsonp=function(params){
         '<div class="sec-head"><div class="t">'+La('Anggaran','Budget')+'</div></div>'+
         '<div class="nt-baris" onclick="ntToggle(\'anggaran\')">'+
           '<div class="nm"><b>'+La('Peringatan anggaran','Budget alerts')+'</b>'+
-          '<span>'+La('Muncul saat pengeluaran kategori mencapai 80% dan 100% dari anggaran.',
-                      'Appears when a category reaches 80% and 100% of its budget.')+'</span></div>'+sw(p.anggaran)+'</div>'+
+          '<span>'+La('Memberi tahu Anda saat pengeluaran sebuah kategori mendekati dan melewati batas anggarannya.',
+                      'Alerts you when a category\u2019s spending nears and then passes its budget limit.')+'</span></div>'+sw(p.anggaran)+'</div>'+
 
         '<div class="sec-head"><div class="t">'+La('Jatuh tempo','Due dates')+'</div></div>'+
         '<div class="nt-baris" onclick="ntToggle(\'tempo\')">'+
           '<div class="nm"><b>'+La('Pengingat hutang & piutang','Debt & receivable reminders')+'</b>'+
-          '<span>'+La('Hanya untuk catatan yang belum lunas dan punya tanggal jatuh tempo.',
-                      'Only for unpaid records that have a due date.')+'</span></div>'+sw(p.tempo)+'</div>'+
+          '<span>'+La('Mengingatkan tenggat pembayaran hutang dan penagihan piutang yang belum diselesaikan.',
+                      'Reminds you of upcoming due dates for unpaid debts and receivables.')+'</span></div>'+sw(p.tempo)+'</div>'+
         (p.tempo?(
           '<div class="nt-baris"><div class="nm"><b>'+La('Jam pengingat','Reminder time')+'</b>'+
             '<span>'+La('Waktu munculnya pengingat jatuh tempo.','When due-date reminders appear.')+'</span></div>'+
@@ -9574,27 +9574,27 @@ window.jsonp=function(params){
         '<div class="sec-head"><div class="t">'+La('Pengingat harian','Daily reminder')+'</div></div>'+
         '<div class="nt-baris" onclick="ntToggle(\'harian\')">'+
           '<div class="nm"><b>'+La('Ingatkan mencatat','Remind me to log')+'</b>'+
-          '<span>'+La('Dilewati bila hari itu sudah ada transaksi tercatat.',
-                      'Skipped if a transaction was already logged that day.')+'</span></div>'+sw(p.harian)+'</div>'+
+          '<span>'+La('Mengingatkan Anda mencatat transaksi. Dilewati jika hari itu sudah ada catatan.',
+                      'Reminds you to record transactions. Skipped on days you have already logged one.')+'</span></div>'+sw(p.harian)+'</div>'+
         (p.harian?(
           '<div class="nt-baris"><div class="nm"><b>'+La('Jam pengingat','Reminder time')+'</b></div>'+
             '<input class="field nt-jamin" type="time" value="'+esc2(p.harianJam)+'" oninput="ntJam(\'harianJam\',this)"></div>'
         ):'')+
 
-        '<div class="sec-head"><div class="t">'+La('Izin Android','Android permissions')+'</div></div>'+
+        '<div class="sec-head"><div class="t">'+La('Izin perangkat','Device permissions')+'</div></div>'+
         '<div style="font-size:11.5px;color:var(--tx3);line-height:1.6;margin:0 2px 10px">'+
-          La('Diperlukan agar pengingat tetap berbunyi saat aplikasi ditutup. Buka bila pengingat tidak pernah muncul.',
-             'Needed so reminders still fire while the app is closed. Open these if reminders never appear.')+'</div>'+
+          La('Agar pengingat tetap tampil meski aplikasi tidak sedang dibuka, aplikasi memerlukan beberapa izin dari perangkat Anda. Buka pengaturan berikut jika pengingat tidak muncul sebagaimana mestinya.',
+             'So reminders still appear even when the app is not open, a few device permissions are required. Open the settings below if reminders are not appearing as expected.')+'</div>'+
         '<button class="save" style="background:var(--card);color:var(--tx);box-shadow:none;border:1px solid var(--line)" onclick="ntIzin(\'alarm\')">'+
-          La('Izin alarm & pengingat','Alarms & reminders permission')+'</button>'+
+          La('Izinkan pengingat terjadwal','Allow scheduled reminders')+'</button>'+
         '<button class="save" style="background:var(--card);color:var(--tx);box-shadow:none;border:1px solid var(--line);margin-top:4px" onclick="ntIzin(\'notif\')">'+
-          La('Izin notifikasi','Notification permission')+'</button>'+
+          La('Izinkan notifikasi','Allow notifications')+'</button>'+
         '<button class="save" style="background:var(--card);color:var(--tx);box-shadow:none;border:1px solid var(--line);margin-top:4px" onclick="ntIzin(\'baterai\')">'+
-          La('Pengaturan hemat daya','Battery saver settings')+'</button>'+
+          La('Kecualikan dari penghemat baterai','Exclude from battery saver')+'</button>'+
 
         '<div style="font-size:11px;color:var(--tx3);line-height:1.6;margin-top:14px">'+
-          La('Pengingat muncul di dalam aplikasi. Agar tetap berbunyi saat aplikasi tertutup, diperlukan pemasangan alarm di Kodular.',
-             'Reminders appear inside the app. To also alert you while the app is closed, alarms must be set up in Kodular.')+'</div>'+
+          La('Beberapa perangkat membatasi aplikasi yang berjalan di latar belakang. Jika pengingat sering terlambat atau tidak muncul, sesuaikan izin di atas.',
+             'Some devices restrict apps running in the background. If reminders are often delayed or missing, adjust the permissions above.')+'</div>'+
       '</div>';
   }
 
@@ -9606,7 +9606,7 @@ window.jsonp=function(params){
       if(window.AppInventor && window.AppInventor.setWebViewString){
         window.AppInventor.setWebViewString('IZIN|'+jenis);
       } else if(typeof toast==='function'){
-        toast(La('Hanya berfungsi di aplikasi Android.','Only works in the Android app.'));
+        toast(La('Pengaturan ini hanya tersedia di aplikasi.','This setting is only available in the app.'));
       }
     }catch(e){}
   };
