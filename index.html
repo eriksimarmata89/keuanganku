@@ -9105,7 +9105,14 @@ window.jsonp=function(params){
   /* ================= A. PERINGATAN ANGGARAN ================= */
   function kunciTingkat(){ return 'kk_pa_tingkat_'+(u()||'anon'); }
   function petaTingkat(){ return jsonGet(kunciTingkat(),{})||{}; }
-  function setTingkat(k,v){ var p=petaTingkat(); p[k]=v; jsonSet(kunciTingkat(),p); }
+  function setTingkat(k,v,tgl){ var p=petaTingkat(); p[k]={t:v, d:tgl}; jsonSet(kunciTingkat(),p); }
+  /* baca catatan lama; dukung format lama (angka) maupun baru ({t,d}) */
+  function bacaTingkat(k){
+    var v=petaTingkat()[k];
+    if(v===undefined||v===null) return {t:0, d:''};
+    if(typeof v==='number') return {t:v, d:''};    /* format lama */
+    return {t:Number(v.t)||0, d:v.d||''};
+  }
 
   function periksaAnggaran(daftar){
     if(!pengaturan().anggaran || !daftar.length) return;
@@ -9125,8 +9132,16 @@ window.jsonp=function(params){
         var persen=Math.round(pakai/target*100);
         var tingkat = persen>=AMBANG_TEGAS?AMBANG_TEGAS:(persen>=AMBANG_LEMBUT?AMBANG_LEMBUT:0);
         if(!tingkat) return;
-        if(tingkat<=Number(petaTingkat()[kunci]||0)) return;
-        setTingkat(kunci,tingkat);
+        var lalu=bacaTingkat(kunci);
+        var hariIni=hariIniISO();
+        /* Muncul bila: (a) tingkat NAIK dibanding terakhir, atau
+           (b) tingkat sama TAPI belum diberi tahu hari ini.
+           Dengan begitu, kategori yang tetap di atas batas mengingatkan
+           sekali per hari, tanpa mengulang tiap transaksi. */
+        var naik = tingkat > lalu.t;
+        var hariBaru = (tingkat===lalu.t) && (lalu.d!==hariIni);
+        if(!naik && !hariBaru) return;
+        setTingkat(kunci, tingkat, hariIni);
         hasil.push({kategori:kategori,basis:basis,target:target,pakai:pakai,persen:persen,level:tingkat});
       });
     });
