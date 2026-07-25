@@ -9776,6 +9776,115 @@ window.jsonp=function(params){
 
 })();
 </script>
+
+<!-- =====================================================================
+     PATCH PERBAIKAN: DROPDOWN PENAMPUNG SALDO  (KeuanganKu)
+     Tempel PERSIS SEBELUM </body>, PALING AKHIR.
+
+     MASALAH
+     Di dropdown "Penampung saldo / Asal Dana" muncul item liar "Belanja"
+     yang selalu terpilih, padahal itu nama KATEGORI, bukan penampung.
+     Hanya terjadi pada sebagian pengguna, dan hanya di transaksi
+     pengeluaran.
+
+     AKAR MASALAH
+     Patch kategori barang memanggil pasangNilai() pada SEMUA <select> di
+     layar, dengan pengaman "lewati bila jumlah opsi berbeda dari jumlah
+     kategori". Bila kebetulan JUMLAH PENAMPUNG SAMA DENGAN JUMLAH KATEGORI
+     PENGELUARAN (misalnya sama-sama 9), dropdown penampung salah dikira
+     dropdown kategori, lalu kategori default "Belanja" disisipkan sebagai
+     opsi baru dan dipilih. Di pemasukan tidak terjadi karena jumlah
+     kategori pemasukan berbeda.
+
+     PERBAIKAN
+     Dropdown penampung dikenali dari ciri pastinya: atribut onchange
+     memuat "akunId". Fungsi penyisip nilai kategori diajari untuk selalu
+     MELEWATI select semacam itu, apa pun jumlah opsinya. Sekaligus opsi
+     liar yang terlanjur tersisip dibersihkan.
+====================================================================== -->
+<script>
+(function(){
+  "use strict";
+  if(window.__FIX_DROPDOWN_PENAMPUNG) return;
+  window.__FIX_DROPDOWN_PENAMPUNG=true;
+
+  /* select penampung: onchange memuat akunId, atau option pertama punya
+     value berupa id akun (bukan sama dengan teksnya) */
+  function selectPenampung(sel){
+    try{
+      var oc=sel.getAttribute('onchange')||'';
+      if(oc.indexOf('akunId')>=0) return true;
+      var o0=sel.options && sel.options[0];
+      if(o0){
+        var v=o0.getAttribute('value');
+        /* opsi kategori punya value === teks (atau kosong); opsi akun
+           punya value === id akun yang berbeda dari teksnya */
+        if(v!==null && v!=='' && v!==o0.textContent.trim()) return true;
+      }
+    }catch(e){}
+    return false;
+  }
+
+  function bersihkanOpsiLiar(){
+    try{
+      document.querySelectorAll('select').forEach(function(sel){
+        if(!selectPenampung(sel)) return;
+        var sah={};
+        (window.AK||[]).forEach(function(a){ sah[String(a.id)]=1; });
+        /* iterasi MUNDUR agar penghapusan tidak mengacaukan indeks */
+        for(var i=sel.options.length-1; i>=0; i--){
+          var o=sel.options[i];
+          var v=o.getAttribute('value');
+          if(v===null || !sah[String(v)]){
+            if(typeof o.remove==='function') o.remove();
+            else if(o.parentNode) o.parentNode.removeChild(o);
+          }
+        }
+        try{
+          var wanted=(window.addState && addState.akunId) || (window.strukState && strukState.akunId);
+          if(wanted){
+            var idx=-1;
+            Array.prototype.forEach.call(sel.options, function(o,i){ if(o.value===String(wanted)) idx=i; });
+            if(idx>=0) sel.selectedIndex=idx;
+          }
+        }catch(e){}
+      });
+    }catch(e){}
+  }
+
+  /* Bungkus renderAdd & renderStruk agar pembersihan berjalan SETELAH
+     patch kategori barang selesai menyuntik. Karena patch ini dimuat
+     paling akhir, pembungkus ini berjalan paling luar (terakhir). */
+  ['renderAdd','renderStruk','bukaItemManual'].forEach(function(nm){
+    var f=window[nm];
+    if(typeof f==='function' && !f.__fixPenampung){
+      window[nm]=function(){
+        var r=f.apply(this, arguments);
+        try{ bersihkanOpsiLiar(); }catch(e){}
+        return r;
+      };
+      window[nm].__fixPenampung=true;
+    }
+  });
+
+  /* jaring pengaman: amati perubahan DOM, bersihkan bila dropdown muncul */
+  try{
+    if(window.MutationObserver && !window.__fixPenampungObs){
+      var t=null;
+      window.__fixPenampungObs=new MutationObserver(function(){
+        if(t) return;
+        t=setTimeout(function(){ t=null; bersihkanOpsiLiar(); }, 60);
+      });
+      var target=document.getElementById('scroll')||document.body;
+      window.__fixPenampungObs.observe(target,{childList:true,subtree:true});
+    }
+  }catch(e){}
+
+  /* bersihkan sekali saat dimuat */
+  setTimeout(bersihkanOpsiLiar, 200);
+
+})();
+</script>
   
 </body>
 </html>
