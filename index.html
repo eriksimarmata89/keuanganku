@@ -9646,6 +9646,121 @@ window.jsonp=function(params){
 
 })();
 </script>
+
+<!-- =====================================================================
+     PATCH PROFIL: MENU PENGATURAN NOTIFIKASI  (KeuanganKu)
+     Tempel PERSIS SEBELUM </body>, PALING AKHIR — setelah
+     PATCH NOTIFIKASI v3.
+
+     ISI
+     - Menambahkan menu "Pengaturan notifikasi" di tab Profil, tepat
+       di bawah kelompok "Data & Pencadangan".
+     - Menyembunyikan ikon gerigi di dalam modul Notifikasi, karena
+       aksesnya kini lewat Profil (lebih mudah ditemukan pengguna).
+     - Tombol kembali pada layar pengaturan diarahkan balik ke Profil.
+
+     Layar pengaturan (view 'notifSet') sendiri sudah dibuat di
+     PATCH NOTIFIKASI v3; patch ini hanya memindahkan pintu masuknya.
+====================================================================== -->
+<script>
+(function(){
+  "use strict";
+  if(window.__PATCH_PROFIL_NOTIF) return;
+  window.__PATCH_PROFIL_NOTIF=true;
+
+  function La(id,en){ return (window.LANG==='en') ? en : id; }
+
+  var IKON_LONCENG_KECIL='<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" '+
+    'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'+
+    '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>';
+
+  /* ringkasan status untuk ditampilkan di bawah judul menu */
+  function ringkasNotif(){
+    try{
+      var p=(typeof notifPengaturan==='function') ? notifPengaturan() : null;
+      if(!p) return La('Peringatan anggaran, jatuh tempo, pengingat harian','Budget, due dates, daily reminder');
+      var aktif=[];
+      if(p.anggaran) aktif.push(La('anggaran','budget'));
+      if(p.tempo)    aktif.push(La('jatuh tempo','due dates'));
+      if(p.harian)   aktif.push(La('harian','daily'));
+      if(!aktif.length) return La('Semua nonaktif','All off');
+      return La('Aktif: ','On: ')+aktif.join(', ');
+    }catch(e){ return La('Peringatan & pengingat','Alerts & reminders'); }
+  }
+
+  /* ================= SUNTIK MENU KE PROFIL =================
+     Meniru pola suntikPengaturanBahasa: setelah render Profil, sisipkan
+     satu blok menu tepat setelah kelompok "Data & Pencadangan". */
+  function suntikMenuNotif(){
+    try{
+      var wadah=(typeof S==='function')?S():document.getElementById('scroll');
+      if(!wadah) return;
+      if(typeof profSub!=='undefined' && profSub) return;    /* sedang di submenu */
+      if(wadah.querySelector('[data-notif-menu]')) return;    /* sudah ada */
+
+      /* cari kelompok "Data & Pencadangan": label lalu .menu sesudahnya */
+      var label=null;
+      wadah.querySelectorAll('.grp-label').forEach(function(el){
+        var t=(el.textContent||'').toLowerCase();
+        if(t.indexOf('pencadangan')>=0 || t.indexOf('backup')>=0 || t.indexOf('data')>=0) label=el;
+      });
+      var menuData = label ? label.nextElementSibling : null;
+      if(!menuData || !menuData.classList.contains('menu')){
+        /* fallback: cari menu yang memuat Koneksi Pencadangan */
+        wadah.querySelectorAll('.menu').forEach(function(m){
+          if(/pencadangan|backup|koneksi/i.test(m.textContent||'')) menuData=m;
+        });
+      }
+      if(!menuData) return;
+
+      var blok=document.createElement('div');
+      blok.setAttribute('data-notif-menu','1');
+      blok.innerHTML=
+        '<div class="grp-label">'+La('Notifikasi','Notifications')+'</div>'+
+        '<div class="menu">'+
+          menuRow(IKON_LONCENG_KECIL, La('Pengaturan notifikasi','Notification settings'),
+                  ringkasNotif(), "goView('notifSet')")+
+        '</div>';
+
+      /* letakkan setelah blok menu Data & Pencadangan */
+      if(menuData.nextSibling) menuData.parentNode.insertBefore(blok, menuData.nextSibling);
+      else menuData.parentNode.appendChild(blok);
+    }catch(e){}
+  }
+
+  (function(){
+    var _render=window.render;
+    if(typeof _render!=='function' || _render.__profNotif) return;
+    window.render=function(){
+      var r=_render.apply(this, arguments);
+      try{
+        var v=(typeof view!=='undefined')?view:window.view;
+        if(v==='settings') suntikMenuNotif();
+        if(v==='notifSet'){
+          /* pintu masuk kini dari Profil: arahkan tombol kembali ke Profil */
+          var wadah=(typeof S==='function')?S():document.getElementById('scroll');
+          var bk=wadah && wadah.querySelector('.nt-fhead .bk');
+          if(bk) bk.setAttribute('onclick', "goView('settings')");
+        }
+      }catch(e){}
+      return r;
+    };
+    window.render.__profNotif=true;
+  })();
+
+  /* ================= SEMBUNYIKAN GERIGI DI MODUL NOTIFIKASI =================
+     Gerigi tak lagi diperlukan karena akses lewat Profil. Disembunyikan
+     via CSS agar tidak perlu mengubah renderNotifikasi. */
+  (function(){
+    if(document.getElementById('pn-style')) return;
+    var st=document.createElement('style');
+    st.id='pn-style';
+    st.textContent='.nt-fhead .ak{display:none !important}';
+    document.head.appendChild(st);
+  })();
+
+})();
+</script>
   
 </body>
 </html>
