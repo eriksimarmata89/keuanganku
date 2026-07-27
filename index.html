@@ -9808,21 +9808,16 @@ window.jsonp=function(params){
   if(window.__FIX_DROPDOWN_PENAMPUNG) return;
   window.__FIX_DROPDOWN_PENAMPUNG=true;
 
-  /* select penampung: onchange memuat akunId, atau option pertama punya
-     value berupa id akun (bukan sama dengan teksnya) */
+  /* Dropdown penampung dikenali HANYA dari ciri pasti: onchange memuat
+     "akunId". Aturan berbasis value dibuang karena keliru menandai
+     dropdown kategori item list (.psel) yang value opsinya sudah ditanami
+     kode kanonik kategori oleh patch lain. */
   function selectPenampung(sel){
     try{
+      if(sel.classList && sel.classList.contains('psel')) return false;  /* kategori item list: jangan disentuh */
       var oc=sel.getAttribute('onchange')||'';
-      if(oc.indexOf('akunId')>=0) return true;
-      var o0=sel.options && sel.options[0];
-      if(o0){
-        var v=o0.getAttribute('value');
-        /* opsi kategori punya value === teks (atau kosong); opsi akun
-           punya value === id akun yang berbeda dari teksnya */
-        if(v!==null && v!=='' && v!==o0.textContent.trim()) return true;
-      }
-    }catch(e){}
-    return false;
+      return oc.indexOf('akunId')>=0;
+    }catch(e){ return false; }
   }
 
   function bersihkanOpsiLiar(){
