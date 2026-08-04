@@ -9883,21 +9883,21 @@ window.jsonp=function(params){
 
 <script>
 /* ============================================================================
-   PATCH TAGIHAN KARTU KREDIT v1
-   Tempel block ini tepat sebelum </body> (setelah semua patch lain).
+   PATCH TAGIHAN KARTU KREDIT v2 (bilingual ID/EN + sinkron siklus ke GAS)
+   Tempel block ini tepat sebelum </body> (paling akhir, setelah patch lain).
+   Menggantikan PATCH TAGIHAN KARTU KREDIT v1 bila sudah terpasang.
 
-   Menambah siklus tagihan per kartu: rentang tanggal tagihan + jatuh tempo,
-   total tagihan otomatis dari pengeluaran pada rentang, serta pembayaran
-   bertahap/penuh yang diproporsikan ke tiap item pengeluaran kartu.
-
-   Substrat item pengeluaran memakai catatan hutang kartu yang sudah ada
-   (pihak "Tagihan <kartu>" / akunId kartu, dengan array pembayaran).
+   Butuh penyesuaian kecil di GAS (kolom tglTutup & tglTempo pada sheet Akun)
+   agar pengaturan siklus ikut tercadang dan bisa ditarik di perangkat lain
+   dengan user yang sama. Lihat catatan di bawah / file scriptgas.
    ========================================================================== */
 (function(){
-  if(window.__KK_TAGIHAN__) return; window.__KK_TAGIHAN__=true;
+  if(window.__KK_TAGIHAN_V2__) return; window.__KK_TAGIHAN_V2__=true;
 
-  var BULAN=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
   function LA(id,en){ return (window.LANG==='en')?en:id; }
+  var BULAN_ID=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  var BULAN_EN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function bln(m){ return (window.LANG==='en'?BULAN_EN:BULAN_ID)[m-1]; }
 
   /* ---------- util tanggal ---------- */
   function pad(n){ return (n<10?'0':'')+n; }
@@ -9907,7 +9907,7 @@ window.jsonp=function(params){
   function clampHari(hari,y,m){ var h=Math.max(1,Math.min(28,+hari||1)); return Math.min(h,hariDalamBulan(y,m)); }
   function geserBulan(y,m,delta){ var idx=(m-1)+delta; var ny=y+Math.floor(idx/12); var nm=((idx%12)+12)%12+1; return {y:ny,m:nm}; }
   function tambahHariISO(iso,n){ var p=parseISO(iso); var d=new Date(p.y,p.m-1,p.d); d.setDate(d.getDate()+n); return ymd(d.getFullYear(),d.getMonth()+1,d.getDate()); }
-  function labelTgl(iso,pakaiTahun){ var p=parseISO(iso); return p.d+' '+BULAN[p.m-1]+(pakaiTahun?(' '+p.y):''); }
+  function labelTgl(iso,pakaiTahun){ var p=parseISO(iso); return p.d+' '+bln(p.m)+(pakaiTahun?(' '+p.y):''); }
   function labelRentang(start,end){
     var a=parseISO(start), b=parseISO(end);
     if(a.y===b.y) return labelTgl(start,false)+' - '+labelTgl(end,true);
@@ -9926,7 +9926,6 @@ window.jsonp=function(params){
     var due=ymd(dm.y, dm.m, clampHari(tempo, dm.y, dm.m));
     return { start:start, end:end, due:due, ref:{y:ref.y,m:ref.m} };
   }
-  /* siklus yang sedang berjalan (memuat hari ini) sebagai default tampilan */
   function refBerjalan(a){
     var t=parseISO(todayISO());
     var D=clampHari(a.tglTutup, t.y, t.m);
@@ -9935,6 +9934,7 @@ window.jsonp=function(params){
   }
 
   /* ---------- item pengeluaran kartu (memakai catatan hutang yang ada) ---------- */
+  /* Catatan: pihak "Tagihan <nama>" adalah DATA untuk pencocokan, jangan diterjemahkan. */
   function hutangKartu(a){
     var kid=String(a.id), nama='Tagihan '+a.nama;
     return UT.filter(function(u){
@@ -9946,7 +9946,6 @@ window.jsonp=function(params){
     return hutangKartu(a).filter(function(u){ return u.tanggal>=sk.start && u.tanggal<=sk.end; })
       .sort(function(x,y){ return (x.tanggal+(x.createdAt||'')).localeCompare(y.tanggal+(y.createdAt||'')); });
   }
-  /* pengeluaran kartu di rentang yang BELUM punya catatan hutang (agar total = seluruh pengeluaran) */
   function txKartuTanpaTagihan(a, sk){
     var kid=String(a.id);
     var peta={};
@@ -9961,9 +9960,10 @@ window.jsonp=function(params){
   }
   async function sinkronTagihan(a, sk){
     var kurang=txKartuTanpaTagihan(a, sk);
-    if(!kurang.length){ toast('Semua pengeluaran kartu sudah masuk tagihan'); return; }
+    if(!kurang.length){ toast(LA('Semua pengeluaran kartu sudah masuk tagihan','All card expenses are already in the bill')); return; }
     var tot=kurang.reduce(function(s,t){ return s+(+t.nominal); },0);
-    if(!await confirmModal(kurang.length+' pengeluaran kartu ('+rp(tot)+') pada siklus ini belum masuk tagihan. Masukkan sekarang?')) return;
+    if(!await confirmModal(LA(kurang.length+' pengeluaran kartu ('+rp(tot)+') pada siklus ini belum masuk tagihan. Masukkan sekarang?',
+                              kurang.length+' card expenses ('+rp(tot)+') in this cycle are not in the bill yet. Add them now?'))) return;
     for(var i=0;i<kurang.length;i++){
       var t=kurang[i];
       var item={ id:uid(), jenis:'hutang', pihak:'Tagihan '+a.nama, pokok:+t.nominal, tanggal:t.tanggal,
@@ -9971,7 +9971,7 @@ window.jsonp=function(params){
         pembayaran:[], akunId:a.id, createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
       UT.unshift(item); await uPut(item);
     }
-    toast(kurang.length+' pengeluaran dimasukkan ke tagihan'); render();
+    toast(LA(kurang.length+' pengeluaran dimasukkan ke tagihan', kurang.length+' expenses added to the bill')); render();
   }
 
   /* ---------- ringkasan siklus ---------- */
@@ -10004,36 +10004,33 @@ window.jsonp=function(params){
   }
   async function bayarTagihan(a, sk, nominal, sumberId){
     var r=ringkas(a, sk);
-    if(r.sisa<=0){ toast('Tagihan siklus ini sudah lunas'); return; }
+    if(r.sisa<=0){ toast(LA('Tagihan siklus ini sudah lunas','This cycle is already paid')); return; }
     var sumber=cariAkun(sumberId);
-    if(!sumber){ toast('Pilih penampung sumber pembayaran'); return; }
-    if(String(sumber.id)===String(a.id)){ toast('Sumber tidak boleh kartu itu sendiri'); return; }
+    if(!sumber){ toast(LA('Pilih penampung sumber pembayaran','Choose a payment source')); return; }
+    if(String(sumber.id)===String(a.id)){ toast(LA('Sumber tidak boleh kartu itu sendiri','Source cannot be the card itself')); return; }
     var P=Math.min(+nominal||0, r.sisa);
-    if(P<=0){ toast('Nominal pembayaran belum diisi'); return; }
+    if(P<=0){ toast(LA('Nominal pembayaran belum diisi','Enter a payment amount')); return; }
     var cek=bolehKeluar(sumber.id, P);
     if(!cek.ok){ toast(cek.alasan); return; }
     var tgl=todayISO();
-    /* catat perpindahan saldo sumber -> kartu (saldo kartu naik / tagihan berjalan turun) */
     var tr={ id:uid(), tanggal:tgl, dariAkunId:sumber.id, keAkunId:a.id, nominal:P,
-      catatan:'Pembayaran tagihan '+a.nama+' ('+labelRentang(sk.start,sk.end)+')',
+      catatan:LA('Pembayaran tagihan ','Bill payment ')+a.nama+' ('+labelRentang(sk.start,sk.end)+')',
       createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
     TR.unshift(tr); await trPut(tr);
-    /* proporsikan ke tiap item pengeluaran */
     var bagian=alokasi(r.items, P);
     for(var i=0;i<bagian.length;i++){
       var b=bagian[i]; b.u.pembayaran=b.u.pembayaran||[];
-      b.u.pembayaran.push({ tanggal:tgl, nominal:b.nominal, catatan:'Bayar tagihan (proporsional) dari '+sumber.nama });
+      b.u.pembayaran.push({ tanggal:tgl, nominal:b.nominal, catatan:LA('Bayar tagihan (proporsional) dari ','Bill payment (proportional) from ')+sumber.nama });
       b.u.terkirim=false; await uPut(b.u);
     }
     var lunas=(P>=r.sisa);
-    toast(lunas?('Tagihan lunas, '+rp(P)+' dibayar'):(rp(P)+' dibayar, diproporsikan ke '+bagian.length+' item'));
+    toast(lunas?LA('Tagihan lunas, '+rp(P)+' dibayar','Bill paid, '+rp(P)+' paid')
+               :LA(rp(P)+' dibayar, diproporsikan ke '+bagian.length+' item', rp(P)+' paid, split across '+bagian.length+' items'));
     render();
   }
 
   /* ================= STATE ================= */
-  window.kkCard=null;   /* id kartu aktif */
-  window.kkRef=null;    /* {y,m} bulan tutup siklus yang ditampilkan */
-  window.kkBayarNom='';
+  window.kkCard=null; window.kkRef=null; window.kkBayarNom='';
 
   /* ================= VIEW: TAGIHAN KARTU ================= */
   window.renderKartuTagihan=function(){
@@ -10042,34 +10039,30 @@ window.jsonp=function(params){
 
     var head='<div class="fhead"><button class="bk" onclick="goView(\'akunDetail\')">&#8592;</button><div class="ti">'+esc(a.nama)+'</div></div>';
 
-    /* belum ada siklus: tampilkan pengaturan dulu */
-    if(!punyaSiklus(a)){
-      S().innerHTML=head+kkFormSiklus(a, true);
-      return;
-    }
+    if(!punyaSiklus(a)){ S().innerHTML=head+kkFormSiklus(a, true); return; }
 
     if(!kkRef) kkRef=refBerjalan(a);
     var sk=siklusDariRef(a, kkRef);
     var r=ringkas(a, sk);
     var kurang=txKartuTanpaTagihan(a, sk);
 
-    var warna={ lunas:['var(--hijau-bg)','var(--hijau-tx)','Lunas'],
-                sebagian:['var(--kuning-bg)','var(--kuning-tx)','Sebagian'],
-                belum:['#E6F1FB','var(--biru)', r.berjalan?'Berjalan':'Belum dibayar'],
-                telat:['var(--merah-bg)','var(--merah-tx)','Lewat jatuh tempo'],
-                kosong:['var(--page)','var(--tx3)','Tidak ada tagihan'] }[r.status];
+    var warna={ lunas:['var(--hijau-bg)','var(--hijau-tx)',LA('Lunas','Paid')],
+                sebagian:['var(--kuning-bg)','var(--kuning-tx)',LA('Sebagian','Partial')],
+                belum:['#E6F1FB','var(--biru)', r.berjalan?LA('Berjalan','Ongoing'):LA('Belum dibayar','Unpaid')],
+                telat:['var(--merah-bg)','var(--merah-tx)',LA('Lewat jatuh tempo','Overdue')],
+                kosong:['var(--page)','var(--tx3)',LA('Tidak ada tagihan','No bill')] }[r.status];
 
     var opsiSumber=AK.filter(function(x){ return String(x.id)!==String(a.id) && x.jenis!=='kartu'; })
       .map(function(x){ return '<option value="'+x.id+'">'+esc(x.nama)+' ('+rp(saldoAkunSaatIni(x.id))+')</option>'; }).join('');
 
     var itemRows=r.items.map(function(u){
       var s=utSisa(u), st=utStatus(u);
-      var bd=st==='lunas'?'<span class="ubadge lunas">Lunas</span>':st==='sebagian'?'<span class="ubadge seb">Sebagian</span>':'<span class="ubadge belum">Belum</span>';
-      var m=(u.catatan||'').match(/:\s*(.+)$/); var judul=(m&&m[1].trim())?m[1].trim():'Pengeluaran kartu';
+      var bd=st==='lunas'?'<span class="ubadge lunas">'+LA('Lunas','Paid')+'</span>':st==='sebagian'?'<span class="ubadge seb">'+LA('Sebagian','Partial')+'</span>':'<span class="ubadge belum">'+LA('Belum','Unpaid')+'</span>';
+      var m=(u.catatan||'').match(/:\s*(.+)$/); var judul=(m&&m[1].trim())?m[1].trim():LA('Pengeluaran kartu','Card expense');
       return '<button class="uitem" onclick="bukaUtang(\''+u.id+'\')">'+
         '<div class="uic h">&#8600;</div>'+
         '<div class="umid"><div class="unm">'+esc(judul)+'</div>'+
-          '<div class="usub">'+labelTgl(u.tanggal,false)+' &middot; '+fmtRp(u.pokok)+(utTerbayar(u)>0?(' &middot; dibayar '+fmtRp(utTerbayar(u))):'')+'</div>'+
+          '<div class="usub">'+labelTgl(u.tanggal,false)+' &middot; '+fmtRp(u.pokok)+(utTerbayar(u)>0?(' &middot; '+LA('dibayar ','paid ')+fmtRp(utTerbayar(u))):'')+'</div>'+
           '<div class="ubw">'+bd+'</div></div>'+
         '<div class="uamt neg">'+fmtRp(s)+'</div>'+
         '</button>';
@@ -10077,90 +10070,87 @@ window.jsonp=function(params){
 
     S().innerHTML=head+
       '<div class="set">'+
-
-      /* navigasi siklus */
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px">'+
         '<button class="cb" onclick="kkGeser(-1)">&#8592;</button>'+
         '<div style="text-align:center;flex:1">'+
-          '<div style="font-size:11px;color:var(--tx3)">Siklus tagihan</div>'+
+          '<div style="font-size:11px;color:var(--tx3)">'+LA('Siklus tagihan','Billing cycle')+'</div>'+
           '<div style="font-size:14px;font-weight:700;color:var(--tx)">'+labelRentang(sk.start, sk.end)+'</div>'+
         '</div>'+
         '<button class="cb" onclick="kkGeser(1)">&#8594;</button>'+
       '</div>'+
 
-      /* kartu ringkasan */
       '<div class="udetail" style="background:'+warna[0]+'">'+
-        '<div class="udlbl" style="color:'+warna[1]+'">'+akunIconHTML(a,15)+' Tagihan '+esc(a.nama)+'</div>'+
+        '<div class="udlbl" style="color:'+warna[1]+'">'+akunIconHTML(a,15)+' '+LA('Tagihan ','Bill for ')+esc(a.nama)+'</div>'+
         '<div class="udsisa" style="color:'+warna[1]+'">'+fmtRp(r.sisa)+'</div>'+
-        '<div class="udcap">sisa tagihan dari '+fmtRp(r.total)+'</div>'+
+        '<div class="udcap">'+LA('sisa tagihan dari ','remaining from ')+fmtRp(r.total)+'</div>'+
         '<div class="udmeta"><span class="ubadge '+(r.status==='lunas'?'lunas':r.status==='telat'?'telat':r.status==='sebagian'?'seb':'belum')+'">'+warna[2]+'</span>'+
-          '<span class="udtgl">Jatuh tempo '+labelTgl(sk.due,true)+'</span></div>'+
+          '<span class="udtgl">'+LA('Jatuh tempo ','Due ')+labelTgl(sk.due,true)+'</span></div>'+
       '</div>'+
 
-      '<div class="udrow"><span>Total pengeluaran</span><b>'+fmtRp(r.total)+'</b></div>'+
-      '<div class="udrow"><span>Sudah dibayar</span><b>'+fmtRp(r.dibayar)+'</b></div>'+
-      '<div class="udrow"><span>Sisa tagihan</span><b>'+fmtRp(r.sisa)+'</b></div>'+
+      '<div class="udrow"><span>'+LA('Total pengeluaran','Total spending')+'</span><b>'+fmtRp(r.total)+'</b></div>'+
+      '<div class="udrow"><span>'+LA('Sudah dibayar','Paid so far')+'</span><b>'+fmtRp(r.dibayar)+'</b></div>'+
+      '<div class="udrow"><span>'+LA('Sisa tagihan','Remaining bill')+'</span><b>'+fmtRp(r.sisa)+'</b></div>'+
 
       (kurang.length?('<div class="panel" style="margin-top:12px;background:var(--kuning-bg)">'+
-        '<div style="font-size:13px;color:var(--kuning-tx);line-height:1.5;margin-bottom:10px">'+kurang.length+' pengeluaran kartu pada siklus ini belum masuk tagihan.</div>'+
-        '<button class="btn-line" style="margin-top:0" onclick="kkSinkron()">Masukkan ke tagihan ('+fmtRp(kurang.reduce(function(s,t){return s+(+t.nominal);},0))+')</button></div>'):'')+
+        '<div style="font-size:13px;color:var(--kuning-tx);line-height:1.5;margin-bottom:10px">'+LA(kurang.length+' pengeluaran kartu pada siklus ini belum masuk tagihan.', kurang.length+' card expenses in this cycle are not in the bill yet.')+'</div>'+
+        '<button class="btn-line" style="margin-top:0" onclick="kkSinkron()">'+LA('Masukkan ke tagihan ','Add to bill ')+'('+fmtRp(kurang.reduce(function(s,t){return s+(+t.nominal);},0))+')</button></div>'):'')+
 
-      /* form pembayaran */
       (r.sisa>0?(
         (opsiSumber?(
           '<div class="panel" style="margin-top:14px">'+
-          '<div class="sec-head" style="padding:0 0 6px"><div class="t">Bayar tagihan</div></div>'+
-          '<label class="fl">Nominal pembayaran</label>'+
+          '<div class="sec-head" style="padding:0 0 6px"><div class="t">'+LA('Bayar tagihan','Pay bill')+'</div></div>'+
+          '<label class="fl">'+LA('Nominal pembayaran','Payment amount')+'</label>'+
           '<div class="nominal-wrap"><span class="rp">Rp</span><input id="kkNom" inputmode="numeric" placeholder="0" value="'+(kkBayarNom?(+kkBayarNom).toLocaleString("id-ID"):"")+'" oninput="kkOnNom(this)"></div>'+
           '<div style="display:flex;gap:8px;margin:8px 0 4px">'+
-            '<button class="cb" onclick="kkIsiPenuh('+r.sisa+')">Penuh ('+fmtRp(r.sisa)+')</button>'+
+            '<button class="cb" onclick="kkIsiPenuh('+r.sisa+')">'+LA('Penuh ','Full ')+'('+fmtRp(r.sisa)+')</button>'+
             '<button class="cb" onclick="kkIsiPersen('+r.sisa+',10)">10%</button>'+
             '<button class="cb" onclick="kkIsiPersen('+r.sisa+',50)">50%</button>'+
           '</div>'+
-          '<label class="fl">Sumber pembayaran</label>'+
+          '<label class="fl">'+LA('Sumber pembayaran','Payment source')+'</label>'+
           '<select class="field" id="kkSumber">'+opsiSumber+'</select>'+
-          '<button class="save" onclick="kkBayar()">Bayar sekarang</button>'+
-          '<div style="font-size:11px;color:var(--tx3);margin-top:8px;line-height:1.5">Pembayaran otomatis dibagi proporsional ke tiap item pengeluaran sesuai besarnya. Bila dibayar penuh, semua item menjadi lunas.</div>'+
+          '<button class="save" onclick="kkBayar()">'+LA('Bayar sekarang','Pay now')+'</button>'+
+          '<div style="font-size:11px;color:var(--tx3);margin-top:8px;line-height:1.5">'+LA('Pembayaran otomatis dibagi proporsional ke tiap item pengeluaran sesuai besarnya. Bila dibayar penuh, semua item menjadi lunas.','Payment is split proportionally across each expense by its size. Paying in full marks every item as paid.')+'</div>'+
           '</div>'
-        ):('<div class="panel" style="margin-top:14px"><div class="empty" style="line-height:1.5">Belum ada penampung sumber (bank/dompet) untuk membayar. Tambahkan dahulu di Penampung Saldo.</div></div>'))
-      ):('<div class="statcard on" style="margin-top:14px"><span class="sc-ic">&#10003;</span><div>'+(r.status==='kosong'?'Tidak ada pengeluaran pada siklus ini.':'Tagihan siklus ini sudah lunas.')+'</div></div>'))+
+        ):('<div class="panel" style="margin-top:14px"><div class="empty" style="line-height:1.5">'+LA('Belum ada penampung sumber (bank/dompet) untuk membayar. Tambahkan dahulu di Penampung Saldo.','No source account (bank/e-wallet) to pay from yet. Add one first in Accounts.')+'</div></div>'))
+      ):('<div class="statcard on" style="margin-top:14px"><span class="sc-ic">&#10003;</span><div>'+(r.status==='kosong'?LA('Tidak ada pengeluaran pada siklus ini.','No expenses in this cycle.'):LA('Tagihan siklus ini sudah lunas.','This cycle is fully paid.'))+'</div></div>'))+
 
-      /* daftar item */
-      '<div class="sec-head" style="padding:18px 0 4px"><div class="t">Rincian pengeluaran</div>'+
-        (r.items.length?('<div style="font-size:11px;color:var(--tx3)">'+r.items.length+' item</div>'):'')+'</div>'+
-      '<div class="list">'+(r.items.length?itemRows:'<div class="empty" style="padding:20px 0">Belum ada pengeluaran pada siklus ini.</div>')+'</div>'+
+      '<div class="sec-head" style="padding:18px 0 4px"><div class="t">'+LA('Rincian pengeluaran','Expense details')+'</div>'+
+        (r.items.length?('<div style="font-size:11px;color:var(--tx3)">'+r.items.length+' '+LA('item','items')+'</div>'):'')+'</div>'+
+      '<div class="list">'+(r.items.length?itemRows:'<div class="empty" style="padding:20px 0">'+LA('Belum ada pengeluaran pada siklus ini.','No expenses in this cycle yet.')+'</div>')+'</div>'+
 
-      '<button class="btn-line" onclick="kkEditSiklus()">Ubah pengaturan siklus</button>'+
+      '<button class="btn-line" onclick="kkEditSiklus()">'+LA('Ubah pengaturan siklus','Edit cycle settings')+'</button>'+
       '</div>';
   };
 
-  /* form pengaturan siklus */
   function kkFormSiklus(a, pertama){
     return '<div class="form">'+
-      (pertama?'<div class="peninfo idle" style="margin-bottom:16px">Atur siklus tagihan kartu ini. Misalnya tutup tanggal 16 (tagihan berjalan 17 s/d 16), jatuh tempo tanggal 5 bulan berikutnya.</div>':'')+
-      '<label class="fl">Tanggal tutup tagihan (1-28)</label>'+
-      '<input class="field" id="kkTutup" inputmode="numeric" placeholder="mis. 16" value="'+(a.tglTutup||'')+'">'+
-      '<label class="fl">Tanggal jatuh tempo (1-28, bulan berikutnya)</label>'+
-      '<input class="field" id="kkTempo" inputmode="numeric" placeholder="mis. 5" value="'+(a.tglTempo||'')+'">'+
-      '<button class="save" onclick="kkSimpanSiklus()">Simpan pengaturan</button>'+
-      (pertama?'':'<button class="btn-line" onclick="kkRef=null;goView(\'kartuTagihan\')">Batal</button>')+
+      (pertama?'<div class="peninfo idle" style="margin-bottom:16px">'+LA('Atur siklus tagihan kartu ini. Misalnya tutup tanggal 16 (tagihan berjalan 17 s/d 16), jatuh tempo tanggal 5 bulan berikutnya.','Set this card\'s billing cycle. For example closing on the 16th (cycle runs 17th to 16th), due on the 5th of the next month.')+'</div>':'')+
+      '<label class="fl">'+LA('Tanggal tutup tagihan (1-28)','Statement closing day (1-28)')+'</label>'+
+      '<input class="field" id="kkTutup" inputmode="numeric" placeholder="'+LA('mis. 16','e.g. 16')+'" value="'+(a.tglTutup||'')+'">'+
+      '<label class="fl">'+LA('Tanggal jatuh tempo (1-28, bulan berikutnya)','Due day (1-28, next month)')+'</label>'+
+      '<input class="field" id="kkTempo" inputmode="numeric" placeholder="'+LA('mis. 5','e.g. 5')+'" value="'+(a.tglTempo||'')+'">'+
+      '<button class="save" onclick="kkSimpanSiklus()">'+LA('Simpan pengaturan','Save settings')+'</button>'+
+      (pertama?'':'<button class="btn-line" onclick="kkRef=null;goView(\'kartuTagihan\')">'+LA('Batal','Cancel')+'</button>')+
       '</div>';
   }
   window.kkEditSiklus=function(){
     var a=cariAkun(kkCard); if(!a) return;
-    S().innerHTML='<div class="fhead"><button class="bk" onclick="kkRef=null;goView(\'kartuTagihan\')">&#8592;</button><div class="ti">Pengaturan siklus</div></div>'+kkFormSiklus(a,false);
+    S().innerHTML='<div class="fhead"><button class="bk" onclick="kkRef=null;goView(\'kartuTagihan\')">&#8592;</button><div class="ti">'+LA('Pengaturan siklus','Cycle settings')+'</div></div>'+kkFormSiklus(a,false);
   };
   window.kkSimpanSiklus=async function(){
     var a=cariAkun(kkCard); if(!a) return;
     var tutup=+(document.getElementById('kkTutup').value||'').replace(/\D/g,'');
     var tempo=+(document.getElementById('kkTempo').value||'').replace(/\D/g,'');
-    if(!(tutup>=1&&tutup<=28)){ toast('Tanggal tutup harus 1-28'); return; }
-    if(!(tempo>=1&&tempo<=28)){ toast('Tanggal jatuh tempo harus 1-28'); return; }
+    if(!(tutup>=1&&tutup<=28)){ toast(LA('Tanggal tutup harus 1-28','Closing day must be 1-28')); return; }
+    if(!(tempo>=1&&tempo<=28)){ toast(LA('Tanggal jatuh tempo harus 1-28','Due day must be 1-28')); return; }
     a.tglTutup=tutup; a.tglTempo=tempo; a.terkirim=false; await akPut(a);
-    kkRef=null; toast('Pengaturan siklus tersimpan'); goView('kartuTagihan');
+    /* kirim langsung ke GAS agar pengaturan ikut tercadang (best effort) */
+    if(typeof getGasUrl==='function' && getGasUrl()){
+      try{ kirimNoCors('syncAkun',{items:[{ id:a.id, nama:a.nama, jenis:a.jenis, saldoAwal:a.saldoAwal, catatan:a.catatan||'', createdAt:a.createdAt||'', user:a.user||emailUser(), tglTutup:a.tglTutup||'', tglTempo:a.tglTempo||'' }]}); }catch(e){}
+    }
+    kkRef=null; toast(LA('Pengaturan siklus tersimpan','Cycle settings saved')); goView('kartuTagihan');
   };
 
-  /* aksi */
   window.kkGeser=function(d){ var a=cariAkun(kkCard); if(!a) return; if(!kkRef) kkRef=refBerjalan(a); kkRef=geserBulan(kkRef.y,kkRef.m,d); render(); };
   window.kkOnNom=function(el){ var d=el.value.replace(/\D/g,''); kkBayarNom=d; el.value=d?(+d).toLocaleString('id-ID'):''; };
   window.kkIsiPenuh=function(sisa){ kkBayarNom=String(sisa); render(); };
@@ -10175,11 +10165,9 @@ window.jsonp=function(params){
   window.bukaTagihanKartu=function(id){ kkCard=id; window.akunDetail=id; kkRef=null; kkBayarNom=''; goView('kartuTagihan'); };
 
   /* ================= WIRING ================= */
-  /* router */
   var _kkRenderLama=window.render;
   window.render=function(){ if(view==='kartuTagihan'){ return renderKartuTagihan(); } return _kkRenderLama.apply(this, arguments); };
 
-  /* tombol masuk dari detail kartu */
   var _kkAkunDetailLama=window.renderAkunDetail;
   window.renderAkunDetail=function(){
     _kkAkunDetailLama.apply(this, arguments);
@@ -10188,15 +10176,17 @@ window.jsonp=function(params){
       if(!a || a.jenis!=='kartu') return;
       var wadah=S(); if(!wadah) return;
       var ud=wadah.querySelector('.udetail'); if(!ud) return;
+      /* buang panel tagihan lama (mis. dari v1) agar tidak dobel */
+      try{ Array.prototype.slice.call(wadah.querySelectorAll('.panel')).forEach(function(pn){ if(pn.innerHTML.indexOf('bukaTagihanKartu')>=0 && pn.parentNode) pn.parentNode.removeChild(pn); }); }catch(e){}
       var info='';
       if(punyaSiklus(a)){
         var sk=siklusDariRef(a, refBerjalan(a)); var r=ringkas(a, sk);
-        info='<div style="font-size:12px;color:var(--tx2);margin-bottom:10px;line-height:1.5">Siklus berjalan '+labelRentang(sk.start,sk.end)+'. Sisa tagihan <b>'+fmtRp(r.sisa)+'</b>, jatuh tempo '+labelTgl(sk.due,true)+'.</div>';
+        info='<div style="font-size:12px;color:var(--tx2);margin-bottom:10px;line-height:1.5">'+LA('Siklus berjalan ','Current cycle ')+labelRentang(sk.start,sk.end)+'. '+LA('Sisa tagihan ','Remaining ')+'<b>'+fmtRp(r.sisa)+'</b>, '+LA('jatuh tempo ','due ')+labelTgl(sk.due,true)+'.</div>';
       } else {
-        info='<div style="font-size:12px;color:var(--tx2);margin-bottom:10px;line-height:1.5">Atur siklus tagihan untuk memantau rentang tagihan, jatuh tempo, dan pembayaran.</div>';
+        info='<div style="font-size:12px;color:var(--tx2);margin-bottom:10px;line-height:1.5">'+LA('Atur siklus tagihan untuk memantau rentang tagihan, jatuh tempo, dan pembayaran.','Set the billing cycle to track the statement range, due date, and payments.')+'</div>';
       }
       var html='<div class="panel" style="margin:12px 0 0">'+info+
-        '<button class="btn-line" style="margin-top:0" onclick="bukaTagihanKartu(\''+a.id+'\')">'+(punyaSiklus(a)?'Lihat tagihan &amp; pembayaran':'Atur tagihan kartu')+'</button></div>';
+        '<button class="btn-line" style="margin-top:0" onclick="bukaTagihanKartu(\''+a.id+'\')">'+(punyaSiklus(a)?LA('Lihat tagihan &amp; pembayaran','View bill &amp; payments'):LA('Atur tagihan kartu','Set up card bill'))+'</button></div>';
       ud.insertAdjacentHTML('afterend', html);
     }catch(e){}
   };
@@ -10205,6 +10195,26 @@ window.jsonp=function(params){
   if(typeof window.blankAdd==='function'){
     var _kkBlankAdd=window.blankAdd;
     window.blankAdd=function(){ var a=_kkBlankAdd.apply(this, arguments); if(a && a.jadiHutang===false) a.jadiHutang=true; return a; };
+  }
+
+  /* Sisipkan tglTutup/tglTempo ke SETIAP pengiriman syncAkun (cadangan rutin
+     maupun kirim langsung), diambil dari data kartu terkini. Additif, tanpa
+     mengubah fungsi cadangan inti. Butuh kolom padanan di GAS (lihat catatan). */
+  if(typeof window.kirimNoCors==='function' && !window.kirimNoCors.__kkHooked){
+    var _kkKirim=window.kirimNoCors;
+    window.kirimNoCors=function(action, extra){
+      try{
+        if(action==='syncAkun' && extra && extra.items && extra.items.length){
+          extra.items=extra.items.map(function(it){
+            var a=cariAkun(it.id);
+            if(a && a.jenis==='kartu'){ it.tglTutup=a.tglTutup||''; it.tglTempo=a.tglTempo||''; }
+            return it;
+          });
+        }
+      }catch(e){}
+      return _kkKirim.apply(this, arguments);
+    };
+    window.kirimNoCors.__kkHooked=true;
   }
 
 })();
