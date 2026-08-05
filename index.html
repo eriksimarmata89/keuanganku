@@ -10650,6 +10650,79 @@ window.jsonp=function(params){
 })();
 </script>
 
+<script>
+/* ============================================================================
+   PATCH KARTU KREDIT KONSISTEN v1
+   Tempel sebelum </body>, paling akhir.
+
+   Menyamakan hitungan kartu kredit dengan siklus tagihan di semua tempat:
+   - Daftar Penampung Saldo: baris kartu kredit menampilkan sisa tagihan
+     (bukan saldo), dengan warna merah. Ringkasan dipisah jadi "Total saldo"
+     (penampung non-kartu) dan "Tagihan kartu kredit".
+   - Detail penampung kartu kredit: kartu besar menampilkan sisa tagihan.
+   Carousel sudah memakai sisa tagihan, sehingga semua konsisten.
+   ========================================================================== */
+(function(){
+  if(window.__KARTU_KONSISTEN_V1__) return; window.__KARTU_KONSISTEN_V1__=true;
+
+  function LA(id,en){ return (window.LANG==='en')?en:id; }
+  function hutangKartu(a){
+    var kid=String(a.id), nama='Tagihan '+a.nama;
+    return UT.filter(function(u){ return u.jenis==='hutang' && ((u.akunId && String(u.akunId)===kid) || (!u.akunId && u.pihak===nama)); });
+  }
+  function kartuSisaTagihan(a){ return hutangKartu(a).reduce(function(s,u){ return s+utSisa(u); },0); }
+  window.kartuSisaTagihan=kartuSisaTagihan;
+
+  /* baris penampung: kartu kredit tampil sisa tagihan (merah) */
+  window.akunRow=function(a){
+    var kartu=(a.jenis==='kartu');
+    var nilai=kartu?kartuSisaTagihan(a):saldoAkunSaatIni(a.id);
+    var warna=kartu?'var(--merah-tx)':'var(--tx)';
+    var sub=akunLabelJenis(a.jenis)+(kartu?(' &middot; '+LA('sisa tagihan','outstanding bill')):'');
+    return '<button class="uitem" onclick="bukaAkun(\''+a.id+'\')">'+
+      '<div class="uic p" style="background:#E6F1FB;color:var(--biru);overflow:hidden">'+akunIconHTML(a,26)+'</div>'+
+      '<div class="umid"><div class="unm">'+esc(a.nama)+'</div><div class="usub">'+sub+'</div></div>'+
+      '<div class="uamt" style="color:'+warna+'">'+fmtRp(nilai)+'</div>'+
+      '</button>';
+  };
+
+  /* daftar penampung: ringkasan dipisah aset vs tagihan kartu */
+  window.renderAkunList=function(){
+    var aset=AK.filter(function(a){return a.jenis!=='kartu';});
+    var kartu=AK.filter(function(a){return a.jenis==='kartu';});
+    var totalAset=aset.reduce(function(s,a){return s+saldoAkunSaatIni(a.id);},0);
+    var totalTagihan=kartu.reduce(function(s,a){return s+kartuSisaTagihan(a);},0);
+    var kartuCard = kartu.length
+      ? ('<div class="rep-card" style="flex:1"><div class="l">'+LA('Tagihan kartu kredit','Credit card bills')+'</div><div class="v" style="color:var(--merah-tx)">'+fmtRp(totalTagihan)+'</div></div>')
+      : '';
+    S().innerHTML=
+      '<div class="fhead"><button class="bk" onclick="goView(\'settings\')">&#8592;</button><div class="ti">'+LA('Penampung Saldo','Accounts')+'</div></div>'+
+      '<div class="set" style="padding-top:0">'+
+      '<div class="rep-cards"><div class="rep-card" style="flex:1"><div class="l">'+LA('Total saldo','Total balance')+'</div><div class="v">'+fmtRp(totalAset)+'</div></div>'+kartuCard+'</div>'+
+      '<button class="btn-line" onclick="akunState=blankAkun();goView(\'akunAdd\')">+ '+LA('Tambah penampung saldo','Add account')+'</button>'+
+      '<div class="list" style="padding-top:10px">'+
+        (AK.length? AK.map(window.akunRow).join('') : '<div class="empty">'+LA('Belum ada penampung saldo.','No accounts yet.')+'</div>')+
+      '</div></div>';
+  };
+
+  /* detail penampung kartu kredit: kartu besar tampil sisa tagihan */
+  if(typeof window.renderAkunDetail==='function'){
+    var _rad=window.renderAkunDetail;
+    window.renderAkunDetail=function(){
+      _rad.apply(this, arguments);
+      try{
+        var a=cariAkun(akunDetail); if(!a || a.jenis!=='kartu') return;
+        var w=(typeof S==='function')?S():document.getElementById('scroll'); if(!w) return;
+        var sis=w.querySelector('.udetail.p .udsisa');
+        var cap=w.querySelector('.udetail.p .udcap');
+        if(sis) sis.innerHTML=fmtRp(kartuSisaTagihan(a));
+        if(cap) cap.textContent=LA('sisa tagihan','outstanding bill');
+      }catch(e){}
+    };
+  }
+
+})();
+</script>
 
 </body>
 </html>
