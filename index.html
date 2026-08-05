@@ -7572,7 +7572,7 @@ window.jsonp=function(params){
        dan field kategori dinormalkan ke label Indonesia kanonik.
      - sortTX() dibungkus: TX di memori dinormalkan saat dimuat, sehingga
        laporan/daftar/anggaran otomatis MENYATUKAN data lama berbahasa
-       Inggris dengan yang Indonesia — tanpa mengubah data lama di Sheet.
+       Inggris dengan yang Indonesia � tanpa mengubah data lama di Sheet.
      - kirimNoCors dibungkus: payload 'sync' menyertakan kategoriId
        sehingga kolom baru di Google Sheet ikut terisi.
 
@@ -7794,7 +7794,7 @@ window.jsonp=function(params){
 </script>
 
 <!-- =====================================================================
-     PATCH ANGGARAN FINAL (KeuanganKu) — SATU BLOK MANDIRI
+     PATCH ANGGARAN FINAL (KeuanganKu) � SATU BLOK MANDIRI
      Menggantikan SEMUA patch anggaran sebelumnya. HAPUS blok-blok berikut
      dari file (masing-masing dari "<!-- ===" pembuka sampai "</script>"
      penutupnya):
@@ -9664,7 +9664,7 @@ window.jsonp=function(params){
 
 <!-- =====================================================================
      PATCH PROFIL: MENU PENGATURAN NOTIFIKASI  (KeuanganKu)
-     Tempel PERSIS SEBELUM </body>, PALING AKHIR — setelah
+     Tempel PERSIS SEBELUM </body>, PALING AKHIR � setelah
      PATCH NOTIFIKASI v3.
 
      ISI
@@ -10068,6 +10068,8 @@ window.jsonp=function(params){
         '</button>';
     }).join('');
 
+    var gelap=(document.documentElement.getAttribute('data-theme')==='dark');
+    var cardBg=(r.status==='belum')?(gelap?'#1B2A3A':'#E6F1FB'):warna[0];
     S().innerHTML=head+
       '<div class="set">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px">'+
@@ -10079,12 +10081,12 @@ window.jsonp=function(params){
         '<button class="cb" onclick="kkGeser(1)">&#8594;</button>'+
       '</div>'+
 
-      '<div class="udetail" style="background:'+warna[0]+'">'+
-        '<div class="udlbl" style="color:'+warna[1]+'">'+akunIconHTML(a,15)+' '+LA('Tagihan ','Bill for ')+esc(a.nama)+'</div>'+
-        '<div class="udsisa" style="color:'+warna[1]+'">'+fmtRp(r.sisa)+'</div>'+
-        '<div class="udcap">'+LA('sisa tagihan dari ','remaining from ')+fmtRp(r.total)+'</div>'+
-        '<div class="udmeta"><span class="ubadge '+(r.status==='lunas'?'lunas':r.status==='telat'?'telat':r.status==='sebagian'?'seb':'belum')+'">'+warna[2]+'</span>'+
-          '<span class="udtgl">'+LA('Jatuh tempo ','Due ')+labelTgl(sk.due,true)+'</span></div>'+
+      '<div style="border-radius:16px;padding:20px;margin-bottom:6px;background:'+cardBg+';color:var(--tx)">'+
+        '<div style="font-size:12px;opacity:.7">'+akunIconHTML(a,15)+' '+LA('Tagihan ','Bill for ')+esc(a.nama)+'</div>'+
+        '<div style="font-size:28px;font-weight:700;margin-top:12px;letter-spacing:-.3px">'+fmtRp(r.sisa)+'</div>'+
+        '<div style="font-size:12px;opacity:.7;margin-top:2px">'+LA('sisa tagihan dari ','remaining from ')+fmtRp(r.total)+'</div>'+
+        '<div style="display:flex;align-items:center;gap:10px;margin-top:14px"><span class="ubadge '+(r.status==='lunas'?'lunas':r.status==='telat'?'telat':r.status==='sebagian'?'seb':'belum')+'">'+warna[2]+'</span>'+
+          '<span style="font-size:12px;opacity:.85">'+LA('Jatuh tempo ','Due ')+labelTgl(sk.due,true)+'</span></div>'+
       '</div>'+
 
       '<div class="udrow"><span>'+LA('Total pengeluaran','Total spending')+'</span><b>'+fmtRp(r.total)+'</b></div>'+
@@ -10339,5 +10341,100 @@ window.jsonp=function(params){
 })();
 </script>
   
+<script>
+/* ============================================================================
+   PATCH PENYESUAIAN v1
+   Tempel sebelum </body>, paling akhir setelah semua patch lain.
+
+   1) Pengeluaran yang dicatat sebagai PIUTANG: pilihan kategori disembunyikan
+      dan kategorinya dipaksa ke "Piutang" supaya tidak membebani anggaran
+      kategori belanja biasa (karena ini pinjaman ke pihak lain).
+   2) Input nominal pembayaran hutang/piutang memakai pemisah ribuan (titik).
+   ========================================================================== */
+(function(){
+  if(window.__PENYESUAIAN_V1__) return; window.__PENYESUAIAN_V1__=true;
+
+  function piutangManualAktif(){
+    return !!(window.addState && addState.tipe==='pengeluaran' && addState.jadiPiutang);
+  }
+  function piutangStrukAktif(){
+    var st=window.strukState; if(!st) return false;
+    var ak=cariAkun(st.akunId);
+    return !!(st.jadiPiutang && ak && ak.jenis!=='kartu');
+  }
+
+  /* --- 1a. paksa kategori "Piutang" saat simpan (manual) --- */
+  if(typeof window.onSimpan==='function'){
+    var _os=window.onSimpan;
+    window.onSimpan=async function(){
+      try{
+        var a=window.addState;
+        if(a && a.tipe==='pengeluaran' && a.jadiPiutang && Array.isArray(a.items)){
+          a.items.forEach(function(it){ it.kategori='Piutang'; });
+        }
+      }catch(e){}
+      return _os.apply(this, arguments);
+    };
+  }
+  /* --- 1a. paksa kategori "Piutang" saat simpan (struk) --- */
+  if(typeof window.simpanSemua==='function'){
+    var _ss=window.simpanSemua;
+    window.simpanSemua=async function(){
+      try{
+        if(piutangStrukAktif() && Array.isArray(strukState.pending)){
+          strukState.pending.forEach(function(p){ p.kategori='Piutang'; });
+        }
+      }catch(e){}
+      return _ss.apply(this, arguments);
+    };
+  }
+
+  /* --- 1b. sembunyikan kategori pada modal "Tambah barang" saat piutang --- */
+  if(typeof window.bukaItemManual==='function'){
+    var _bi=window.bukaItemManual;
+    window.bukaItemManual=function(ctx, idx){
+      _bi.apply(this, arguments);
+      try{
+        var pi=(ctx==='struk')?piutangStrukAktif():piutangManualAktif();
+        var kat=document.getElementById('miKat');
+        if(kat){
+          kat.style.display=pi?'none':'';
+          var lbl=kat.previousElementSibling;
+          if(lbl && lbl.classList && lbl.classList.contains('fl')) lbl.style.display=pi?'none':'';
+        }
+      }catch(e){}
+    };
+  }
+
+  /* --- 1c. sembunyikan dropdown kategori per barang di daftar (manual) --- */
+  if(typeof window.renderAdd==='function'){
+    var _ra=window.renderAdd;
+    window.renderAdd=function(){
+      _ra.apply(this, arguments);
+      try{
+        if(piutangManualAktif()){
+          var w=(typeof S==='function')?S():null;
+          if(w) Array.prototype.slice.call(w.querySelectorAll('.pend .psel')).forEach(function(el){ el.style.display='none'; });
+        }
+      }catch(e){}
+    };
+  }
+
+  /* --- 2. pemisah ribuan pada input nominal pembayaran hutang/piutang --- */
+  if(typeof window.renderUtangDetail==='function'){
+    var _rud=window.renderUtangDetail;
+    window.renderUtangDetail=function(){
+      _rud.apply(this, arguments);
+      try{
+        var el=document.getElementById('payNom');
+        if(el){ el.oninput=function(){ var d=this.value.replace(/\D/g,''); this.value=d?(+d).toLocaleString('id-ID'):''; }; }
+      }catch(e){}
+    };
+  }
+
+})();
+</script>
+
+
 </body>
 </html>
