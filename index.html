@@ -10507,7 +10507,7 @@ window.jsonp=function(params){
       var due = (jatuh>0) ? cycleOf(a, geserBulan(cur.ref,-1)).due : cur.due;
       dueTxt = labelTgl(due);
     }
-    var onclick = punya ? ('bukaTagihanKartu(\''+a.id+'\')') : ('bukaAkun(\''+a.id+'\')');
+    var onclick = 'bukaAkun(\''+a.id+'\')';  /* buka detail dulu, lalu tombol Lihat tagihan */
     var badge = overdue>0 ? ('<span style="margin-left:8px;font-size:10px;font-weight:700;background:#FCEBEB;color:#A32D2D;padding:2px 7px;border-radius:20px;vertical-align:middle">'+LA('lewat jatuh tempo','overdue')+'</span>') : '';
     return '<div class="saldo" onclick="'+onclick+'" style="cursor:pointer">'+
       '<div class="lbl">'+akunIconHTML(a,15)+' '+esc(a.nama)+badge+'</div>'+
@@ -10650,6 +10650,7 @@ window.jsonp=function(params){
 })();
 </script>
 
+
 <script>
 /* ============================================================================
    PATCH KARTU KREDIT KONSISTEN v1
@@ -10723,6 +10724,7 @@ window.jsonp=function(params){
 
 })();
 </script>
+
 
 </body>
 </html>
