@@ -7572,7 +7572,7 @@ window.jsonp=function(params){
        dan field kategori dinormalkan ke label Indonesia kanonik.
      - sortTX() dibungkus: TX di memori dinormalkan saat dimuat, sehingga
        laporan/daftar/anggaran otomatis MENYATUKAN data lama berbahasa
-       Inggris dengan yang Indonesia � tanpa mengubah data lama di Sheet.
+       Inggris dengan yang Indonesia ? tanpa mengubah data lama di Sheet.
      - kirimNoCors dibungkus: payload 'sync' menyertakan kategoriId
        sehingga kolom baru di Google Sheet ikut terisi.
 
@@ -7794,7 +7794,7 @@ window.jsonp=function(params){
 </script>
 
 <!-- =====================================================================
-     PATCH ANGGARAN FINAL (KeuanganKu) � SATU BLOK MANDIRI
+     PATCH ANGGARAN FINAL (KeuanganKu) ? SATU BLOK MANDIRI
      Menggantikan SEMUA patch anggaran sebelumnya. HAPUS blok-blok berikut
      dari file (masing-masing dari "<!-- ===" pembuka sampai "</script>"
      penutupnya):
@@ -9664,7 +9664,7 @@ window.jsonp=function(params){
 
 <!-- =====================================================================
      PATCH PROFIL: MENU PENGATURAN NOTIFIKASI  (KeuanganKu)
-     Tempel PERSIS SEBELUM </body>, PALING AKHIR � setelah
+     Tempel PERSIS SEBELUM </body>, PALING AKHIR ? setelah
      PATCH NOTIFIKASI v3.
 
      ISI
@@ -10429,6 +10429,98 @@ window.jsonp=function(params){
         var el=document.getElementById('payNom');
         if(el){ el.oninput=function(){ var d=this.value.replace(/\D/g,''); this.value=d?(+d).toLocaleString('id-ID'):''; }; }
       }catch(e){}
+    };
+  }
+
+})();
+</script>
+
+
+<script>
+/* ============================================================================
+   PATCH CAROUSEL KARTU KREDIT v1
+   Tempel sebelum </body>, paling akhir setelah semua patch lain.
+
+   Kartu slide di beranda untuk KARTU KREDIT tidak lagi memakai hitungan saldo
+   biasa, melainkan tagihan sesuai siklus:
+   - angka besar  : total sisa tagihan yang belum dibayar (semua siklus)
+   - "Jatuh tempo" : sisa tagihan dari siklus yang sudah tutup (harus dibayar)
+   - "Berjalan"    : sisa tagihan siklus yang sedang berjalan (belum jatuh tempo)
+   - baris bawah   : tanggal jatuh tempo terdekat
+   Perhitungan dimulai dari tagihan yang belum dibayar per siklus (tanggal tutup
+   dan jatuh tempo diambil dari pengaturan kartu). Penampung non-kartu tidak berubah.
+   ========================================================================== */
+(function(){
+  if(window.__CAROUSEL_KARTU_V1__) return; window.__CAROUSEL_KARTU_V1__=true;
+
+  function LA(id,en){ return (window.LANG==='en')?en:id; }
+  var BULAN_ID=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  var BULAN_EN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function bln(m){ return (window.LANG==='en'?BULAN_EN:BULAN_ID)[m-1]; }
+
+  function pad(n){ return (n<10?'0':'')+n; }
+  function ymd(y,m,d){ return y+'-'+pad(m)+'-'+pad(d); }
+  function parseISO(s){ var p=String(s).slice(0,10).split('-'); return {y:+p[0],m:+p[1],d:+p[2]}; }
+  function hariDalamBulan(y,m){ return new Date(y,m,0).getDate(); }
+  function clampHari(h,y,m){ h=Math.max(1,Math.min(28,+h||1)); return Math.min(h,hariDalamBulan(y,m)); }
+  function geserBulan(y,m,delta){ var idx=(m-1)+delta; var ny=y+Math.floor(idx/12); var nm=((idx%12)+12)%12+1; return {y:ny,m:nm}; }
+  function tambahHariISO(iso,n){ var p=parseISO(iso); var d=new Date(p.y,p.m-1,p.d); d.setDate(d.getDate()+n); return ymd(d.getFullYear(),d.getMonth()+1,d.getDate()); }
+  function labelTgl(iso){ var p=parseISO(iso); return p.d+' '+bln(p.m)+' '+p.y; }
+
+  function cycleOf(a, ref){
+    var tutup=+a.tglTutup, tempo=+a.tglTempo;
+    var end=ymd(ref.y, ref.m, clampHari(tutup, ref.y, ref.m));
+    var prev=geserBulan(ref.y, ref.m, -1);
+    var prevEnd=ymd(prev.y, prev.m, clampHari(tutup, prev.y, prev.m));
+    var start=tambahHariISO(prevEnd, 1);
+    var dm=geserBulan(ref.y, ref.m, 1);
+    var due=ymd(dm.y, dm.m, clampHari(tempo, dm.y, dm.m));
+    return { start:start, end:end, due:due, ref:{y:ref.y,m:ref.m} };
+  }
+  function currentRef(a){
+    var t=parseISO(todayISO());
+    var D=clampHari(a.tglTutup, t.y, t.m);
+    if(t.d<=D) return {y:t.y, m:t.m};
+    return geserBulan(t.y, t.m, 1);
+  }
+  function hutangKartu(a){
+    var kid=String(a.id), nama='Tagihan '+a.nama;
+    return UT.filter(function(u){
+      return u.jenis==='hutang' && ((u.akunId && String(u.akunId)===kid) || (!u.akunId && u.pihak===nama));
+    });
+  }
+
+  function kartuSlideHTML(a){
+    var punya = a.tglTutup && a.tglTempo;
+    var items = hutangKartu(a);
+    var total = items.reduce(function(s,u){ return s+utSisa(u); },0);
+    var berjalan=total, jatuh=0, dueTxt='-';
+    if(punya){
+      var cur = cycleOf(a, currentRef(a));
+      berjalan = items.filter(function(u){ return u.tanggal>=cur.start && u.tanggal<=cur.end; })
+                      .reduce(function(s,u){ return s+utSisa(u); },0);
+      jatuh = Math.max(0, total-berjalan);
+      var due = (jatuh>0) ? cycleOf(a, geserBulan(cur.ref,-1)).due : cur.due;
+      dueTxt = labelTgl(due);
+    }
+    var onclick = punya ? ('bukaTagihanKartu(\''+a.id+'\')') : ('bukaAkun(\''+a.id+'\')');
+    return '<div class="saldo" onclick="'+onclick+'" style="cursor:pointer">'+
+      '<div class="lbl">'+akunIconHTML(a,15)+' '+esc(a.nama)+'</div>'+
+      '<div class="amt" style="margin-bottom:2px">'+fmtRp(total)+'</div>'+
+      '<div class="mini" style="margin-bottom:12px">'+LA('sisa tagihan','outstanding bill')+'</div>'+
+      '<div class="row"><div><div class="mini">'+LA('Jatuh tempo','Due now')+'</div><div class="val">'+fmtRp(jatuh)+'</div></div>'+
+      '<div><div class="mini">'+LA('Berjalan','Current')+'</div><div class="val">'+fmtRp(berjalan)+'</div></div></div>'+
+      '<div style="border-top:1px solid rgba(255,255,255,.22);margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">'+
+        '<span class="mini">'+LA('Jatuh tempo berikutnya','Next due date')+'</span>'+
+        '<span class="val" style="font-size:14px">'+(punya?esc(dueTxt):LA('atur siklus','set cycle'))+'</span></div>'+
+      '</div>';
+  }
+
+  if(typeof window.akunSlideHTML==='function'){
+    var _lama=window.akunSlideHTML;
+    window.akunSlideHTML=function(a){
+      if(a && a.jenis==='kartu') return kartuSlideHTML(a);
+      return _lama.apply(this, arguments);
     };
   }
 
