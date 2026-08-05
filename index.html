@@ -10605,52 +10605,6 @@ window.jsonp=function(params){
 
 })();
 </script>
-
-
-<script>
-/* ============================================================================
-   PATCH HEADER KARTU KREDIT (FIXED) v2  (pengganti versi sticky sebelumnya)
-   Tempel sebelum </body>, paling akhir.
-
-   Header layar tagihan kartu kredit dibuat position:fixed di atas (mengikuti
-   pola header modul anggaran yang sudah terbukti), lalu area gulir diberi
-   padding atas sebesar tinggi header supaya konten tidak tertutup. Cara ini
-   bekerja walau yang menggulir adalah body (bukan #scroll), sehingga header
-   tidak ikut bergeser. Hanya memengaruhi layar tagihan kartu.
-   ========================================================================== */
-(function(){
-  if(window.__HEADER_STICKY_V2__) return; window.__HEADER_STICKY_V2__=true;
-
-  var st=document.createElement('style'); st.id='kk-fhead-style';
-  st.textContent=
-    '.fhead.kkFixed{position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:var(--maxw);'+
-      'z-index:30;background:var(--page);box-sizing:border-box;box-shadow:0 6px 14px -12px rgba(0,0,0,.4)}';
-  document.head.appendChild(st);
-
-  function pasang(){
-    try{
-      var w=(typeof S==='function')?S():document.getElementById('scroll'); if(!w) return;
-      if(typeof view!=='undefined' && view==='kartuTagihan'){
-        var h=w.querySelector('.fhead');
-        if(h){
-          h.classList.add('kkFixed');
-          var tinggi=Math.round(h.getBoundingClientRect().height);
-          w.style.paddingTop=(tinggi>0?tinggi:60)+'px';
-        }
-      } else {
-        w.style.paddingTop='';
-      }
-    }catch(e){}
-  }
-
-  if(typeof window.render==='function'){
-    var _rn=window.render;
-    window.render=function(){ var out=_rn.apply(this, arguments); pasang(); return out; };
-  }
-})();
-</script>
-
-
 <script>
 /* ============================================================================
    PATCH KARTU KREDIT KONSISTEN v1
@@ -10722,6 +10676,132 @@ window.jsonp=function(params){
     };
   }
 
+})();
+</script>
+
+
+<script>
+/* ============================================================================
+   PATCH KARTU KREDIT: SIKLUS WAJIB SAAT TAMBAH PENAMPUNG v1
+   Tempel sebelum </body>, paling akhir.
+
+   Saat menambah penampung saldo berjenis Kartu Kredit, user wajib mengisi
+   tanggal tutup tagihan dan tanggal jatuh tempo. Nilainya disimpan pada kartu
+   sehingga siklus langsung terpakai di seluruh perhitungan.
+   ========================================================================== */
+(function(){
+  if(window.__AKUN_KARTU_SIKLUS_V1__) return; window.__AKUN_KARTU_SIKLUS_V1__=true;
+  function LA(id,en){ return (window.LANG==='en')?en:id; }
+
+  window._akCycleIn=function(el, field){ try{ akunState[field]=el.value.replace(/\D/g,''); }catch(e){} };
+
+  if(typeof window.renderAkunAdd==='function'){
+    var _raa=window.renderAkunAdd;
+    window.renderAkunAdd=function(){
+      _raa.apply(this, arguments);
+      try{
+        if(!window.akunState || akunState.jenis!=='kartu') return;
+        var w=(typeof S==='function')?S():document.getElementById('scroll'); if(!w) return;
+        if(w.querySelector('#akTutup')) return;
+        var btn=w.querySelector('button.save.pem'); if(!btn) return;
+        var html=
+          '<label class="fl">'+LA('Tanggal tutup tagihan (1-28)','Statement closing day (1-28)')+'</label>'+
+          '<input class="field" id="akTutup" inputmode="numeric" placeholder="'+LA('mis. 16','e.g. 16')+'" value="'+(akunState.tglTutup||'')+'" oninput="_akCycleIn(this,\'tglTutup\')">'+
+          '<label class="fl">'+LA('Tanggal jatuh tempo (1-28, bulan berikutnya)','Due day (1-28, next month)')+'</label>'+
+          '<input class="field" id="akTempo" inputmode="numeric" placeholder="'+LA('mis. 5','e.g. 5')+'" value="'+(akunState.tglTempo||'')+'" oninput="_akCycleIn(this,\'tglTempo\')">';
+        btn.insertAdjacentHTML('beforebegin', html);
+      }catch(e){}
+    };
+  }
+
+  window.simpanAkun=async function(){
+    var a=akunState;
+    if(!a||!a.nama||!a.nama.trim()){ toast(LA('Nama penampung saldo belum diisi','Enter the account name')); return; }
+    if(a.jenis==='kartu'){
+      var tt=+a.tglTutup, tp=+a.tglTempo;
+      if(!(tt>=1&&tt<=28)){ toast(LA('Isi tanggal tutup tagihan (1-28)','Enter the statement closing day (1-28)')); return; }
+      if(!(tp>=1&&tp<=28)){ toast(LA('Isi tanggal jatuh tempo (1-28)','Enter the due day (1-28)')); return; }
+    }
+    var item={ id:uid(), nama:a.nama.trim(), jenis:a.jenis, saldoAwal:+a.saldoAwal||0, catatan:(a.catatan||'').trim(), logo:a.logo||'', createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
+    if(a.jenis==='kartu'){ item.tglTutup=+a.tglTutup; item.tglTempo=+a.tglTempo; }
+    AK.push(item); await akPut(item);
+    akunState=null; toast(LA('Penampung saldo tersimpan','Account saved')); goView('akunList');
+  };
+})();
+</script>
+
+<script>
+/* ============================================================================
+   PATCH NAVIGASI BACK + HEADER TETAP v1 (menggantikan header fixed v2)
+   Tempel sebelum </body>, paling akhir.
+
+   1) Header pada setiap layar detail dibuat menempel di atas (fixed), termasuk
+      layar sub seperti "Pengaturan siklus" yang tidak lewat render().
+   2) Tombol back selalu kembali ke layar sebelumnya memakai riwayat navigasi.
+      Layar sub dengan tombol back khusus tetap dipertahankan.
+   ========================================================================== */
+(function(){
+  if(window.__NAV_HEADER_V1__) return; window.__NAV_HEADER_V1__=true;
+
+  var st=document.createElement('style'); st.id='nav-fhead-style';
+  st.textContent=
+    '.fhead.kkFixed{position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:var(--maxw);'+
+      'z-index:30;background:var(--page);box-sizing:border-box;box-shadow:0 6px 14px -12px rgba(0,0,0,.4)}';
+  document.head.appendChild(st);
+
+  /* ===== riwayat navigasi ===== */
+  window.navStack = window.navStack || [];
+  if(typeof window.goView==='function'){
+    var _goView=window.goView;
+    window.goView=function(v){
+      try{
+        if(window.__backNav){ window.__backNav=false; }
+        else if(typeof view!=='undefined' && view && v!==view){
+          var idx=navStack.indexOf(v);
+          if(idx>=0){ navStack.length=idx; }              /* kembali ke layar yang sudah ada di riwayat */
+          else { navStack.push(view); if(navStack.length>60) navStack.shift(); }
+        }
+      }catch(e){}
+      window.__viaRouter=true;
+      return _goView.apply(this, arguments);
+    };
+  }
+  window.kembali=function(){
+    if(navStack.length){ var prev=navStack.pop(); window.__backNav=true; goView(prev); }
+    else { goView('home'); }
+  };
+
+  /* render() langsung juga dianggap layar router (untuk refresh di layar yang sama) */
+  if(typeof window.render==='function'){
+    var _render=window.render;
+    window.render=function(){ window.__viaRouter=true; return _render.apply(this, arguments); };
+  }
+
+  /* ===== proses tiap kali isi layar berganti ===== */
+  function proses(){
+    try{
+      var w=document.getElementById('scroll'); if(!w) return;
+      var h=w.querySelector('.fhead');
+      if(h){
+        h.classList.add('kkFixed');
+        var tinggi=Math.round(h.getBoundingClientRect().height);
+        w.style.paddingTop=(tinggi>0?tinggi:60)+'px';
+        if(window.__viaRouter){
+          var bk=h.querySelector('.bk');
+          if(bk) bk.setAttribute('onclick','kembali()');
+        }
+      } else {
+        w.style.paddingTop='';
+      }
+    }catch(e){}
+    window.__viaRouter=false;
+  }
+
+  var target=document.getElementById('scroll');
+  if(target && window.MutationObserver){
+    new MutationObserver(function(){ proses(); }).observe(target, {childList:true});
+  }
+  setTimeout(proses, 0);
 })();
 </script>
 
