@@ -10072,13 +10072,15 @@ window.jsonp=function(params){
     var cardBg=(r.status==='belum')?(gelap?'#1B2A3A':'#E6F1FB'):warna[0];
     S().innerHTML=head+
       '<div class="set">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px">'+
-        '<button class="cb" onclick="kkGeser(-1)">&#8592;</button>'+
-        '<div style="text-align:center;flex:1">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px">'+
+        '<div style="min-width:0">'+
           '<div style="font-size:11px;color:var(--tx3)">'+LA('Siklus tagihan','Billing cycle')+'</div>'+
           '<div style="font-size:14px;font-weight:700;color:var(--tx)">'+labelRentang(sk.start, sk.end)+'</div>'+
         '</div>'+
-        '<button class="cb" onclick="kkGeser(1)">&#8594;</button>'+
+        '<div style="display:flex;gap:8px;flex-shrink:0">'+
+          '<button class="cb" onclick="kkGeser(-1)">&#8592;</button>'+
+          '<button class="cb" onclick="kkGeser(1)">&#8594;</button>'+
+        '</div>'+
       '</div>'+
 
       '<div style="border-radius:16px;padding:20px;margin-bottom:6px;background:'+cardBg+';color:var(--tx)">'+
