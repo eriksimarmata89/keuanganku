@@ -10037,7 +10037,7 @@ window.jsonp=function(params){
     var a=cariAkun(kkCard);
     if(!a || a.jenis!=='kartu'){ goView('akunList'); return; }
 
-    var head='<div class="fhead"><button class="bk" onclick="goView(\'akunDetail\')">&#8592;</button><div class="ti">'+esc(a.nama)+'</div></div>';
+    var head='<div class="fhead" style="position:sticky;top:0;z-index:8;background:var(--page)"><button class="bk" onclick="goView(\'akunDetail\')">&#8592;</button><div class="ti">'+esc(a.nama)+'</div></div>';
 
     if(!punyaSiklus(a)){ S().innerHTML=head+kkFormSiklus(a, true); return; }
 
@@ -10072,15 +10072,13 @@ window.jsonp=function(params){
     var cardBg=(r.status==='belum')?(gelap?'#1B2A3A':'#E6F1FB'):warna[0];
     S().innerHTML=head+
       '<div class="set">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px">'+
-        '<div style="min-width:0">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px">'+
+        '<button class="cb" onclick="kkGeser(-1)">&#8592;</button>'+
+        '<div style="text-align:center;flex:1">'+
           '<div style="font-size:11px;color:var(--tx3)">'+LA('Siklus tagihan','Billing cycle')+'</div>'+
           '<div style="font-size:14px;font-weight:700;color:var(--tx)">'+labelRentang(sk.start, sk.end)+'</div>'+
         '</div>'+
-        '<div style="display:flex;gap:8px;flex-shrink:0">'+
-          '<button class="cb" onclick="kkGeser(-1)">&#8592;</button>'+
-          '<button class="cb" onclick="kkGeser(1)">&#8594;</button>'+
-        '</div>'+
+        '<button class="cb" onclick="kkGeser(1)">&#8594;</button>'+
       '</div>'+
 
       '<div style="border-radius:16px;padding:20px;margin-bottom:6px;background:'+cardBg+';color:var(--tx)">'+
@@ -10139,7 +10137,7 @@ window.jsonp=function(params){
   }
   window.kkEditSiklus=function(){
     var a=cariAkun(kkCard); if(!a) return;
-    S().innerHTML='<div class="fhead"><button class="bk" onclick="kkRef=null;goView(\'kartuTagihan\')">&#8592;</button><div class="ti">'+LA('Pengaturan siklus','Cycle settings')+'</div></div>'+kkFormSiklus(a,false);
+    S().innerHTML='<div class="fhead" style="position:sticky;top:0;z-index:8;background:var(--page)"><button class="bk" onclick="kkRef=null;goView(\'kartuTagihan\')">&#8592;</button><div class="ti">'+LA('Pengaturan siklus','Cycle settings')+'</div></div>'+kkFormSiklus(a,false);
   };
   window.kkSimpanSiklus=async function(){
     var a=cariAkun(kkCard); if(!a) return;
