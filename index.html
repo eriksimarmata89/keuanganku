@@ -10609,32 +10609,43 @@ window.jsonp=function(params){
 
 <script>
 /* ============================================================================
-   PATCH HEADER STICKY KARTU KREDIT v1
+   PATCH HEADER KARTU KREDIT (FIXED) v2  (pengganti versi sticky sebelumnya)
    Tempel sebelum </body>, paling akhir.
 
-   Membuat header pada layar tagihan kartu kredit tetap menempel di atas saat
-   konten digulir (tidak ikut bergeser). Hanya memengaruhi layar tagihan kartu.
+   Header layar tagihan kartu kredit dibuat position:fixed di atas (mengikuti
+   pola header modul anggaran yang sudah terbukti), lalu area gulir diberi
+   padding atas sebesar tinggi header supaya konten tidak tertutup. Cara ini
+   bekerja walau yang menggulir adalah body (bukan #scroll), sehingga header
+   tidak ikut bergeser. Hanya memengaruhi layar tagihan kartu.
    ========================================================================== */
 (function(){
-  if(window.__HEADER_STICKY_V1__) return; window.__HEADER_STICKY_V1__=true;
+  if(window.__HEADER_STICKY_V2__) return; window.__HEADER_STICKY_V2__=true;
 
-  var st=document.createElement('style');
+  var st=document.createElement('style'); st.id='kk-fhead-style';
   st.textContent=
-    '.fhead.kkTetap{position:sticky; top:0; z-index:8; background:var(--page); '+
-    'padding-bottom:12px; box-shadow:0 6px 12px -10px rgba(0,0,0,.35);}';
+    '.fhead.kkFixed{position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:var(--maxw);'+
+      'z-index:30;background:var(--page);box-sizing:border-box;box-shadow:0 6px 14px -12px rgba(0,0,0,.4)}';
   document.head.appendChild(st);
 
-  if(typeof window.renderKartuTagihan==='function'){
-    var _r=window.renderKartuTagihan;
-    window.renderKartuTagihan=function(){
-      _r.apply(this, arguments);
-      try{
-        var w=(typeof S==='function')?S():document.getElementById('scroll');
-        if(!w) return;
+  function pasang(){
+    try{
+      var w=(typeof S==='function')?S():document.getElementById('scroll'); if(!w) return;
+      if(typeof view!=='undefined' && view==='kartuTagihan'){
         var h=w.querySelector('.fhead');
-        if(h) h.classList.add('kkTetap');
-      }catch(e){}
-    };
+        if(h){
+          h.classList.add('kkFixed');
+          var tinggi=Math.round(h.getBoundingClientRect().height);
+          w.style.paddingTop=(tinggi>0?tinggi:60)+'px';
+        }
+      } else {
+        w.style.paddingTop='';
+      }
+    }catch(e){}
+  }
+
+  if(typeof window.render==='function'){
+    var _rn=window.render;
+    window.render=function(){ var out=_rn.apply(this, arguments); pasang(); return out; };
   }
 })();
 </script>
