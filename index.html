@@ -10037,7 +10037,7 @@ window.jsonp=function(params){
     var a=cariAkun(kkCard);
     if(!a || a.jenis!=='kartu'){ goView('akunList'); return; }
 
-    var head='<div class="fhead" style="position:sticky;top:0;z-index:8;background:var(--page)"><button class="bk" onclick="goView(\'akunDetail\')">&#8592;</button><div class="ti">'+esc(a.nama)+'</div></div>';
+    var head='<div class="fhead"><button class="bk" onclick="goView(\'akunDetail\')">&#8592;</button><div class="ti">'+esc(a.nama)+'</div></div>';
 
     if(!punyaSiklus(a)){ S().innerHTML=head+kkFormSiklus(a, true); return; }
 
@@ -10137,7 +10137,7 @@ window.jsonp=function(params){
   }
   window.kkEditSiklus=function(){
     var a=cariAkun(kkCard); if(!a) return;
-    S().innerHTML='<div class="fhead" style="position:sticky;top:0;z-index:8;background:var(--page)"><button class="bk" onclick="kkRef=null;goView(\'kartuTagihan\')">&#8592;</button><div class="ti">'+LA('Pengaturan siklus','Cycle settings')+'</div></div>'+kkFormSiklus(a,false);
+    S().innerHTML='<div class="fhead"><button class="bk" onclick="kkRef=null;goView(\'kartuTagihan\')">&#8592;</button><div class="ti">'+LA('Pengaturan siklus','Cycle settings')+'</div></div>'+kkFormSiklus(a,false);
   };
   window.kkSimpanSiklus=async function(){
     var a=cariAkun(kkCard); if(!a) return;
@@ -10603,6 +10603,39 @@ window.jsonp=function(params){
     };
   }
 
+})();
+</script>
+
+
+<script>
+/* ============================================================================
+   PATCH HEADER STICKY KARTU KREDIT v1
+   Tempel sebelum </body>, paling akhir.
+
+   Membuat header pada layar tagihan kartu kredit tetap menempel di atas saat
+   konten digulir (tidak ikut bergeser). Hanya memengaruhi layar tagihan kartu.
+   ========================================================================== */
+(function(){
+  if(window.__HEADER_STICKY_V1__) return; window.__HEADER_STICKY_V1__=true;
+
+  var st=document.createElement('style');
+  st.textContent=
+    '.fhead.kkTetap{position:sticky; top:0; z-index:8; background:var(--page); '+
+    'padding-bottom:12px; box-shadow:0 6px 12px -10px rgba(0,0,0,.35);}';
+  document.head.appendChild(st);
+
+  if(typeof window.renderKartuTagihan==='function'){
+    var _r=window.renderKartuTagihan;
+    window.renderKartuTagihan=function(){
+      _r.apply(this, arguments);
+      try{
+        var w=(typeof S==='function')?S():document.getElementById('scroll');
+        if(!w) return;
+        var h=w.querySelector('.fhead');
+        if(h) h.classList.add('kkTetap');
+      }catch(e){}
+    };
+  }
 })();
 </script>
 
