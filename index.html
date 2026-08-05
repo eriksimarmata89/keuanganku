@@ -10438,17 +10438,15 @@ window.jsonp=function(params){
 
 <script>
 /* ============================================================================
-   PATCH CAROUSEL KARTU KREDIT v1
-   Tempel sebelum </body>, paling akhir setelah semua patch lain.
+   PATCH CAROUSEL KARTU KREDIT v2 (tagihan per siklus + badge lewat jatuh tempo)
+   Tempel sebelum </body>, paling akhir. Menggantikan versi carousel sebelumnya.
 
-   Kartu slide di beranda untuk KARTU KREDIT tidak lagi memakai hitungan saldo
-   biasa, melainkan tagihan sesuai siklus:
+   Kartu slide di beranda untuk KARTU KREDIT memakai tagihan sesuai siklus:
    - angka besar  : total sisa tagihan yang belum dibayar (semua siklus)
-   - "Jatuh tempo" : sisa tagihan dari siklus yang sudah tutup (harus dibayar)
-   - "Berjalan"    : sisa tagihan siklus yang sedang berjalan (belum jatuh tempo)
+   - "Jatuh tempo" : sisa tagihan dari siklus yang sudah tutup
+   - "Berjalan"    : sisa tagihan siklus yang sedang berjalan
    - baris bawah   : tanggal jatuh tempo terdekat
-   Perhitungan dimulai dari tagihan yang belum dibayar per siklus (tanggal tutup
-   dan jatuh tempo diambil dari pengaturan kartu). Penampung non-kartu tidak berubah.
+   - badge "lewat jatuh tempo" bila ada item yang tanggal jatuh temponya lewat.
    ========================================================================== */
 (function(){
   if(window.__CAROUSEL_KARTU_V1__) return; window.__CAROUSEL_KARTU_V1__=true;
@@ -10483,6 +10481,10 @@ window.jsonp=function(params){
     if(t.d<=D) return {y:t.y, m:t.m};
     return geserBulan(t.y, t.m, 1);
   }
+  function cycleRefForDate(a, iso){
+    var p=parseISO(iso), D=clampHari(a.tglTutup, p.y, p.m);
+    return (p.d<=D) ? {y:p.y,m:p.m} : geserBulan(p.y,p.m,1);
+  }
   function hutangKartu(a){
     var kid=String(a.id), nama='Tagihan '+a.nama;
     return UT.filter(function(u){
@@ -10494,18 +10496,21 @@ window.jsonp=function(params){
     var punya = a.tglTutup && a.tglTempo;
     var items = hutangKartu(a);
     var total = items.reduce(function(s,u){ return s+utSisa(u); },0);
-    var berjalan=total, jatuh=0, dueTxt='-';
+    var berjalan=total, jatuh=0, overdue=0, dueTxt='-';
     if(punya){
+      var today=todayISO();
       var cur = cycleOf(a, currentRef(a));
       berjalan = items.filter(function(u){ return u.tanggal>=cur.start && u.tanggal<=cur.end; })
                       .reduce(function(s,u){ return s+utSisa(u); },0);
       jatuh = Math.max(0, total-berjalan);
+      items.forEach(function(u){ var s=utSisa(u); if(s<=0) return; var d=cycleOf(a, cycleRefForDate(a,u.tanggal)).due; if(d<today) overdue+=s; });
       var due = (jatuh>0) ? cycleOf(a, geserBulan(cur.ref,-1)).due : cur.due;
       dueTxt = labelTgl(due);
     }
     var onclick = punya ? ('bukaTagihanKartu(\''+a.id+'\')') : ('bukaAkun(\''+a.id+'\')');
+    var badge = overdue>0 ? ('<span style="margin-left:8px;font-size:10px;font-weight:700;background:#FCEBEB;color:#A32D2D;padding:2px 7px;border-radius:20px;vertical-align:middle">'+LA('lewat jatuh tempo','overdue')+'</span>') : '';
     return '<div class="saldo" onclick="'+onclick+'" style="cursor:pointer">'+
-      '<div class="lbl">'+akunIconHTML(a,15)+' '+esc(a.nama)+'</div>'+
+      '<div class="lbl">'+akunIconHTML(a,15)+' '+esc(a.nama)+badge+'</div>'+
       '<div class="amt" style="margin-bottom:2px">'+fmtRp(total)+'</div>'+
       '<div class="mini" style="margin-bottom:12px">'+LA('sisa tagihan','outstanding bill')+'</div>'+
       '<div class="row"><div><div class="mini">'+LA('Jatuh tempo','Due now')+'</div><div class="val">'+fmtRp(jatuh)+'</div></div>'+
@@ -10521,6 +10526,80 @@ window.jsonp=function(params){
     window.akunSlideHTML=function(a){
       if(a && a.jenis==='kartu') return kartuSlideHTML(a);
       return _lama.apply(this, arguments);
+    };
+  }
+
+})();
+</script>
+
+<script>
+/* ============================================================================
+   PATCH REKONSILIASI TRANSFER KARTU v1
+   Tempel sebelum </body>, paling akhir (setelah patch tagihan & carousel kartu).
+
+   Kadang perpindahan saldo (transfer) yang masuk ke kartu kredit belum terhitung
+   mengurangi item tagihan (mis. item tagihan baru disinkronkan setelah transfer).
+   Patch ini menghitung transfer masuk yang belum terpakai, lalu menyediakan
+   tombol untuk menerapkannya ke item tagihan tertua yang belum dibayar.
+   ========================================================================== */
+(function(){
+  if(window.__REKON_KARTU_V1__) return; window.__REKON_KARTU_V1__=true;
+
+  function hutangKartu(a){
+    var kid=String(a.id), nama='Tagihan '+a.nama;
+    return UT.filter(function(u){ return u.jenis==='hutang' && ((u.akunId && String(u.akunId)===kid) || (!u.akunId && u.pihak===nama)); });
+  }
+  function transferMasuk(a){ var kid=String(a.id); return TR.filter(function(t){ return String(t.keAkunId)===kid; }).reduce(function(s,t){ return s+(+t.nominal); },0); }
+  function totalTerbayar(a){ return hutangKartu(a).reduce(function(s,u){ return s+utTerbayar(u); },0); }
+  function belumTerpakai(a){ return Math.max(0, transferMasuk(a)-totalTerbayar(a)); }
+  function sisaTagihan(a){ return hutangKartu(a).reduce(function(s,u){ return s+utSisa(u); },0); }
+  function dapatDiterapkan(a){ return Math.min(belumTerpakai(a), sisaTagihan(a)); }
+
+  window.rekonsiliasiKartu=async function(cardId){
+    var a=cariAkun(cardId); if(!a) return;
+    var apply=dapatDiterapkan(a);
+    if(apply<=0){ toast((window.LANG==='en')?'Nothing to reconcile':'Tidak ada pembayaran transfer yang perlu direkonsiliasi'); return; }
+    var pesan=(window.LANG==='en')
+      ? ('Apply '+rp(apply)+' from card transfers to the oldest unpaid bill items?')
+      : ('Terapkan '+rp(apply)+' dari transfer masuk ke kartu ke tagihan tertua yang belum dibayar?');
+    if(!await confirmModal(pesan)) return;
+    var items=hutangKartu(a).filter(function(u){ return utSisa(u)>0; })
+      .sort(function(x,y){ return (x.tanggal+(x.createdAt||'')).localeCompare(y.tanggal+(y.createdAt||'')); });
+    var sisa=apply, tgl=todayISO();
+    for(var i=0;i<items.length && sisa>0;i++){
+      var u=items[i]; var perlu=utSisa(u); var bayar=Math.min(perlu, sisa);
+      if(bayar<=0) continue;
+      u.pembayaran=u.pembayaran||[];
+      u.pembayaran.push({ tanggal:tgl, nominal:bayar, catatan:(window.LANG==='en')?'Transfer reconciliation':'Rekonsiliasi transfer' });
+      u.terkirim=false; await uPut(u); sisa-=bayar;
+    }
+    toast((window.LANG==='en')?(rp(apply)+' reconciled to the bill'):(rp(apply)+' pembayaran direkonsiliasi ke tagihan'));
+    render();
+  };
+
+  /* sisipkan banner rekonsiliasi di layar tagihan kartu */
+  if(typeof window.renderKartuTagihan==='function'){
+    var _rkt=window.renderKartuTagihan;
+    window.renderKartuTagihan=function(){
+      _rkt.apply(this, arguments);
+      try{
+        if(typeof view!=='undefined' && view!=='kartuTagihan') return;
+        var a=cariAkun(window.kkCard); if(!a || a.jenis!=='kartu') return;
+        var apply=dapatDiterapkan(a); if(apply<=0) return;
+        var unused=belumTerpakai(a);
+        var wadah=S(); if(!wadah) return;
+        if(wadah.querySelector('#kkRekonBox')) return;
+        var rows=wadah.querySelectorAll('.udrow'); if(!rows.length) return;
+        var anchor=rows[rows.length-1];
+        var en=(window.LANG==='en');
+        var html='<div id="kkRekonBox" class="panel" style="margin-top:12px;background:var(--kuning-bg)">'+
+          '<div style="font-size:13px;color:var(--kuning-tx);line-height:1.5;margin-bottom:10px">'+
+          (en? ('There is '+rp(unused)+' of card transfers not yet applied to the bill. Apply '+rp(apply)+' to the oldest unpaid items?')
+             : ('Ada '+rp(unused)+' transfer masuk ke kartu yang belum diterapkan ke tagihan. Terapkan '+rp(apply)+' ke item tertua yang belum dibayar?'))+'</div>'+
+          '<button class="btn-line" style="margin-top:0" onclick="rekonsiliasiKartu(\''+a.id+'\')">'+
+          (en?'Reconcile ':'Rekonsiliasi ')+'('+fmtRp(apply)+')</button></div>';
+        anchor.insertAdjacentHTML('afterend', html);
+      }catch(e){}
     };
   }
 
