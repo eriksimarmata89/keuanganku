@@ -10219,6 +10219,125 @@ window.jsonp=function(params){
 
 })();
 </script>
+
+<script>
+/* ============================================================================
+   PATCH PENGEMBALIAN PIUTANG KE PENAMPUNG SALDO v1
+   Tempel block ini tepat sebelum </body> (paling akhir, setelah patch lain).
+
+   Saat mencatat pembayaran pada PIUTANG, dana masuk ke penampung saldo yang
+   dipilih sehingga saldonya bertambah kembali (dibuat sebagai pemasukan).
+   Kartu kredit TIDAK ditampilkan sebagai pilihan penampung. Menghapus catatan
+   pembayaran akan otomatis menghapus pemasukan yang terkait.
+   Hutang tidak diubah.
+   ========================================================================== */
+(function(){
+  if(window.__PIUTANG_INFLOW__) return; window.__PIUTANG_INFLOW__=true;
+
+  function LA(id,en){ return (window.LANG==='en')?en:id; }
+  window._piutangAkun=window._piutangAkun||'';
+
+  function akunNonKartu(){ return AK.filter(function(a){ return a.jenis!=='kartu'; }); }
+
+  /* buat pemasukan ke penampung terpilih, kembalikan id transaksi (atau '' bila gagal) */
+  async function buatPemasukanPiutang(u, nominal, akunId, tgl){
+    var akun=cariAkun(akunId);
+    if(!akun || akun.jenis==='kartu'){ akun=akunNonKartu()[0]; }
+    if(!akun){ toast(LA('Belum ada penampung saldo non-kartu. Saldo tidak bertambah.','No non-card account yet. Balance not increased.')); return ''; }
+    var item={ id:uid(), tanggal:tgl||todayISO(), tipe:'pemasukan',
+      kategori:'Pengembalian Piutang',
+      nominal:+nominal, keterangan:(u&&u.pihak)?('Dari '+u.pihak):'Pengembalian piutang',
+      catatan:'Pengembalian piutang', akunId:akun.id, kategoriId:'',
+      createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
+    TX.unshift(item); sortTX(); await idbPut(item); updatePip();
+    return item.id;
+  }
+  /* hapus sebuah transaksi tanpa dialog (untuk membatalkan pemasukan piutang) */
+  async function hapusTxDiam(txId){
+    if(!txId) return;
+    TX=TX.filter(function(t){ return t.id!==txId; });
+    try{ await idbDelete(txId); }catch(e){}
+    try{ addDel([txId]); }catch(e){}
+    updatePip();
+    try{ flushDeletes(); }catch(e){}
+  }
+
+  /* ---- catat pembayaran (override) ---- */
+  window.catatBayar=async function(id){
+    var u=cariUt(id); if(!u) return;
+    var d=(document.getElementById('payNom').value||'').replace(/\D/g,'');
+    if(!d || +d<=0){ toast(LA('Nominal pembayaran belum diisi','Enter a payment amount')); return; }
+    var nominal=+d, sisa=utSisa(u);
+    if(nominal>sisa) nominal=sisa;
+    var tgl=(document.getElementById('payTgl').value||todayISO());
+    var cat=(document.getElementById('payCat').value||'').trim();
+    var entri={ tanggal:tgl, nominal:nominal, catatan:cat };
+    if(u.jenis==='piutang'){
+      var sel=document.getElementById('payAkun'); var akId=sel?sel.value:'';
+      var txId=await buatPemasukanPiutang(u, nominal, akId, tgl);
+      if(txId){ entri.txId=txId; entri.akunId=akId||''; if(akId) window._piutangAkun=akId; }
+    }
+    u.pembayaran=u.pembayaran||[]; u.pembayaran.push(entri);
+    u.terkirim=false; await uPut(u); showPay=false;
+    toast(LA('Pembayaran dicatat','Payment recorded')); render();
+  };
+
+  /* ---- tandai lunas (override) ---- */
+  window.lunasiUtang=async function(id){
+    var u=cariUt(id); if(!u) return;
+    var sisa=utSisa(u); if(sisa<=0){ toast(LA('Catatan sudah lunas','Already fully paid')); return; }
+    if(!await confirmModal(LA('Tandai lunas sisa '+rp(sisa)+'?','Mark the remaining '+rp(sisa)+' as paid?'))) return;
+    var tgl=todayISO();
+    var entri={ tanggal:tgl, nominal:sisa, catatan:'Pelunasan' };
+    if(u.jenis==='piutang'){
+      var sel=document.getElementById('payAkun'); var akId=sel?sel.value:'';
+      var txId=await buatPemasukanPiutang(u, sisa, akId, tgl);
+      if(txId){ entri.txId=txId; entri.akunId=akId||''; if(akId) window._piutangAkun=akId; }
+    }
+    u.pembayaran=u.pembayaran||[]; u.pembayaran.push(entri);
+    u.terkirim=false; await uPut(u); showPay=false; toast(LA('Ditandai lunas','Marked as paid')); render();
+  };
+
+  /* ---- hapus catatan pembayaran (override): batalkan pemasukan terkait ---- */
+  window.hapusBayar=async function(id, idx){
+    var u=cariUt(id); if(!u||!u.pembayaran) return;
+    if(!await confirmModal(LA('Hapus catatan pembayaran ini?','Delete this payment record?'), {danger:true})) return;
+    var entri=u.pembayaran[idx];
+    if(entri && entri.txId){ await hapusTxDiam(entri.txId); }
+    u.pembayaran.splice(idx,1); u.terkirim=false; await uPut(u); render();
+  };
+
+  /* ---- sisipkan pilihan penampung saldo pada form pembayaran piutang ---- */
+  var _renderUtangDetailLama=window.renderUtangDetail;
+  window.renderUtangDetail=function(){
+    _renderUtangDetailLama.apply(this, arguments);
+    try{
+      if(typeof showPay==='undefined' || !showPay) return;
+      var u=cariUt(utDetail); if(!u || u.jenis!=='piutang') return;
+      var wadah=S(); if(!wadah) return;
+      var nom=wadah.querySelector('#payNom'); if(!nom) return;
+      var panel=nom.closest('.panel'); if(!panel) return;
+      if(panel.querySelector('#payAkun') || panel.querySelector('#payAkunNote')) return;
+      var btn=panel.querySelector('button.save'); if(!btn) return;
+      var opsi=akunNonKartu();
+      var html;
+      if(opsi.length){
+        var terpilih=window._piutangAkun;
+        if(!opsi.some(function(a){ return String(a.id)===String(terpilih); })) terpilih=opsi[0].id;
+        html='<label class="fl">'+LA('Masuk ke penampung saldo','Deposit into account')+'</label>'+
+          '<select class="field" id="payAkun" onchange="window._piutangAkun=this.value">'+
+          opsi.map(function(a){ return '<option value="'+a.id+'" '+(String(a.id)===String(terpilih)?'selected':'')+'>'+akunIkon(a.jenis)+' '+esc(a.nama)+'</option>'; }).join('')+
+          '</select>';
+      } else {
+        html='<div id="payAkunNote" class="peninfo idle" style="margin-bottom:12px">'+
+          LA('Belum ada penampung saldo non-kartu. Pembayaran tetap dicatat, tetapi saldo tidak bertambah.','No non-card account yet. The payment is still recorded, but no balance is added.')+'</div>';
+      }
+      btn.insertAdjacentHTML('beforebegin', html);
+    }catch(e){}
+  };
+
+})();
+</script>
   
 </body>
 </html>
