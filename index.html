@@ -10806,5 +10806,66 @@ window.jsonp=function(params){
 </script>
 
 
+<script>
+/* ============================================================================
+   PATCH FIX SELECT "ASAL DANA" DI PINDAI STRUK v1
+   Tempel sebelum </body>, paling akhir (setelah semua patch struk lain).
+
+   Masalah: di form struk, mengganti Asal Dana (mis. GoPay ke Mandiri) tidak
+   tersimpan, select balik ke pilihan lama. Penyebabnya select di-render ulang
+   tepat saat event change (rapuh di WebView) dan bisa tidak sinkron dengan
+   state setelah rangkaian patch struk lain berjalan.
+
+   Perbaikan (aditif, tidak menyentuh patch lain):
+   - Setelah renderStruk, nilai select dipaksa sesuai strukState.akunId.
+   - onchange diganti versi tertunda (setTimeout) agar pilihan benar-benar
+     "commit" sebelum layar di-render ulang.
+   - Saat simpan, nilai dibaca langsung dari select.
+   Hanya menyasar select Asal Dana milik struk (onchange berisi strukState.akunId),
+   jadi tidak memengaruhi form tambah manual (addState.akunId).
+   ========================================================================== */
+(function(){
+  if(window.__FIX_ASALDANA_STRUK__) return; window.__FIX_ASALDANA_STRUK__=true;
+
+  function selAsalDana(){
+    var w=(typeof S==='function')?S():document.getElementById('scroll'); if(!w) return null;
+    var list=w.querySelectorAll('select');
+    for(var i=0;i<list.length;i++){
+      if((list[i].getAttribute('onchange')||'').indexOf('strukState.akunId')>=0) return list[i];
+    }
+    return null;
+  }
+
+  if(typeof window.renderStruk==='function'){
+    var _rs=window.renderStruk;
+    window.renderStruk=function(){
+      var h=_rs.apply(this, arguments);
+      try{
+        var sel=selAsalDana();
+        if(sel && window.strukState){
+          sel.setAttribute('onchange','strukState.akunId=this.value;setTimeout(renderStruk,0)');
+          var id=strukState.akunId;
+          if(id!=null && id!==''){
+            sel.value=String(id);
+            /* bila entah kenapa tidak cocok, samakan state dgn tampilan agar konsisten */
+            if(sel.value!==String(id) && sel.value) strukState.akunId=sel.value;
+          }
+        }
+      }catch(e){}
+      return h;
+    };
+  }
+
+  if(typeof window.simpanSemua==='function'){
+    var _ss=window.simpanSemua;
+    window.simpanSemua=async function(){
+      try{ var sel=selAsalDana(); if(sel && sel.value && window.strukState) strukState.akunId=sel.value; }catch(e){}
+      return _ss.apply(this, arguments);
+    };
+  }
+})();
+</script>
+
+
 </body>
 </html>
