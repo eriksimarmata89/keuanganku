@@ -9778,35 +9778,53 @@ window.jsonp=function(params){
 </script>
 
 <!-- =====================================================================
-     PATCH PERBAIKAN: DROPDOWN PENAMPUNG SALDO  (KeuanganKu)
-     Tempel PERSIS SEBELUM </body>, PALING AKHIR.
+     PATCH PERBAIKAN: DROPDOWN PENAMPUNG SALDO v2  (KeuanganKu)
+     GANTIKAN "PATCH PERBAIKAN: DROPDOWN PENAMPUNG SALDO" (v1) SEPENUHNYA.
+     Tempel PERSIS SEBELUM </body>, PALING AKHIR (posisi sama seperti v1).
 
-     MASALAH
-     Di dropdown "Penampung saldo / Asal Dana" muncul item liar "Belanja"
-     yang selalu terpilih, padahal itu nama KATEGORI, bukan penampung.
-     Hanya terjadi pada sebagian pengguna, dan hanya di transaksi
-     pengeluaran.
+     MASALAH BARU YANG DITEMUKAN DI v1
+     Setelah foto struk (kamera/galeri) dibuka, select "Asal Dana" pada
+     layar Pindai Struk tidak bisa diganti: apa pun yang dipilih pengguna
+     (mis. "Mandiri"), tampilannya langsung balik lagi ke akun lain
+     (mis. "GoPay").
 
      AKAR MASALAH
-     Patch kategori barang memanggil pasangNilai() pada SEMUA <select> di
-     layar, dengan pengaman "lewati bila jumlah opsi berbeda dari jumlah
-     kategori". Bila kebetulan JUMLAH PENAMPUNG SAMA DENGAN JUMLAH KATEGORI
-     PENGELUARAN (misalnya sama-sama 9), dropdown penampung salah dikira
-     dropdown kategori, lalu kategori default "Belanja" disisipkan sebagai
-     opsi baru dan dipilih. Di pemasukan tidak terjadi karena jumlah
-     kategori pemasukan berbeda.
+     bersihkanOpsiLiar() versi v1 menghitung akun yang "seharusnya
+     terpilih" dengan:
+         var wanted=(window.addState && addState.akunId) || (window.strukState && strukState.akunId);
+     addState adalah variabel GLOBAL yang SELALU ada sejak aplikasi
+     dimuat, dan akunId miliknya SELALU terisi (minimal akun pertama di
+     daftar - lihat blankAdd()). Karena itu sisi kiri || di atas nyaris
+     tidak pernah kosong, sehingga SEMUA select yang cocok dengan
+     selectPenampung() - termasuk yang ada di layar Pindai Struk - dipaksa
+     ikut addState.akunId, BUKAN strukState.akunId milik layar itu
+     sendiri. Fungsi ini dipanggil ulang di setiap renderStruk() dan
+     setiap kali MutationObserver mendeteksi perubahan DOM, jadi pilihan
+     pengguna di layar struk langsung ditimpa lagi tak lama setelah
+     dipilih.
 
      PERBAIKAN
-     Dropdown penampung dikenali dari ciri pastinya: atribut onchange
-     memuat "akunId". Fungsi penyisip nilai kategori diajari untuk selalu
-     MELEWATI select semacam itu, apa pun jumlah opsinya. Sekaligus opsi
-     liar yang terlanjur tersisip dibersihkan.
+     Untuk tiap <select>, baca dari atribut onchange-nya SENDIRI apakah ia
+     mengubah strukState.akunId atau addState.akunId, lalu ambil nilai
+     "wanted" hanya dari state yang sesuai - tidak ada lagi tebak-tebakan
+     prioritas antar-layar. Logika pembersihan opsi liar (dari patch
+     kategori dwibahasa) dan jaring pengaman MutationObserver dipertahankan
+     sama seperti v1, jadi perbaikan "Belanja liar" versi v1 tetap berlaku.
 ====================================================================== -->
 <script>
 (function(){
   "use strict";
-  if(window.__FIX_DROPDOWN_PENAMPUNG) return;
-  window.__FIX_DROPDOWN_PENAMPUNG=true;
+  if(window.__FIX_DROPDOWN_PENAMPUNG_V2) return;
+  window.__FIX_DROPDOWN_PENAMPUNG_V2=true;
+
+  /* Jika skrip v1 masih tertinggal di halaman, matikan MutationObserver-nya
+     supaya v1 dan v2 tidak saling menimpa pilihan pengguna. Sebaiknya blok
+     v1 tetap DIHAPUS, ini hanya jaring pengaman tambahan. */
+  try{
+    if(window.__fixPenampungObs && typeof window.__fixPenampungObs.disconnect==='function'){
+      window.__fixPenampungObs.disconnect();
+    }
+  }catch(e){}
 
   /* Dropdown penampung dikenali HANYA dari ciri pasti: onchange memuat
      "akunId". Aturan berbasis value dibuang karena keliru menandai
@@ -9818,6 +9836,19 @@ window.jsonp=function(params){
       var oc=sel.getAttribute('onchange')||'';
       return oc.indexOf('akunId')>=0;
     }catch(e){ return false; }
+  }
+
+  /* Tentukan state (addState / strukState) yang BENAR-BENAR dipakai oleh
+     select ini, dibaca dari isi onchange-nya sendiri - bukan ditebak lewat
+     prioritas global seperti di v1. Ini yang mencegah nilai dari layar lain
+     menimpa pilihan pengguna di layar yang sedang aktif. */
+  function stateUntukSelect(sel){
+    try{
+      var oc=sel.getAttribute('onchange')||'';
+      if(oc.indexOf('strukState.akunId')>=0) return window.strukState||null;
+      if(oc.indexOf('addState.akunId')>=0)   return window.addState||null;
+    }catch(e){}
+    return null;
   }
 
   function bersihkanOpsiLiar(){
@@ -9836,7 +9867,8 @@ window.jsonp=function(params){
           }
         }
         try{
-          var wanted=(window.addState && addState.akunId) || (window.strukState && strukState.akunId);
+          var st=stateUntukSelect(sel);
+          var wanted=st && st.akunId;
           if(wanted){
             var idx=-1;
             Array.prototype.forEach.call(sel.options, function(o,i){ if(o.value===String(wanted)) idx=i; });
@@ -9852,26 +9884,26 @@ window.jsonp=function(params){
      paling akhir, pembungkus ini berjalan paling luar (terakhir). */
   ['renderAdd','renderStruk','bukaItemManual'].forEach(function(nm){
     var f=window[nm];
-    if(typeof f==='function' && !f.__fixPenampung){
+    if(typeof f==='function' && !f.__fixPenampungV2){
       window[nm]=function(){
         var r=f.apply(this, arguments);
         try{ bersihkanOpsiLiar(); }catch(e){}
         return r;
       };
-      window[nm].__fixPenampung=true;
+      window[nm].__fixPenampungV2=true;
     }
   });
 
   /* jaring pengaman: amati perubahan DOM, bersihkan bila dropdown muncul */
   try{
-    if(window.MutationObserver && !window.__fixPenampungObs){
+    if(window.MutationObserver && !window.__fixPenampungObsV2){
       var t=null;
-      window.__fixPenampungObs=new MutationObserver(function(){
+      window.__fixPenampungObsV2=new MutationObserver(function(){
         if(t) return;
         t=setTimeout(function(){ t=null; bersihkanOpsiLiar(); }, 60);
       });
       var target=document.getElementById('scroll')||document.body;
-      window.__fixPenampungObs.observe(target,{childList:true,subtree:true});
+      window.__fixPenampungObsV2.observe(target,{childList:true,subtree:true});
     }
   }catch(e){}
 
@@ -10802,67 +10834,6 @@ window.jsonp=function(params){
     new MutationObserver(function(){ proses(); }).observe(target, {childList:true});
   }
   setTimeout(proses, 0);
-})();
-</script>
-
-
-<script>
-/* ============================================================================
-   PATCH FIX SELECT "ASAL DANA" DI PINDAI STRUK v1
-   Tempel sebelum </body>, paling akhir (setelah semua patch struk lain).
-
-   Masalah: di form struk, mengganti Asal Dana (mis. GoPay ke Mandiri) tidak
-   tersimpan, select balik ke pilihan lama. Penyebabnya select di-render ulang
-   tepat saat event change (rapuh di WebView) dan bisa tidak sinkron dengan
-   state setelah rangkaian patch struk lain berjalan.
-
-   Perbaikan (aditif, tidak menyentuh patch lain):
-   - Setelah renderStruk, nilai select dipaksa sesuai strukState.akunId.
-   - onchange diganti versi tertunda (setTimeout) agar pilihan benar-benar
-     "commit" sebelum layar di-render ulang.
-   - Saat simpan, nilai dibaca langsung dari select.
-   Hanya menyasar select Asal Dana milik struk (onchange berisi strukState.akunId),
-   jadi tidak memengaruhi form tambah manual (addState.akunId).
-   ========================================================================== */
-(function(){
-  if(window.__FIX_ASALDANA_STRUK__) return; window.__FIX_ASALDANA_STRUK__=true;
-
-  function selAsalDana(){
-    var w=(typeof S==='function')?S():document.getElementById('scroll'); if(!w) return null;
-    var list=w.querySelectorAll('select');
-    for(var i=0;i<list.length;i++){
-      if((list[i].getAttribute('onchange')||'').indexOf('strukState.akunId')>=0) return list[i];
-    }
-    return null;
-  }
-
-  if(typeof window.renderStruk==='function'){
-    var _rs=window.renderStruk;
-    window.renderStruk=function(){
-      var h=_rs.apply(this, arguments);
-      try{
-        var sel=selAsalDana();
-        if(sel && window.strukState){
-          sel.setAttribute('onchange','strukState.akunId=this.value;setTimeout(renderStruk,0)');
-          var id=strukState.akunId;
-          if(id!=null && id!==''){
-            sel.value=String(id);
-            /* bila entah kenapa tidak cocok, samakan state dgn tampilan agar konsisten */
-            if(sel.value!==String(id) && sel.value) strukState.akunId=sel.value;
-          }
-        }
-      }catch(e){}
-      return h;
-    };
-  }
-
-  if(typeof window.simpanSemua==='function'){
-    var _ss=window.simpanSemua;
-    window.simpanSemua=async function(){
-      try{ var sel=selAsalDana(); if(sel && sel.value && window.strukState) strukState.akunId=sel.value; }catch(e){}
-      return _ss.apply(this, arguments);
-    };
-  }
 })();
 </script>
 
