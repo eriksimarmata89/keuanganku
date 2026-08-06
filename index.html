@@ -9523,7 +9523,7 @@ window.jsonp=function(params){
       });
     }
     S().innerHTML=
-      '<div class="nt-fhead"><button class="bk" onclick="goView(\'home\')">&#8592;</button>'+
+      '<div class="nt-fhead"><button class="bk" onclick="kembali()">&#8592;</button>'+
         '<div class="ti">'+La('Notifikasi','Notifications')+'</div>'+
         '<button class="ak" title="'+La('Pengaturan','Settings')+'" onclick="goView(\'notifSet\')">'+IKON_GERIGI+'</button>'+
         (a.length?('<button class="bk" style="font-size:17px" title="'+La('Hapus semua','Clear all')+'" onclick="notifHapusSemua()">&#128465;</button>'):'')+
@@ -10781,15 +10781,12 @@ window.jsonp=function(params){
   function proses(){
     try{
       var w=document.getElementById('scroll'); if(!w) return;
-      /* layar bertab (punya appBar) diatur sendiri oleh aplikasi, jangan diutak-atik */
-      if(w.querySelector('.appbar')){ w.style.paddingTop=''; window.__viaRouter=false; return; }
       var h=w.querySelector('.fhead');
       if(h){
         h.classList.add('kkFixed');
         var tinggi=Math.round(h.getBoundingClientRect().height);
         w.style.paddingTop=(tinggi>0?tinggi:60)+'px';
-        /* tombol back mengikuti riwayat, kecuali sedang di submenu Profil (punya backProf sendiri) */
-        if(window.__viaRouter && !window.profSub){
+        if(window.__viaRouter){
           var bk=h.querySelector('.bk');
           if(bk) bk.setAttribute('onclick','kembali()');
         }
