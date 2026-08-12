@@ -2776,7 +2776,7 @@ function renderSinkron(){
     appBar()+
     '<div class="fhead"><div class="ti">Cadangkan Data</div></div>'+
     (!tersambung?'<div class="panel" style="background:var(--kuning-bg)"><div style="font-size:13px;color:var(--kuning-tx);line-height:1.5">Belum terhubung ke layanan pencadangan. Buka tab <b>Profil</b>, lalu menu <b>Koneksi Pencadangan</b> untuk mengaturnya.</div></div>':'')+
-    '<div class="chips" style="padding-top:12px">'+chips.map(function(c){return '<button class="chip '+(syncRange===c[0]?'on':'')+'\" onclick=\"setRange(\\''+c[0]+'\\')\">'+c[1]+'</button>';}).join('')+'</div>'+
+    '<div class="chips" style="padding-top:12px">'+chips.map(function(c){return '<button class="chip '+(syncRange===c[0]?'on':'')+'" onclick="setRange(\''+c[0]+'\')">'+c[1]+'</button>';}).join('')+'</div>'+
     (syncRange==='kustom'?'<div class="panel"><div class="kustom-date"><div><label class="fl">Dari</label><input class="field" type="date" value="'+kustomAwal+'" onchange="kustomAwal=this.value;render();"></div>'+
       '<div><label class="fl">Sampai</label><input class="field" type="date" value="'+kustomAkhir+'" onchange="kustomAkhir=this.value;render();"></div></div></div>':'')+
     '<div class="panel"><div class="big-stat"><div class="bs"><div class="n">'+dalam.length+'</div><div class="k">transaksi pada rentang</div></div>'+
