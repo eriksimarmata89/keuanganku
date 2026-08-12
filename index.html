@@ -10838,7 +10838,7 @@ window.jsonp=function(params){
 </script>
 
 <script>
-  (function(){
+(function(){
   if(window.__SYNC_HAPUS_TX_KARTU__) return; window.__SYNC_HAPUS_TX_KARTU__=true;
 
   function LA(id,en){ return (window.LANG==='en')?en:id; }
@@ -10876,11 +10876,15 @@ window.jsonp=function(params){
     var cocok=cariHutangCocok(t);
     if(!cocok) return _hapusTxLama.apply(this, arguments);
 
-    var pesan=LA(
-      'Transaksi ini juga tercatat sebagai tagihan kartu kredit. Hapus transaksi sekaligus tagihannya?',
-      'This transaction is also recorded as a card bill item. Delete the transaction and the bill item together?'
+    var ok=await confirmModal(
+      LA('Transaksi ini juga tercatat sebagai tagihan kartu kredit. Hapus transaksi sekaligus tagihannya?',
+         'This transaction is also recorded as a card bill item. Delete the transaction and the bill item together?'),
+      { danger:true,
+        title:LA('Hapus transaksi & tagihan?','Delete transaction & bill item?'),
+        okText:LA('Hapus','Delete'),
+        cancelText:LA('Batal','Cancel') }
     );
-    if(!await confirmModal(pesan, {danger:true})) return;
+    if(!ok) return;
 
     TX=TX.filter(function(x){ return x.id!==id; });
     await idbDelete(id); addDel([id]);
@@ -10923,11 +10927,15 @@ window.jsonp=function(params){
     var cocok=cariPiutangCocok(t);
     if(!cocok) return _hapusTxLama.apply(this, arguments);
 
-    var pesan=LA(
-      'Transaksi ini juga tercatat sebagai piutang atas nama '+cocok.pihak+'. Hapus transaksi sekaligus catatan piutangnya?',
-      'This transaction is also recorded as a receivable under '+cocok.pihak+'. Delete the transaction and the receivable record together?'
+    var ok=await confirmModal(
+      LA('Transaksi ini juga tercatat sebagai piutang atas nama '+cocok.pihak+'. Hapus transaksi sekaligus catatan piutangnya?',
+         'This transaction is also recorded as a receivable under '+cocok.pihak+'. Delete the transaction and the receivable record together?'),
+      { danger:true,
+        title:LA('Hapus transaksi & piutang?','Delete transaction & receivable?'),
+        okText:LA('Hapus','Delete'),
+        cancelText:LA('Batal','Cancel') }
     );
-    if(!await confirmModal(pesan, {danger:true})) return;
+    if(!ok) return;
 
     TX=TX.filter(function(x){ return x.id!==id; });
     await idbDelete(id); addDel([id]);
@@ -10938,7 +10946,6 @@ window.jsonp=function(params){
 
 })();
 </script>
-
 
 </body>
 </html>
