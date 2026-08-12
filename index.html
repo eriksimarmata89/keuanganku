@@ -10890,6 +10890,53 @@ window.jsonp=function(params){
   };
 
 })();
+
+(function(){
+  if(window.__SYNC_HAPUS_TX_PIUTANG__) return; window.__SYNC_HAPUS_TX_PIUTANG__=true;
+
+  function LA(id,en){ return (window.LANG==='en')?en:id; }
+
+  /* cari SATU entri piutang yang persis cocok dengan transaksi (akun+tanggal+nominal)
+     dan belum ada pembayaran sama sekali, supaya aman dihapus bersamaan. */
+  function cariPiutangCocok(t){
+    if(t.tipe!=='pengeluaran' || (+t.nominal||0)<=0) return null;
+    var kid=String(t.akunId||'');
+    var kandidat=UT.filter(function(u){
+      return u.jenis==='piutang' && String(u.akunId||'')===kid &&
+        u.tanggal===t.tanggal && (+u.pokok||0)===(+t.nominal||0) && utTerbayar(u)===0;
+    });
+    return kandidat.length===1 ? kandidat[0] : null;
+  }
+
+  async function hapusPiutangDiam(id){
+    UT=UT.filter(function(x){ return x.id!==id; });
+    try{ await uDelete(id); }catch(e){}
+    if(getGasUrl()){ try{ kirimNoCors('deleteUtang',{ids:[id], user:emailUser()}); }catch(e){} }
+  }
+
+  var _hapusTxLama=window.hapusTx;
+  window.hapusTx=async function(id){
+    var t=null;
+    for(var i=0;i<TX.length;i++){ if(TX[i].id===id){ t=TX[i]; break; } }
+    if(!t) return _hapusTxLama.apply(this, arguments);
+
+    var cocok=cariPiutangCocok(t);
+    if(!cocok) return _hapusTxLama.apply(this, arguments);
+
+    var pesan=LA(
+      'Transaksi ini juga tercatat sebagai piutang atas nama '+cocok.pihak+'. Hapus transaksi sekaligus catatan piutangnya?',
+      'This transaction is also recorded as a receivable under '+cocok.pihak+'. Delete the transaction and the receivable record together?'
+    );
+    if(!await confirmModal(pesan, {danger:true})) return;
+
+    TX=TX.filter(function(x){ return x.id!==id; });
+    await idbDelete(id); addDel([id]);
+    await hapusPiutangDiam(cocok.id);
+    updatePip(); render(); flushDeletes();
+    toast(LA('Transaksi & piutang dihapus','Transaction and receivable deleted'));
+  };
+
+})();
 </script>
 
 
