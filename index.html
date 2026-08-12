@@ -10837,6 +10837,61 @@ window.jsonp=function(params){
 })();
 </script>
 
+<script>
+  (function(){
+  if(window.__SYNC_HAPUS_TX_KARTU__) return; window.__SYNC_HAPUS_TX_KARTU__=true;
+
+  function LA(id,en){ return (window.LANG==='en')?en:id; }
+
+  function hutangKartu(a){
+    var kid=String(a.id), nama='Tagihan '+a.nama;
+    return UT.filter(function(u){
+      return u.jenis==='hutang' && ((u.akunId && String(u.akunId)===kid) || (!u.akunId && u.pihak===nama));
+    });
+  }
+
+  /* cari SATU entri hutang yang persis cocok dengan transaksi (akun+tanggal+nominal)
+     dan belum ada pembayaran sama sekali, supaya aman dihapus bersamaan. */
+  function cariHutangCocok(t){
+    var a=cariAkun(t.akunId);
+    if(!a || a.jenis!=='kartu' || t.tipe!=='pengeluaran' || (+t.nominal||0)<=0) return null;
+    var kandidat=hutangKartu(a).filter(function(u){
+      return u.tanggal===t.tanggal && (+u.pokok||0)===(+t.nominal||0) && utTerbayar(u)===0;
+    });
+    return kandidat.length===1 ? kandidat[0] : null;
+  }
+
+  async function hapusHutangDiam(id){
+    UT=UT.filter(function(x){ return x.id!==id; });
+    try{ await uDelete(id); }catch(e){}
+    if(getGasUrl()){ try{ kirimNoCors('deleteUtang',{ids:[id], user:emailUser()}); }catch(e){} }
+  }
+
+  var _hapusTxLama=window.hapusTx;
+  window.hapusTx=async function(id){
+    var t=null;
+    for(var i=0;i<TX.length;i++){ if(TX[i].id===id){ t=TX[i]; break; } }
+    if(!t) return _hapusTxLama.apply(this, arguments);
+
+    var cocok=cariHutangCocok(t);
+    if(!cocok) return _hapusTxLama.apply(this, arguments);
+
+    var pesan=LA(
+      'Transaksi ini juga tercatat sebagai tagihan kartu kredit. Hapus transaksi sekaligus tagihannya?',
+      'This transaction is also recorded as a card bill item. Delete the transaction and the bill item together?'
+    );
+    if(!await confirmModal(pesan, {danger:true})) return;
+
+    TX=TX.filter(function(x){ return x.id!==id; });
+    await idbDelete(id); addDel([id]);
+    await hapusHutangDiam(cocok.id);
+    updatePip(); render(); flushDeletes();
+    toast(LA('Transaksi & tagihan kartu dihapus','Transaction and card bill item deleted'));
+  };
+
+})();
+</script>
+
 
 </body>
 </html>
