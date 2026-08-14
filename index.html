@@ -10817,19 +10817,19 @@ window.jsonp=function(params){
         h.classList.add('kkFixed');
         var tinggi=Math.round(h.getBoundingClientRect().height);
         w.style.paddingTop=(tinggi>0?tinggi:60)+'px';
-        if(window.__viaRouter){
-          var bk=h.querySelector('.bk');
-          /* hanya timpa tombol back polos onclick="goView('...')".
-             tombol dengan fungsi khusus (backProf, batalUtang, dll) dibiarkan. */
-          if(bk){
-            var oc=(bk.getAttribute('onclick')||'').trim();
-            if(/^goView\(['"][^'"]+['"]\)$/.test(oc)){
-              bk.setAttribute('onclick','kembali()');
-            }
+      } else if(!w.querySelector('.ag-fhead')){
+        w.style.paddingTop='';
+      }
+      if(window.__viaRouter){
+        /* modul Anggaran pakai header sendiri (.ag-fhead), sudah fixed sendiri --
+           di sini cuma tombol back-nya yang disambungkan ke kembali() */
+        var bk=w.querySelector('.fhead .bk, .ag-fhead .bk');
+        if(bk){
+          var oc=(bk.getAttribute('onclick')||'').trim();
+          if(/^goView\(['"][^'"]+['"]\)$/.test(oc)){
+            bk.setAttribute('onclick','kembali()');
           }
         }
-      } else {
-        w.style.paddingTop='';
       }
     }catch(e){}
     window.__viaRouter=false;
