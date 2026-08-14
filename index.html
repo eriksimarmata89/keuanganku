@@ -10764,16 +10764,11 @@ window.jsonp=function(params){
 
 <script>
 /* ============================================================================
-   PATCH NAVIGASI BACK + HEADER TETAP v1 (menggantikan header fixed v2)
-   Tempel sebelum </body>, paling akhir.
-
-   1) Header pada setiap layar detail dibuat menempel di atas (fixed), termasuk
-      layar sub seperti "Pengaturan siklus" yang tidak lewat render().
-   2) Tombol back selalu kembali ke layar sebelumnya memakai riwayat navigasi.
-      Layar sub dengan tombol back khusus tetap dipertahankan.
+   PATCH NAVIGASI BACK + HEADER TETAP v2 (menggantikan v1)
+   Tempel MENGGANTIKAN blok v1, tetap paling akhir sebelum </body>.
    ========================================================================== */
 (function(){
-  if(window.__NAV_HEADER_V1__) return; window.__NAV_HEADER_V1__=true;
+  if(window.__NAV_HEADER_V2__) return; window.__NAV_HEADER_V2__=true;
 
   var st=document.createElement('style'); st.id='nav-fhead-style';
   st.textContent=
@@ -10781,7 +10776,6 @@ window.jsonp=function(params){
       'z-index:30;background:var(--page);box-sizing:border-box;box-shadow:0 6px 14px -12px rgba(0,0,0,.4)}';
   document.head.appendChild(st);
 
-  /* ===== riwayat navigasi ===== */
   window.navStack = window.navStack || [];
   if(typeof window.goView==='function'){
     var _goView=window.goView;
@@ -10790,12 +10784,14 @@ window.jsonp=function(params){
         if(window.__backNav){ window.__backNav=false; }
         else if(typeof view!=='undefined' && view && v!==view){
           var idx=navStack.indexOf(v);
-          if(idx>=0){ navStack.length=idx; }              /* kembali ke layar yang sudah ada di riwayat */
+          if(idx>=0){ navStack.length=idx; }
           else { navStack.push(view); if(navStack.length>60) navStack.shift(); }
         }
       }catch(e){}
       window.__viaRouter=true;
-      return _goView.apply(this, arguments);
+      var r=_goView.apply(this, arguments);
+      proses();
+      return r;
     };
   }
   window.kembali=function(){
@@ -10803,13 +10799,16 @@ window.jsonp=function(params){
     else { goView('home'); }
   };
 
-  /* render() langsung juga dianggap layar router (untuk refresh di layar yang sama) */
   if(typeof window.render==='function'){
     var _render=window.render;
-    window.render=function(){ window.__viaRouter=true; return _render.apply(this, arguments); };
+    window.render=function(){
+      window.__viaRouter=true;
+      var r=_render.apply(this, arguments);
+      proses();
+      return r;
+    };
   }
 
-  /* ===== proses tiap kali isi layar berganti ===== */
   function proses(){
     try{
       var w=document.getElementById('scroll'); if(!w) return;
@@ -10820,7 +10819,14 @@ window.jsonp=function(params){
         w.style.paddingTop=(tinggi>0?tinggi:60)+'px';
         if(window.__viaRouter){
           var bk=h.querySelector('.bk');
-          if(bk) bk.setAttribute('onclick','kembali()');
+          /* hanya timpa tombol back polos onclick="goView('...')".
+             tombol dengan fungsi khusus (backProf, batalUtang, dll) dibiarkan. */
+          if(bk){
+            var oc=(bk.getAttribute('onclick')||'').trim();
+            if(/^goView\(['"][^'"]+['"]\)$/.test(oc)){
+              bk.setAttribute('onclick','kembali()');
+            }
+          }
         }
       } else {
         w.style.paddingTop='';
