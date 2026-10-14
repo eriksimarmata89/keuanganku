@@ -2059,7 +2059,7 @@ function renderStruk(){
       '<div class="slot"><span>Nominal</span><b>'+(st.draft.nominal?rp(+st.draft.nominal):'<i>ketuk kata angka</i>')+'</b></div></div>'+
     '<label class="fl">Nama toko (opsional, berlaku untuk semua)</label><input class="field" value="'+esc(st.toko)+'" oninput="strukState.toko=this.value" placeholder="ketuk di foto atau ketik">'+
     '<label class="fl">Asal Dana</label><select class="field" onchange="strukState.akunId=this.value;renderStruk()">'+akunOptionsHTML(st.akunId)+'</select>'+
-    (function(){ var ak=cariAkun(st.akunId); return (ak&&ak.jenis==='kartu')?('<label class="cklabel"><input type="checkbox" '+(st.jadiHutang?'checked':'')+' onchange="strukState.jadiHutang=this.checked"> Catat juga sebagai hutang (tagihan '+esc(ak.nama)+' yang perlu dibayar nanti)</label>'):''; })()+
+    (function(){ var ak=cariAkun(st.akunId); return (ak&&ak.jenis==='kartu')?('<label class="cklabel"><input type="checkbox" '+((st.jadiHutang||st.jadiPiutang)?'checked':'')+(st.jadiPiutang?' disabled':'')+' onchange="strukState.jadiHutang=this.checked"> Catat juga sebagai hutang (tagihan '+esc(ak.nama)+' yang perlu dibayar nanti)</label>'):''; })()+
     '<div class="duo"><div><label class="fl">Catatan (opsional)</label><input class="field" value="'+esc(st.catatan)+'" oninput="strukState.catatan=this.value" placeholder="opsional"></div>'+
       '<div><label class="fl">Tanggal</label><input class="field" type="date" value="'+st.tanggal+'" onchange="strukState.tanggal=this.value"></div></div>'+
     '<div class="dl" style="margin:4px 2px 6px">Daftar transaksi ('+st.pending.length+')'+(st.pending.length?' &middot; ketuk dua kali nama/nominal untuk ubah':'')+'</div>'+
@@ -2141,7 +2141,7 @@ async function simpanSemua(){
   if(!st.pending.length){ toast('Belum ada transaksi'); return; }
   if(!st.akunId){ toast('Pilih penampung saldo terlebih dahulu'); return; }
   var akunTerpilih=cariAkun(st.akunId);
-  var buatHutang=st.jadiHutang && akunTerpilih && akunTerpilih.jenis==='kartu';
+  var buatHutang=(st.jadiHutang || st.jadiPiutang) && akunTerpilih && akunTerpilih.jenis==='kartu';
   var totalPengeluaran=st.pending.reduce(function(s,p){ return s+(+p.nominal); },0);
   var cek=bolehKeluar(st.akunId, totalPengeluaran);
   if(!cek.ok){ toast(cek.alasan); return; }
@@ -5280,9 +5280,9 @@ function actAdd(kind){
         (akunTerpilih.jenis==='kartu'
           ? 'Kartu kredit: pengeluaran boleh melebihi saldo dan akan menjadi tagihan berjalan.'
           : 'Saldo tersedia: '+rp(saldoAkunSaatIni(akunTerpilih.id)))+'</div>'):'')+
-      (isKK?('<label class="cklabel"><input type="checkbox" '+(a.jadiHutang?'checked':'')+' onchange="addState.jadiHutang=this.checked"> Catat juga sebagai hutang (tagihan '+esc(akunTerpilih.nama)+' yang perlu dibayar nanti)</label>'):'')+
-      (peng && akunTerpilih && akunTerpilih.jenis!=='kartu' ?
-        ('<label class="cklabel"><input type="checkbox" '+(a.jadiPiutang?'checked':'')+' onchange="addState.jadiPiutang=this.checked;renderAdd()"> Catat juga sebagai piutang (dana ini akan dikembalikan pihak lain)</label>'+
+      (isKK?('<label class="cklabel"><input type="checkbox" '+((a.jadiHutang||a.jadiPiutang)?'checked':'')+(a.jadiPiutang?' disabled':'')+' onchange="addState.jadiHutang=this.checked"> Catat juga sebagai hutang (tagihan '+esc(akunTerpilih.nama)+' yang perlu dibayar nanti)'+(a.jadiPiutang?' &mdash; otomatis, karena uang ini dipinjamkan lewat kartu':'')+'</label>'):'')+
+      (peng && akunTerpilih ?
+        ('<label class="cklabel"><input type="checkbox" '+(a.jadiPiutang?'checked':'')+' onchange="addState.jadiPiutang=this.checked;renderAdd()"> Catat juga sebagai piutang ('+(akunTerpilih.jenis==='kartu'?'uang dipinjamkan lewat kartu, akan dikembalikan pihak lain':'dana ini akan dikembalikan pihak lain')+')</label>'+
          (a.jadiPiutang?('<label class="fl">Pihak yang berhutang</label><input class="field" placeholder="mis. Budi / Kantor" value="'+esc(a.piutangPihak)+'" oninput="addState.piutangPihak=this.value">'):'')) : '')+
       (peng?'<div class="metode"><button class="'+(a.metode==='manual'?'on':'')+'" onclick="setMetode(\'manual\')">&#9998; Ketik manual</button>'+
         '<button class="'+(a.metode==='struk'?'on':'')+'" onclick="setMetode(\'struk\')">&#128247; Foto struk</button></div>':'');
@@ -5359,9 +5359,9 @@ function actAdd(kind){
     var cek=bolehKeluar(a.akunId, net);
     if(!cek.ok){ toast(cek.alasan); return; }
     var akun=cariAkun(a.akunId);
-    var buatHutang=a.jadiHutang && akun && akun.jenis==='kartu';
+    var buatHutang=(a.jadiHutang || a.jadiPiutang) && akun && akun.jenis==='kartu';   /* dipinjamkan lewat kartu = otomatis jadi tagihan kartu */
     var pihakPiutang='';
-    if(a.jadiPiutang && akun && akun.jenis!=='kartu'){
+    if(a.jadiPiutang && akun){
       pihakPiutang=(a.piutangPihak||'').trim();
       if(!pihakPiutang){ toast('Isi nama pihak yang berhutang'); return; }
     }
@@ -5667,11 +5667,11 @@ function actAdd(kind){
     var anchor=document.getElementById('skBtnRow') || wadah.querySelector('button.save');
     if(!anchor) return;
     var akun=cariAkun(st.akunId);
-    if(!akun || akun.jenis==='kartu') return;
+    if(!akun) return;
     var div=document.createElement('div');
     div.id='pgBox';
     div.innerHTML=
-      '<label class="cklabel"><input type="checkbox" '+(st.jadiPiutang?'checked':'')+' onchange="strukState.jadiPiutang=this.checked;renderStruk()"> Catat juga sebagai piutang (dana akan dikembalikan pihak lain)</label>'+
+      '<label class="cklabel"><input type="checkbox" '+(st.jadiPiutang?'checked':'')+' onchange="strukState.jadiPiutang=this.checked;renderStruk()"> Catat juga sebagai piutang ('+(akun.jenis==='kartu'?'uang dipinjamkan lewat kartu, akan dikembalikan pihak lain':'dana akan dikembalikan pihak lain')+')</label>'+
       (st.jadiPiutang?('<label class="fl">Pihak yang berhutang</label><input class="field" placeholder="mis. Budi / Kantor" value="'+esc(st.piutangPihak||'')+'" oninput="strukState.piutangPihak=this.value">'):'');
     anchor.parentNode.insertBefore(div, anchor);
   }
@@ -5686,7 +5686,8 @@ function actAdd(kind){
   window.simpanSemua=async function(){
     var st=strukState;
     var akun=st?cariAkun(st.akunId):null;
-    var mauPiutang=!!(st && st.jadiPiutang && akun && akun.jenis!=='kartu');
+    var mauPiutang=!!(st && st.jadiPiutang && akun);
+    if(mauPiutang && akun.jenis==='kartu') st.jadiHutang=true;   /* pinjaman lewat kartu = tagihan kartu */
     var pihak=((st && st.piutangPihak)||'').trim();
     if(mauPiutang && !pihak){ toast('Isi nama pihak yang berhutang'); return; }
     var total=st?st.pending.reduce(function(s,p){return s+(+p.nominal);},0):0;
@@ -10392,7 +10393,7 @@ window.jsonp=function(params){
   function piutangStrukAktif(){
     var st=window.strukState; if(!st) return false;
     var ak=cariAkun(st.akunId);
-    return !!(st.jadiPiutang && ak && ak.jenis!=='kartu');
+    return !!(st.jadiPiutang && ak);
   }
 
   /* --- 1a. paksa kategori "Piutang" saat simpan (manual) --- */
@@ -10918,6 +10919,18 @@ window.jsonp=function(params){
     return kandidat.length===1 ? kandidat[0] : null;
   }
 
+  /* transaksi kartu kredit yang juga menjadi piutang punya DUA pasangan: tagihan kartu dan piutang */
+  function cariHutangKartuCocok(t){
+    var a=cariAkun(t.akunId);
+    if(!a || a.jenis!=='kartu') return null;
+    var kid=String(a.id), nama='Tagihan '+a.nama;
+    var kandidat=UT.filter(function(u){
+      return u.jenis==='hutang' && ((u.akunId && String(u.akunId)===kid) || (!u.akunId && u.pihak===nama)) &&
+        u.tanggal===t.tanggal && (+u.pokok||0)===(+t.nominal||0) && utTerbayar(u)===0;
+    });
+    return kandidat.length===1 ? kandidat[0] : null;
+  }
+
   async function hapusPiutangDiam(id){
     UT=UT.filter(function(x){ return x.id!==id; });
     try{ await uDelete(id); }catch(e){}
@@ -10932,10 +10945,11 @@ window.jsonp=function(params){
 
     var cocok=cariPiutangCocok(t);
     if(!cocok) return _hapusTxLama.apply(this, arguments);
+    var hk=cariHutangKartuCocok(t);
 
     var ok=await confirmModal(
-      LA('Transaksi ini juga tercatat sebagai piutang atas nama '+cocok.pihak+'. Hapus transaksi sekaligus catatan piutangnya?',
-         'This transaction is also recorded as a receivable under '+cocok.pihak+'. Delete the transaction and the receivable record together?'),
+      LA('Transaksi ini juga tercatat sebagai piutang atas nama '+cocok.pihak+(hk?' dan sebagai tagihan kartu kredit':'')+'. Hapus transaksi sekaligus '+(hk?'piutang dan tagihannya?':'catatan piutangnya?'),
+         'This transaction is also recorded as a receivable under '+cocok.pihak+(hk?' and as a card bill item':'')+'. Delete the transaction and the '+(hk?'receivable and bill item together?':'receivable record together?')),
       { danger:true,
         title:LA('Hapus transaksi & piutang?','Delete transaction & receivable?'),
         okText:LA('Hapus','Delete'),
@@ -10946,10 +10960,157 @@ window.jsonp=function(params){
     TX=TX.filter(function(x){ return x.id!==id; });
     await idbDelete(id); addDel([id]);
     await hapusPiutangDiam(cocok.id);
+    if(hk) await hapusPiutangDiam(hk.id);
     updatePip(); render(); flushDeletes();
-    toast(LA('Transaksi & piutang dihapus','Transaction and receivable deleted'));
+    toast(hk?LA('Transaksi, piutang & tagihan kartu dihapus','Transaction, receivable and card bill item deleted'):LA('Transaksi & piutang dihapus','Transaction and receivable deleted'));
   };
 
+})();
+</script>
+
+<script>
+/* ============================================================================
+   PATCH PIUTANG DARI KARTU KREDIT v1  (tempel paling akhir, sebelum </body>)
+
+   Melengkapi fitur "Catat juga sebagai piutang" untuk penampung KARTU KREDIT:
+   - Pengeluaran kartu yang dicentang piutang = pengeluaran kategori "Piutang" di kartu,
+     tagihan kartu (hutang) otomatis, dan catatan piutang atas nama pihak yang akan mengganti.
+   - Saat piutang itu DIBAYAR ke sebuah penampung (uang masuk sebagai "Pengembalian Piutang"),
+     tersedia kotak "Sekalian bayar tagihan kartu": uang yang baru diterima dipindahkan dari
+     penampung itu ke kartu, dan tagihan kartu berkurang sejumlah itu.
+   - Menghapus catatan pembayaran piutang itu membatalkan SEMUANYA: pemasukan, perpindahan
+     ke kartu, dan pembayaran pada tagihan kartu.
+   Data tertaut lewat entri pembayaran piutang: trId (id perpindahan) dan tgKartu (tanda pada
+   entri pembayaran tagihan kartu). Format sama dengan bot Telegram, jadi keduanya saling mengerti.
+   ========================================================================== */
+(function(){
+  if(window.__PIUTANG_KARTU_V1__) return; window.__PIUTANG_KARTU_V1__=true;
+
+  function LA(id,en){ return (window.LANG==='en')?en:id; }
+  /* true = kotak "Sekalian bayar kartu" tercentang sejak awal; false = pengguna yang mencentang */
+  var BAYAR_KARTU_DEFAULT=false;
+
+  function kartuAsal(u){
+    if(!u || u.jenis!=='piutang' || !u.akunId) return null;
+    var a=cariAkun(u.akunId);
+    return (a && a.jenis==='kartu') ? a : null;
+  }
+  function akunNonKartu(){ return AK.filter(function(a){ return a.jenis!=='kartu'; }); }
+
+  /* Sama dengan terapkanPembayaranKartu (dari hutang paling lama, bisa sebagian), tetapi setiap entri
+     diberi tanda `tg` supaya bisa dicabut bersama pelunasan piutang. */
+  async function terapkanPembayaranKartuTanda(kartu, nominal, tanggal, dariNama, tanda){
+    var kid=String(kartu.id), nama='Tagihan '+kartu.nama;
+    var daftar=UT.filter(function(u){
+      if(u.jenis!=='hutang' || utSisa(u)<=0) return false;
+      return (u.akunId && String(u.akunId)===kid) || (!u.akunId && u.pihak===nama);
+    });
+    daftar.sort(function(a,b){ return (a.tanggal+(a.createdAt||'')).localeCompare(b.tanggal+(b.createdAt||'')); });
+    var sisa=nominal, berkurang=0;
+    for(var i=0;i<daftar.length && sisa>0;i++){
+      var u=daftar[i], bayar=Math.min(utSisa(u), sisa);
+      if(bayar<=0) continue;
+      u.pembayaran=u.pembayaran||[];
+      u.pembayaran.push({ tanggal:tanggal, nominal:bayar, catatan:'Pembayaran dari '+dariNama, tg:tanda });
+      if(!u.akunId) u.akunId=kid;
+      u.terkirim=false; await uPut(u);
+      sisa-=bayar; berkurang+=bayar;
+    }
+    return berkurang;
+  }
+
+  /* Setelah pelunasan piutang tercatat: pindahkan uang yang baru diterima ke kartu dan kurangi tagihan. */
+  async function lanjutBayarKartu(id, jumlahSebelum, kartu){
+    var u=cariUt(id);
+    if(!u || !u.pembayaran || u.pembayaran.length<=jumlahSebelum) return;
+    var e=u.pembayaran[u.pembayaran.length-1], tx=null, i;
+    if(!e.txId){ toast(LA('Pembayaran kartu dilewati: belum ada penampung non-kartu yang menerima uangnya.','Card payment skipped: no non-card account received the money.')); return; }
+    for(i=0;i<TX.length;i++){ if(TX[i].id===e.txId){ tx=TX[i]; break; } }
+    var dari=tx?cariAkun(tx.akunId):null;
+    if(!dari || dari.jenis==='kartu') return;
+    var nominal=+e.nominal;
+    var cek=bolehKeluar(dari.id, nominal);
+    if(!cek.ok){ toast(LA('Pelunasan tercatat, tetapi kartu belum dibayar. ','Payment recorded, but the card was not paid. ')+cek.alasan); return; }
+    var tr={ id:uid(), tanggal:e.tanggal, dariAkunId:dari.id, keAkunId:kartu.id, nominal:nominal,
+      catatan:'Pembayaran tagihan kartu dari pengembalian piutang '+u.pihak, createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
+    TR.unshift(tr); await trPut(tr);
+    var berkurang=await terapkanPembayaranKartuTanda(kartu, nominal, e.tanggal, dari.nama, tr.id);
+    e.trId=tr.id; e.tgKartu=tr.id;
+    u.terkirim=false; await uPut(u);
+    toast(LA('Tagihan '+kartu.nama+' berkurang '+rp(berkurang)+'.','Card bill '+kartu.nama+' reduced by '+rp(berkurang)+'.'));
+    render();
+  }
+
+  function pilihanKartu(id){
+    var u=cariUt(id), k=kartuAsal(u); if(!u||!k) return null;
+    var cb=document.getElementById('payBayarKartu');
+    return (cb && cb.checked) ? k : null;
+  }
+
+  var _catatBayarKartu=window.catatBayar;
+  window.catatBayar=async function(id){
+    var k=pilihanKartu(id), u=cariUt(id), n=(u&&u.pembayaran)?u.pembayaran.length:0;
+    await _catatBayarKartu.apply(this, arguments);
+    if(k){ var u2=cariUt(id); if(u2 && u2.pembayaran && u2.pembayaran.length>n) await lanjutBayarKartu(id, n, k); }
+  };
+  var _lunasiKartu=window.lunasiUtang;
+  window.lunasiUtang=async function(id){
+    var k=pilihanKartu(id), u=cariUt(id), n=(u&&u.pembayaran)?u.pembayaran.length:0;
+    await _lunasiKartu.apply(this, arguments);
+    if(k){ var u2=cariUt(id); if(u2 && u2.pembayaran && u2.pembayaran.length>n) await lanjutBayarKartu(id, n, k); }
+  };
+
+  /* Hapus catatan pembayaran: bila tertaut ke pembayaran kartu, batalkan semuanya. */
+  var _hapusBayarKartu=window.hapusBayar;
+  window.hapusBayar=async function(id, idx){
+    var u=cariUt(id), e=(u&&u.pembayaran)?u.pembayaran[idx]:null;
+    if(!e || !(e.trId||e.tgKartu)) return _hapusBayarKartu.apply(this, arguments);
+    if(!await confirmModal(LA('Hapus catatan pembayaran ini? Pemasukan dan pembayaran kartu yang tertaut ikut dibatalkan.','Delete this payment record? The linked income and card payment are also cancelled.'), {danger:true})) return;
+    var ubah=[], i;
+    UT.forEach(function(x){
+      if(x.id===u.id || !x.pembayaran) return;
+      var q=x.pembayaran.filter(function(y){ return !(y && y.tg && e.tgKartu && y.tg===e.tgKartu); });
+      if(q.length!==x.pembayaran.length){ x.pembayaran=q; x.terkirim=false; ubah.push(x); }
+    });
+    for(i=0;i<ubah.length;i++) await uPut(ubah[i]);
+    if(e.trId){
+      TR=TR.filter(function(t){ return t.id!==e.trId; });
+      try{ await trDelete(e.trId); }catch(er){}
+      if(getGasUrl()){ try{ kirimNoCors('deleteTransfer',{ids:[e.trId], user:emailUser()}); }catch(er){} }
+    }
+    if(e.txId){
+      TX=TX.filter(function(t){ return t.id!==e.txId; });
+      try{ await idbDelete(e.txId); }catch(er){}
+      try{ addDel([e.txId]); }catch(er){}
+      updatePip();
+      try{ flushDeletes(); }catch(er){}
+    }
+    u.pembayaran.splice(idx,1); u.terkirim=false; await uPut(u);
+    toast(LA('Pembayaran dan pembayaran kartu dibatalkan','Payment and card payment cancelled'));
+    render();
+  };
+
+  /* Layar rincian piutang: info "dipinjamkan lewat kartu" + kotak "Sekalian bayar kartu" */
+  var _rudKartu=window.renderUtangDetail;
+  window.renderUtangDetail=function(){
+    _rudKartu.apply(this, arguments);
+    try{
+      var u=cariUt(utDetail), k=kartuAsal(u); if(!u||!k) return;
+      var wadah=S(); if(!wadah) return;
+      var ud=wadah.querySelector('.udetail');
+      if(ud && !wadah.querySelector('#infoKartuAsal')){
+        ud.insertAdjacentHTML('afterend','<div id="infoKartuAsal" class="peninfo idle" style="margin-top:10px">&#128179; '+LA('Dipinjamkan lewat kartu ','Lent through card ')+esc(k.nama)+'</div>');
+      }
+      if(typeof showPay==='undefined' || !showPay) return;
+      var nom=wadah.querySelector('#payNom'); if(!nom) return;
+      var panel=nom.closest('.panel'); if(!panel || panel.querySelector('#payBayarKartu')) return;
+      var btn=panel.querySelector('button.save'); if(!btn) return;
+      if(!akunNonKartu().length) return;
+      btn.insertAdjacentHTML('beforebegin',
+        '<label class="cklabel"><input type="checkbox" id="payBayarKartu" '+(BAYAR_KARTU_DEFAULT?'checked':'')+'> '+
+        LA('Sekalian bayar tagihan ','Also pay the ')+esc(k.nama)+LA(' sebesar pembayaran ini (dari penampung yang dipilih di atas)',' by this amount (from the account chosen above)')+'</label>');
+    }catch(e){}
+  };
 })();
 </script>
 
