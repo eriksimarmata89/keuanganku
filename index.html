@@ -11124,13 +11124,14 @@ window.jsonp=function(params){
 
 <script>
 /* ============================================================================
-   PATCH KARTU: HUTANG JATUH TEMPO vs SISA HUTANG KESELURUHAN v2
-   (tempel paling akhir, sebelum </body>, setelah semua patch kartu lain; menggantikan v1)
+   PATCH KARTU: HUTANG JATUH TEMPO vs SISA HUTANG KESELURUHAN v3
+   (tempel paling akhir, sebelum </body>, setelah semua patch kartu lain; menggantikan v1 dan v2)
 
    Satu sumber angka untuk tiga tempat:
      - kartu carousel di beranda
      - kartu hijau di detail akun kartu kredit
-     - layar siklus tagihan (panel per siklus, ikut berganti saat geser siklus)
+     - layar siklus tagihan: panel per siklus DAN kartu tagihan, ringkasan, serta form bayar yang mengikuti angka e-billing
+       (siklus yang punya e-billing memakai Total Tagihan bank, bukan jumlah pokok pengeluaran per tanggal transaksi)
 
    Definisi:
      Hutang jatuh tempo     = sisa Total Tagihan e-billing terakhir yang harus dibayar pada jatuh tempo berikutnya
@@ -11142,7 +11143,7 @@ window.jsonp=function(params){
    Kartu tanpa data e-billing tetap memakai tampilan lama.
    ========================================================================== */
 (function(){
-  if(window.__KK_JT_V2__) return; window.__KK_JT_V2__=true;
+  if(window.__KK_JT_V3__) return; window.__KK_JT_V3__=true;
 
   var BLN_ID=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
   var BLN_EN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -11298,9 +11299,12 @@ window.jsonp=function(params){
       baris('+ '+LA('Hutang baru','New debt'), fmtRp(num(r.hutangBaru)||0))+
       baris('= '+LA('Hutang akhir','Closing debt'), fmtRp(num(r.hutangAkhir)||0), true)+'</details>';
   }
-  var CATATAN=function(){ return '<div style="font-size:11px;color:var(--tx3);line-height:1.5;margin-top:10px">'+
-    LA('Hutang jatuh tempo = Total Tagihan e-billing (sudah dikurangi pembayaran). Angka diambil dari e-billing yang diimpor lewat bot Telegram. Di bawah ini adalah rincian pengeluaran siklus ini (berdasarkan tanggal transaksi), bukan angka tagihan bank.',
-       'Due debt = the statement\u2019s Total Balance (already net of payments). Figures come from the e-billing imported through the Telegram bot. Below is this cycle\u2019s spending breakdown (by transaction date), not the bank\u2019s bill.')+'</div>'; };
+  var CATATAN=function(bank){ return '<div style="font-size:11px;color:var(--tx3);line-height:1.5;margin-top:10px">'+
+    (bank
+      ? LA('Hutang jatuh tempo = Total Tagihan e-billing (sudah dikurangi pembayaran). Kartu tagihan, ringkasan, dan pembayaran di bawah ini mengikuti angka e-billing yang diimpor lewat bot Telegram.',
+           'Due debt = the statement\u2019s Total Balance (already net of payments). The bill card, summary, and payment below follow the e-billing imported through the Telegram bot.')
+      : LA('Hutang jatuh tempo = Total Tagihan e-billing (sudah dikurangi pembayaran). Angka diambil dari e-billing yang diimpor lewat bot Telegram. Di bawah ini adalah perkiraan dari pengeluaran siklus ini (berdasarkan tanggal transaksi) karena e-billing-nya belum terbit.',
+           'Due debt = the statement\u2019s Total Balance (already net of payments). Figures come from the e-billing imported through the Telegram bot. Below is an estimate from this cycle\u2019s spending (by transaction date) because its e-billing is not issued yet.'))+'</div>'; };
   function bungkus(isi){ return '<div id="kkJTSiklus" class="panel" style="margin-bottom:14px">'+isi+'</div>'; }
   function pesan(teks){ return bungkus('<div style="font-size:12px;color:var(--tx3);line-height:1.5">'+teks+'</div>'); }
 
@@ -11349,7 +11353,7 @@ window.jsonp=function(params){
         h+='<div style="font-size:12px;color:var(--kuning-tx);background:var(--kuning-bg);border-radius:10px;padding:8px 10px;margin-top:8px;line-height:1.5">'+
           LA('Di catatan hutangmu tertulis ','Your debt records show ')+fmtRp(live.total)+LA(' (selisih ',' (difference ')+fmtRp(Math.abs(live.total-live.bank))+LA('). Mungkin ada e-billing yang belum diimpor atau pembayaran yang belum tercatat.','). An e-billing may not be imported yet, or a payment may be missing.')+'</div>';
       }
-      return bungkus(h+CATATAN());
+      return bungkus(h+CATATAN(true));
     }
     /* siklus berjalan: e-billing-nya belum terbit, tampilkan posisi saat ini */
     if(sk.start<=hari && hari<=sk.end && live){
@@ -11363,11 +11367,111 @@ window.jsonp=function(params){
         baris('<span style="font-size:11px;color:var(--tx3)">\u2022 '+LA('cicilan belum ditagih','installments not yet billed')+'</span>', live.C===null?LA('tidak terbaca','n/a'):fmtRp(live.C))+
         baris('<span style="font-size:11px;color:var(--tx3)">\u2022 '+LA('belanja dan biaya baru sejak e-billing','new spending and fees since the statement')+'</span>', fmtRp(live.N))+
         (live.lebih>0.5?baris('<span style="font-size:11px;color:var(--tx3)">\u2022 '+LA('kelebihan bayar','overpayment')+'</span>', '\u2212'+fmtRp(live.lebih)):'')+
-        baris('= '+LA('Total sisa hutang keseluruhan','Total remaining debt'), fmtRp(live.total), true);
-      return bungkus(j2+CATATAN());
+        baris('= '+LA('Total sisa hutang keseluruhan','Total remaining debt'), fmtRp(live.total), true)+
+        (live.sisaJT>0.5?'<button class="btn-line" style="margin-top:10px" onclick="kkKeSiklusBank()">'+LA('Bayar hutang jatuh tempo ','Pay the due debt ')+'('+fmtRp(live.sisaJT)+')</button>':'');
+      return bungkus(j2+CATATAN(false));
     }
     if(sk.start>hari) return '';                                                    /* siklus yang belum dimulai: tidak ada angka bank */
     return pesan(LA('E-billing siklus ini belum diimpor lewat bot Telegram (/kredit), jadi posisi hutang menurut bank belum tersedia.','This cycle\u2019s e-billing has not been imported through the Telegram bot (/kredit), so the bank\u2019s position is not available.'));
+  }
+
+  /* ---------- siklus yang punya e-billing: kartu, ringkasan, dan pembayaran mengikuti angka bank ---------- */
+  function ctxBank(a, sk){
+    var f=cariBarisSiklus(a, sk); if(!f) return null;
+    var r=f.row, T=num(r.total)||0, M=num(r.minimum), J=r.jatuhTempo?String(r.jatuhTempo):'', latest=(f.idx===0), live=posisi(a), paid, sisa, status;
+    if(latest){ paid=live.P; sisa=live.sisaJT; status=live.status; }
+    else { var nxt=f.rows[f.idx-1]; paid=num(nxt.bayarJT)||0; sisa=Math.max(0,T-paid); status=sisa<=0.5?'lunas':'telat'; }
+    return { f:f, r:r, T:T, M:M, J:J, latest:latest, live:live, paid:paid, sisa:sisa, status:status, D:String(r.tglCetak) };
+  }
+  function totalCatatanSiklus(a, sk){
+    return hutangKartuA(a).filter(function(u){ return String(u.tanggal)>=sk.start && String(u.tanggal)<=sk.end; }).reduce(function(s,u){ return s+(+u.pokok||0); },0);
+  }
+  function bayarPanelHTML(a, c){
+    var opsi=(typeof AK!=='undefined'?AK:[]).filter(function(x){ return String(x.id)!==String(a.id) && x.jenis!=='kartu'; })
+      .map(function(x){ return '<option value="'+x.id+'">'+esc(x.nama)+' ('+rp(saldoAkunSaatIni(x.id))+')</option>'; }).join('');
+    if(!opsi) return '<div class="panel" style="margin-top:14px"><div class="empty" style="line-height:1.5">'+LA('Belum ada penampung sumber (bank/dompet) untuk membayar. Tambahkan dahulu di Penampung Saldo.','No source account (bank/e-wallet) to pay from yet. Add one first in Accounts.')+'</div></div>';
+    var nom=window.kkBayarNom?(+window.kkBayarNom).toLocaleString('id-ID'):'';
+    return '<div class="panel" style="margin-top:14px">'+
+      '<div class="sec-head" style="padding:0 0 6px"><div class="t">'+LA('Bayar tagihan','Pay bill')+'</div></div>'+
+      '<label class="fl">'+LA('Nominal pembayaran','Payment amount')+'</label>'+
+      '<div class="nominal-wrap"><span class="rp">Rp</span><input id="kkNom" inputmode="numeric" placeholder="0" value="'+nom+'" oninput="kkOnNom(this)"></div>'+
+      '<div style="display:flex;gap:8px;margin:8px 0 4px">'+
+        '<button class="cb" onclick="kkIsiPenuh('+Math.round(c.sisa)+')">'+LA('Penuh ','Full ')+'('+fmtRp(c.sisa)+')</button>'+
+        '<button class="cb" onclick="kkIsiPersen('+Math.round(c.sisa)+',10)">10%</button>'+
+        '<button class="cb" onclick="kkIsiPersen('+Math.round(c.sisa)+',50)">50%</button></div>'+
+      '<label class="fl">'+LA('Sumber pembayaran','Payment source')+'</label>'+
+      '<select class="field" id="kkSumber">'+opsi+'</select>'+
+      '<button class="save" onclick="kkBayar()">'+LA('Bayar sekarang','Pay now')+'</button>'+
+      '<div style="font-size:11px;color:var(--tx3);margin-top:8px;line-height:1.5">'+LA('Pembayaran dicatat sebagai perpindahan saldo ke kartu dan mengurangi hutang kartu mulai dari yang paling lama. Jumlah maksimum sama dengan sisa tagihan e-billing ini.','The payment is recorded as a transfer to the card and reduces card debt starting from the oldest. The maximum equals this statement\u2019s remaining amount.')+'</div></div>';
+  }
+  function terapkanBank(a, sk, set){
+    var c=ctxBank(a, sk); if(!c) return false;
+    var kids=Array.prototype.slice.call(set.children);
+    var big=kids.filter(function(e){ return /padding:20px/.test(e.getAttribute('style')||''); })[0];
+    var rows=kids.filter(function(e){ return e.classList && e.classList.contains('udrow'); }).slice(0,3);
+    if(!big || rows.length<3) return false;                                   /* markup tidak dikenali: biarkan layar asli apa adanya */
+    var pay=kids.filter(function(e){
+      return e.classList.contains('statcard') || (e.classList.contains('panel') && !e.id && !/kkSinkron|kkRekon/.test(e.innerHTML) && /kkBayar|kkNom|class="empty"/.test(e.innerHTML));
+    })[0];
+    var bg={ lunas:'var(--hijau-bg)', telat:'var(--merah-bg)', sebagian:'var(--kuning-bg)', belum:(gelap()?'#1B2A3A':'#E6F1FB') }[c.status];
+    big.outerHTML='<div style="border-radius:16px;padding:20px;margin-bottom:6px;background:'+bg+';color:var(--tx)">'+
+      '<div style="font-size:12px;opacity:.7">'+akunIconHTML(a,15)+' '+LA('Tagihan e-billing ','Statement for ')+esc(a.nama)+'</div>'+
+      '<div class="kkBankSisa" style="font-size:28px;font-weight:700;margin-top:12px;letter-spacing:-.3px">'+fmtRp(c.sisa)+'</div>'+
+      '<div style="font-size:12px;opacity:.7;margin-top:2px">'+LA('sisa tagihan dari ','remaining from ')+fmtRp(c.T)+'</div>'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-top:14px">'+badge(c.status)+'<span style="font-size:12px;opacity:.85">'+LA('Jatuh tempo ','Due ')+tglLabel(c.J||sk.due)+'</span></div></div>';
+    var teks=[[LA('Tagihan e-billing','Statement total'),c.T],[LA('Sudah dibayar','Paid so far'),c.paid],[LA('Sisa tagihan','Remaining bill'),c.sisa]];
+    rows.forEach(function(e,i){ e.outerHTML='<div class="udrow"><span>'+teks[i][0]+'</span><b>'+fmtRp(teks[i][1])+'</b></div>'; });
+    var htmlBayar;
+    if(c.sisa<=0.5) htmlBayar='<div class="statcard on" style="margin-top:14px"><span class="sc-ic">&#10003;</span><div>'+LA('Tagihan e-billing ini sudah lunas.','This statement is fully paid.')+'</div></div>';
+    else if(c.latest) htmlBayar=bayarPanelHTML(a, c);
+    else htmlBayar='<div class="panel" style="margin-top:14px"><div style="font-size:13px;line-height:1.5">'+LA('Sisa ','Remaining ')+'<b>'+fmtRp(c.sisa)+'</b>'+LA(' dari tagihan ini belum terbayar saat e-billing berikutnya, jadi ikut ditagih di e-billing terbaru. Bayar lewat siklus e-billing terbaru.',' of this bill was unpaid at the next statement, so it is billed again in the latest one. Pay it from the latest statement cycle.')+'</div>'+
+      '<button class="btn-line" style="margin-top:10px" onclick="kkKeSiklusBank()">'+LA('Ke siklus e-billing terbaru','Go to the latest statement cycle')+'</button></div>';
+    if(pay) pay.outerHTML=htmlBayar; else { var akhir=set.querySelectorAll(':scope > .udrow'); if(akhir.length) akhir[akhir.length-1].insertAdjacentHTML('afterend', htmlBayar); }
+    var head=Array.prototype.slice.call(set.children).filter(function(e){ return e.classList.contains('sec-head') && /Rincian pengeluaran|Expense details/.test(e.textContent); })[0];
+    if(head){
+      head.insertAdjacentHTML('beforebegin','<div class="kkCatatanSiklus" style="font-size:11px;color:var(--tx3);line-height:1.5;margin-top:14px">'+
+        LA('Daftar di bawah adalah pengeluaran yang kamu catat pada siklus ini menurut tanggal transaksi: ','The list below is the spending you recorded in this cycle by transaction date: ')+'<b>'+fmtRp(totalCatatanSiklus(a,sk))+'</b>. '+
+        LA('Angkanya berbeda dari tagihan bank karena transaksi yang dicicil atau dikonversi ditagih per bulan, dan cicilan dari siklus sebelumnya ikut ditagih di e-billing ini.','It differs from the bank bill because installment or converted purchases are billed monthly, and earlier installments are billed in this statement.')+'</div>');
+    }
+    return true;
+  }
+  async function bayarBank(a, c){
+    var nominal=+window.kkBayarNom||0, sel=document.getElementById('kkSumber'), sid=sel?sel.value:'';
+    if(c.sisa<=0.5){ toast(LA('Tagihan e-billing ini sudah lunas','This statement is already paid')); return; }
+    var sumber=cariAkun(sid);
+    if(!sumber){ toast(LA('Pilih penampung sumber pembayaran','Choose a payment source')); return; }
+    if(String(sumber.id)===String(a.id)){ toast(LA('Sumber tidak boleh kartu itu sendiri','Source cannot be the card itself')); return; }
+    var P=Math.min(nominal, c.sisa);
+    if(P<=0){ toast(LA('Nominal pembayaran belum diisi','Enter a payment amount')); return; }
+    var cek=bolehKeluar(sumber.id, P); if(!cek.ok){ toast(cek.alasan); return; }
+    var tgl=todayISO();
+    var tr={ id:uid(), tanggal:tgl, dariAkunId:sumber.id, keAkunId:a.id, nominal:P,
+      catatan:LA('Pembayaran tagihan e-billing ','Statement payment ')+a.nama+' ('+tglLabel(c.D)+')', createdAt:new Date().toISOString(), terkirim:false, user:emailUser() };
+    TR.unshift(tr); await trPut(tr);
+    var sisaBayar=P, n=0;
+    var daftar=hutangKartuA(a).filter(function(u){ return utSisa(u)>0; }).sort(function(x,y){ return (String(x.tanggal)+String(x.createdAt||'')).localeCompare(String(y.tanggal)+String(y.createdAt||'')); });
+    for(var i=0;i<daftar.length && sisaBayar>0.5;i++){
+      var u=daftar[i], ambil=Math.min(utSisa(u), sisaBayar);
+      u.pembayaran=u.pembayaran||[]; u.pembayaran.push({ tanggal:tgl, nominal:ambil, catatan:LA('Bayar tagihan e-billing (terlama dulu) dari ','Statement payment (oldest first) from ')+sumber.nama });
+      u.terkirim=false; await uPut(u); sisaBayar-=ambil; n++;
+    }
+    window.kkBayarNom='';
+    toast(P>=c.sisa-0.5 ? LA('Tagihan e-billing lunas, '+rp(P)+' dibayar','Statement paid, '+rp(P)+' paid') : LA(rp(P)+' dibayar, mengurangi '+n+' catatan hutang terlama', rp(P)+' paid, reducing '+n+' oldest debt records'));
+    render();
+  }
+  window.kkKeSiklusBank=function(){
+    var a=cariAkun(window.kkCard); if(!a) return; var p=posisi(a); if(!p) return;
+    var pd=parseISO(p.D); window.kkRef=(pd.d<=clampHari(+a.tglTutup,pd.y,pd.m))?{y:pd.y,m:pd.m}:geserBulan(pd.y,pd.m,1); window.kkBayarNom='';
+    if(typeof window.render==='function') window.render();
+  };
+  if(typeof window.kkBayar==='function'){
+    var _kkBayarAsli=window.kkBayar;
+    window.kkBayar=async function(){
+      var a=cariAkun(window.kkCard), c=null;
+      try{ if(a && a.jenis==='kartu' && punyaSiklus(a)){ bacaCache(); c=ctxBank(a, siklusDariRef(a, window.kkRef||refBerjalan(a))); } }catch(e){ c=null; }
+      if(c && c.latest) return bayarBank(a, c);          /* siklus dengan e-billing: bayar sebesar sisa tagihan bank */
+      return _kkBayarAsli.apply(this, arguments);        /* selain itu: perilaku lama */
+    };
   }
 
   /* ---------- pasang ---------- */
@@ -11402,16 +11506,18 @@ window.jsonp=function(params){
         var a=cariAkun(window.kkCard); if(!a || a.jenis!=='kartu') return;
         var wadah=S(); if(!wadah) return; bacaCache();
         var set=wadah.querySelector('.set'); if(!set || !punyaSiklus(a)) return;
+        var sk=siklusDariRef(a, window.kkRef||refBerjalan(a));
         if(!wadah.querySelector('#kkJTSiklus')){
-          var sk=siklusDariRef(a, window.kkRef||refBerjalan(a)), h=panelSiklus(a, sk), nav=set.firstElementChild;
+          var h=panelSiklus(a, sk), nav=set.firstElementChild;
           if(h && nav) nav.insertAdjacentHTML('afterend', h);
         }
+        if(!set.getAttribute('data-kkbank') && terapkanBank(a, sk, set)) set.setAttribute('data-kkbank','1');
         tarik(false);
       }catch(e){}
     };
   }
   window.kkTagihanMuat=function(){ return tarik(true); };
-  window.__kkJT={ posisi:posisi, panelSiklus:panelSiklus, slideHTML:slideHTML, detailHTML:detailHTML, jatuhTempoBerikut:jatuhTempoBerikut, cache:cache, tarik:tarik };
+  window.__kkJT={ ctxBank:ctxBank, posisi:posisi, panelSiklus:panelSiklus, slideHTML:slideHTML, detailHTML:detailHTML, jatuhTempoBerikut:jatuhTempoBerikut, cache:cache, tarik:tarik };
 })();
 
 </script>
