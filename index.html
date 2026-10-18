@@ -10545,7 +10545,7 @@ window.jsonp=function(params){
                       .reduce(function(s,u){ return s+utSisa(u); },0);
       jatuh = Math.max(0, total-berjalan);
       items.forEach(function(u){ var s=utSisa(u); if(s<=0) return; var d=cycleOf(a, cycleRefForDate(a,u.tanggal)).due; if(d<today) overdue+=s; });
-      var due = (jatuh>0) ? cycleOf(a, geserBulan(cur.ref,-1)).due : cur.due;
+      var due = (jatuh>0) ? cycleOf(a, geserBulan(cur.ref.y,cur.ref.m,-1)).due : cur.due;
       dueTxt = labelTgl(due);
     }
     var onclick = 'bukaAkun(\''+a.id+'\')';  /* buka detail dulu, lalu tombol Lihat tagihan */
@@ -11124,38 +11124,64 @@ window.jsonp=function(params){
 
 <script>
 /* ============================================================================
-   PATCH KARTU: HUTANG JATUH TEMPO vs SISA HUTANG KESELURUHAN v1
-   (tempel paling akhir, sebelum </body>, setelah patch lain)
+   PATCH KARTU: HUTANG JATUH TEMPO vs SISA HUTANG KESELURUHAN v2
+   (tempel paling akhir, sebelum </body>, setelah semua patch kartu lain; menggantikan v1)
 
-   Menampilkan di layar kartu kredit DUA angka seperti cara bank menghitung:
-     1) Hutang jatuh tempo   = Total Tagihan di e-billing terakhir, dikurangi pembayaran sesudahnya
-     2) Sisa hutang keseluruhan = hutang jatuh tempo + cicilan yang belum ditagih + belanja baru sejak e-billing - kelebihan bayar
-   Datanya berasal dari e-billing yang diimpor lewat bot Telegram (/kredit) dan dibaca lewat GAS: action=listTagihan.
-   Butuh 2 baris di router scriptgas (lihat scriptgas.txt) dan Telegram.gs versi terbaru di proyek yang sama.
+   Satu sumber angka untuk tiga tempat:
+     - kartu carousel di beranda
+     - kartu hijau di detail akun kartu kredit
+     - layar siklus tagihan (panel per siklus, ikut berganti saat geser siklus)
+
+   Definisi:
+     Hutang jatuh tempo     = sisa Total Tagihan e-billing terakhir yang harus dibayar pada jatuh tempo berikutnya
+     Berjalan               = hutang lain yang masih berjalan di luar hutang jatuh tempo (cicilan belum ditagih + belanja baru)
+     Sisa hutang keseluruhan = Jatuh tempo + Berjalan
+     Jatuh tempo berikutnya = tanggal jatuh tempo terdekat menurut pengaturan siklus kartu (mis. tutup 16, tempo 5)
+
+   Data e-billing berasal dari bot Telegram (/kredit) dan dibaca lewat GAS: action=listTagihan.
+   Kartu tanpa data e-billing tetap memakai tampilan lama.
    ========================================================================== */
 (function(){
-  if(window.__KK_JT_V1__) return; window.__KK_JT_V1__=true;
+  if(window.__KK_JT_V2__) return; window.__KK_JT_V2__=true;
 
   var BLN_ID=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
   var BLN_EN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   function en(){ return window.LANG==='en'; }
   function LA(id,e){ return en()?e:id; }
-  function tglLabel(iso){
-    var p=String(iso||'').slice(0,10).split('-'); if(p.length<3||!p[0]) return '';
-    return (+p[2])+' '+(en()?BLN_EN:BLN_ID)[(+p[1])-1]+' '+p[0];
-  }
-  function tglPendek(iso){
-    var p=String(iso||'').slice(0,10).split('-'); if(p.length<3||!p[0]) return '';
-    return (+p[2])+' '+(en()?BLN_EN:BLN_ID)[(+p[1])-1];
-  }
+  function pad(n){ return (n<10?'0':'')+n; }
+  function ymd(y,m,d){ return y+'-'+pad(m)+'-'+pad(d); }
+  function parseISO(s){ var p=String(s).slice(0,10).split('-'); return {y:+p[0],m:+p[1],d:+p[2]}; }
+  function tglLabel(iso){ var p=parseISO(iso); if(!p.y||!p.m) return ''; return p.d+' '+(en()?BLN_EN:BLN_ID)[p.m-1]+' '+p.y; }
+  function tglPendek(iso){ var p=parseISO(iso); if(!p.y||!p.m) return ''; return p.d+' '+(en()?BLN_EN:BLN_ID)[p.m-1]; }
   function num(v){ return (v===''||v===null||v===undefined||isNaN(+v))?null:+v; }
   function samaU(a,b){ a=String(a||'').trim().toLowerCase(); b=String(b||'').trim().toLowerCase(); return !!a && a===b; }
+  function hariDalamBulan(y,m){ return new Date(y,m,0).getDate(); }
+  function clampHari(h,y,m){ h=Math.max(1,Math.min(28,+h||1)); return Math.min(h,hariDalamBulan(y,m)); }
+  function geserBulan(y,m,delta){ var idx=(m-1)+delta; return { y:y+Math.floor(idx/12), m:((idx%12)+12)%12+1 }; }
+  function tambahHariISO(iso,n){ var p=parseISO(iso), d=new Date(p.y,p.m-1,p.d); d.setDate(d.getDate()+n); return ymd(d.getFullYear(),d.getMonth()+1,d.getDate()); }
+  function selisihHari(a,b){ var p=parseISO(a), q=parseISO(b); return Math.round((Date.UTC(q.y,q.m-1,q.d)-Date.UTC(p.y,p.m-1,p.d))/86400000); }
 
-  /* ---------- pengguna & cache ---------- */
-  function pengguna(){
-    var u=(typeof USER!=='undefined'&&USER)?USER:{};
-    return { email:u.email||'', phone:u.phone||'' };
+  /* ---------- siklus kartu (sama dengan patch tagihan v2) ---------- */
+  function punyaSiklus(a){ return !!(a && a.jenis==='kartu' && a.tglTutup && a.tglTempo); }
+  function siklusDariRef(a, ref){
+    var end=ymd(ref.y, ref.m, clampHari(+a.tglTutup, ref.y, ref.m));
+    var pv=geserBulan(ref.y, ref.m, -1), prevEnd=ymd(pv.y, pv.m, clampHari(+a.tglTutup, pv.y, pv.m));
+    var dm=geserBulan(ref.y, ref.m, 1);
+    return { start:tambahHariISO(prevEnd,1), end:end, due:ymd(dm.y, dm.m, clampHari(+a.tglTempo, dm.y, dm.m)), ref:{y:ref.y,m:ref.m} };
   }
+  function refBerjalan(a){
+    var t=parseISO(todayISO()), D=clampHari(+a.tglTutup, t.y, t.m);
+    return t.d<=D ? {y:t.y,m:t.m} : geserBulan(t.y,t.m,1);
+  }
+  /* tanggal jatuh tempo terdekat (>= hari ini) menurut pengaturan siklus; begitu terus tiap bulan */
+  function jatuhTempoBerikut(a, hari){
+    var r=refBerjalan(a);
+    for(var d=-2; d<=2; d++){ var due=siklusDariRef(a, geserBulan(r.y,r.m,d)).due; if(due>=hari) return due; }
+    return '';
+  }
+
+  /* ---------- pengguna, cache, tarik data ---------- */
+  function pengguna(){ var u=(typeof USER!=='undefined'&&USER)?USER:{}; return { email:u.email||'', phone:u.phone||'' }; }
   function kunciUser(){ var p=pengguna(); return p.email||p.phone||''; }
   var KUNCI='kk_tagihan_v1', TTL=10*60*1000, JEDA=30*1000;
   var cache={ t:0, coba:0, rows:[], galat:'' }, sedangMuat=false, sudahBaca=false;
@@ -11164,112 +11190,209 @@ window.jsonp=function(params){
     try{ var j=JSON.parse(localStorage.getItem(KUNCI+':'+kunciUser())||'null'); if(j&&Array.isArray(j.rows)){ cache.rows=j.rows; cache.t=j.t||0; } }catch(e){}
   }
   function simpanCache(){ try{ localStorage.setItem(KUNCI+':'+kunciUser(), JSON.stringify({t:cache.t,rows:cache.rows})); }catch(e){} }
-
-  /* ---------- tarik dari GAS (action=listTagihan) ---------- */
+  var VIEW_SEGAR={ home:1, akunDetail:1, kartuTagihan:1 };      /* layar yang aman dirender ulang saat data baru tiba */
   async function tarik(paksa){
     if(sedangMuat) return;
     var now=Date.now();
     if(!paksa && ((cache.t && now-cache.t<TTL) || (cache.coba && now-cache.coba<JEDA))) return;
     if(!(typeof getGasUrl==='function' && getGasUrl()) || typeof window.jsonp!=='function') return;
     sedangMuat=true; cache.coba=now;
+    var berubah=false;
     try{
-      var id=kunciUser(), d=await window.jsonp('action=listTagihan&user='+encodeURIComponent(id));
-      if(d && typeof d==='object' && Array.isArray(d.data)){ cache.rows=d.data; cache.t=Date.now(); cache.galat=''; simpanCache(); }
+      var d=await window.jsonp('action=listTagihan&user='+encodeURIComponent(kunciUser()));
+      if(d && typeof d==='object' && Array.isArray(d.data)){ berubah=JSON.stringify(d.data)!==JSON.stringify(cache.rows); cache.rows=d.data; cache.t=Date.now(); cache.galat=''; simpanCache(); }
       else cache.galat='belumdikenal';
     }catch(e){ cache.galat='jaringan'; }
     sedangMuat=false;
-    try{ if(typeof view!=='undefined' && view==='kartuTagihan' && typeof window.render==='function') window.render(); }catch(e){}
+    try{ if(typeof view!=='undefined' && VIEW_SEGAR[view] && typeof window.render==='function' && (berubah||cache.galat)) window.render(); }catch(e){}
   }
 
-  /* ---------- perhitungan ---------- */
+  /* ---------- data ---------- */
   function barisKartu(a){
     var id=String(a.id), p=pengguna();
-    return cache.rows.filter(function(r){
-      return r && String(r.akunId)===id && (!r.user || samaU(r.user,p.email) || samaU(r.user,p.phone));
-    }).sort(function(x,y){ return String(y.tglCetak).localeCompare(String(x.tglCetak)); });
+    return cache.rows.filter(function(r){ return r && String(r.akunId)===id && (!r.user || samaU(r.user,p.email) || samaU(r.user,p.phone)); })
+      .sort(function(x,y){ return String(y.tglCetak).localeCompare(String(x.tglCetak)); });
   }
   function hutangKartuA(a){
     var kid=String(a.id), nama='Tagihan '+a.nama;
-    return (typeof UT!=='undefined'?UT:[]).filter(function(u){
-      if(u.jenis!=='hutang') return false;
-      return (u.akunId && String(u.akunId)===kid) || (!u.akunId && u.pihak===nama);
-    });
+    return (typeof UT!=='undefined'?UT:[]).filter(function(u){ return u.jenis==='hutang' && ((u.akunId && String(u.akunId)===kid) || (!u.akunId && u.pihak===nama)); });
   }
-  function hitung(a, r){
-    var D=String(r.tglCetak), T=num(r.total)||0, C=num(r.sisaCicilan), M=num(r.minimum), J=r.jatuhTempo?String(r.jatuhTempo):'';
-    var P=0, N=0, catatan=0, kid=String(a.id);
+  function bayarSejak(a, D){
+    var P=0, kid=String(a.id);
     (typeof TR!=='undefined'?TR:[]).forEach(function(t){ if(String(t.keAkunId)===kid && String(t.tanggal)>D) P+=(+t.nominal||0); });
-    hutangKartuA(a).forEach(function(u){ catatan+=utSisa(u); if(String(u.tanggal)>D) N+=(+u.pokok||0); });
-    var sisaJT=Math.max(0,T-P), lebih=Math.max(0,P-T), hari=todayISO();
-    var status=sisaJT<=0.5?'lunas':((J && J<hari)?'telat':(P>0?'sebagian':'belum'));
-    return { D:D, J:J, T:T, C:C, M:M, P:P, N:N, sisaJT:sisaJT, lebih:lebih, status:status,
-             keseluruhan:sisaJT+(C||0)+N-lebih, catatan:catatan, kurangMin:(M===null?0:Math.max(0,M-P)) };
+    return P;
   }
 
-  /* ---------- tampilan ---------- */
-  function baris(label, nilai, tebal){
-    return '<div class="udrow"><span>'+label+'</span>'+(tebal?'<b>'+nilai+'</b>':'<span>'+nilai+'</span>')+'</div>';
+  /* posisi SAAT INI berdasarkan e-billing terbaru. null bila kartu belum punya data e-billing. */
+  function posisi(a){
+    var rows=barisKartu(a); if(!rows.length) return null;
+    var r=rows[0], D=String(r.tglCetak), T=num(r.total)||0, C=num(r.sisaCicilan), M=num(r.minimum), J=r.jatuhTempo?String(r.jatuhTempo):'';
+    var P=bayarSejak(a,D), N=0, total=0, hari=todayISO();
+    hutangKartuA(a).forEach(function(u){ total+=utSisa(u); if(String(u.tanggal)>D) N+=(+u.pokok||0); });
+    var sisaJT=Math.max(0,T-P), lebih=Math.max(0,P-T);
+    var jt=Math.min(sisaJT,total), berjalan=Math.max(0,total-jt);                 /* total = jatuh tempo + berjalan, selalu */
+    var overdue=!!(sisaJT>0.5 && J && J<hari);
+    var berikut=(sisaJT>0.5 && J) ? J : (punyaSiklus(a) ? jatuhTempoBerikut(a,hari) : (J&&J>=hari?J:''));
+    var stale=false;
+    if(punyaSiklus(a)){ var pd=parseISO(D), ref=(pd.d<=clampHari(+a.tglTutup,pd.y,pd.m))?{y:pd.y,m:pd.m}:geserBulan(pd.y,pd.m,1); stale=hari>siklusDariRef(a,geserBulan(ref.y,ref.m,1)).end; }
+    else stale=selisihHari(D,hari)>40;
+    return { row:r, rows:rows, D:D, T:T, C:C, M:M, J:J, P:P, N:N, lebih:lebih, sisaJT:sisaJT, total:total, jt:jt, berjalan:berjalan,
+             overdue:overdue, berikut:berikut, stale:stale, status:(sisaJT<=0.5?'lunas':(overdue?'telat':(P>0?'sebagian':'belum'))),
+             kurangMin:(M===null?0:Math.max(0,M-P)), bank:sisaJT+(C||0)+N-lebih };
   }
+
+  /* ---------- potongan tampilan ---------- */
+  function baris(label, nilai, tebal){ return '<div class="udrow"><span>'+label+'</span>'+(tebal?'<b>'+nilai+'</b>':'<span>'+nilai+'</span>')+'</div>'; }
   function badge(status){
-    var peta={ lunas:['lunas',LA('Lunas','Paid')], telat:['telat',LA('Lewat jatuh tempo','Overdue')], sebagian:['seb',LA('Sebagian','Partial')], belum:['belum',LA('Belum dibayar','Unpaid')] }[status];
-    return '<span class="ubadge '+peta[0]+'">'+peta[1]+'</span>';
+    var m={ lunas:['lunas',LA('Lunas','Paid')], telat:['telat',LA('Lewat jatuh tempo','Overdue')], sebagian:['seb',LA('Sebagian','Partial')], belum:['belum',LA('Belum dibayar','Unpaid')] }[status];
+    return '<span class="ubadge '+m[0]+'">'+m[1]+'</span>';
   }
-  function boxHTML(a){
-    var rows=barisKartu(a), catatanSemua=0;
-    if(!rows.length){
-      hutangKartuA(a).forEach(function(u){ catatanSemua+=utSisa(u); });
-      return '<div id="kkJTBox" class="panel" style="margin-bottom:14px">'+
-        '<div class="sec-head" style="padding:0 0 6px"><div class="t">'+LA('Hutang kartu','Card debt')+'</div></div>'+
-        baris(LA('Sisa hutang keseluruhan (menurut catatan)','Total remaining debt (per your records)'), fmtRp(catatanSemua), true)+
-        '<div style="font-size:12px;color:var(--tx3);line-height:1.5;margin-top:8px">'+
-          LA('Hutang jatuh tempo menurut bank belum tersedia. Impor e-billing lewat bot Telegram (/kredit), lalu buka layar ini lagi.','The bank\u2019s due amount is not available yet. Import the e-billing through the Telegram bot (/kredit), then reopen this screen.')+
-          (cache.galat==='belumdikenal'?'<br>'+LA('Server belum mengenali perintah tagihan. Buka Apps Script lalu Deploy > Manage deployments > New version.','The server does not recognize the bill command yet. Open Apps Script, then Deploy > Manage deployments > New version.'):'')+
-        '</div></div>';
-    }
-    var r=rows[0], h=hitung(a,r), gelap=(document.documentElement.getAttribute('data-theme')==='dark');
-    var warna={ lunas:['var(--hijau-bg)','var(--hijau-tx)'], telat:['var(--merah-bg)','var(--merah-tx)'], sebagian:['var(--kuning-bg)','var(--kuning-tx)'], belum:[(gelap?'#1B2A3A':'#E6F1FB'),'var(--tx)'] }[h.status];
-    var j='<div id="kkJTBox" class="panel" style="margin-bottom:14px">'+
-      '<div class="sec-head" style="padding:0 0 8px"><div class="t">'+LA('Hutang kartu menurut bank','Card debt per the bank')+'</div>'+
-        '<div style="font-size:11px;color:var(--tx3)">'+LA('e-billing ','e-billing ')+tglLabel(h.D)+'</div></div>'+
-      /* 1) hutang jatuh tempo */
-      '<div style="border-radius:14px;padding:14px;background:'+warna[0]+';color:'+warna[1]+'">'+
-        '<div style="font-size:12px;opacity:.75">1) '+LA('Hutang jatuh tempo','Due debt')+(h.J?(' \u00b7 '+tglLabel(h.J)):'')+'</div>'+
-        '<div id="kkJTNilai" style="font-size:26px;font-weight:700;margin-top:6px;letter-spacing:-.3px">'+fmtRp(h.sisaJT)+'</div>'+
-        '<div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">'+badge(h.status)+
-          '<span style="font-size:12px;opacity:.85">'+LA('Tagihan e-billing ','Statement ')+fmtRp(h.T)+(h.M!==null?(' \u00b7 '+LA('minimum ','minimum ')+fmtRp(h.M)):'')+'</span></div>'+
-      '</div>'+
-      baris(LA('Dibayar sejak e-billing','Paid since the statement'), fmtRp(h.P))+
-      (h.M!==null && h.sisaJT>0.5 ? baris(LA('Pembayaran minimum','Minimum payment'), h.kurangMin>0.5?(LA('kurang ','short by ')+fmtRp(h.kurangMin)):LA('sudah terpenuhi','met')) : '')+
-      /* 2) sisa hutang keseluruhan */
-      '<div style="border-radius:14px;padding:14px;margin-top:12px;background:'+(gelap?'#1B2A3A':'#F1EFE8')+';color:var(--tx)">'+
-        '<div style="font-size:12px;opacity:.75">2) '+LA('Sisa hutang keseluruhan','Total remaining debt')+'</div>'+
-        '<div id="kkKSNilai" style="font-size:26px;font-weight:700;margin-top:6px;letter-spacing:-.3px">'+fmtRp(h.keseluruhan)+'</div>'+
-      '</div>'+
-      baris(LA('Hutang jatuh tempo (bagian 1)','Due debt (part 1)'), fmtRp(h.sisaJT))+
-      baris('+ '+LA('Cicilan yang belum ditagih','Installments not yet billed')+' <span style="font-size:11px;color:var(--tx3)">('+LA('per ','as of ')+tglPendek(h.D)+')</span>', h.C===null?LA('tidak terbaca','n/a'):fmtRp(h.C))+
-      baris('+ '+LA('Belanja dan biaya baru sejak e-billing','New spending and fees since the statement'), fmtRp(h.N))+
-      (h.lebih>0.5?baris('\u2212 '+LA('Kelebihan bayar (mengurangi tagihan berikutnya)','Overpayment (reduces the next bill)'), fmtRp(h.lebih)):'')+
-      baris('= '+LA('Total sisa hutang keseluruhan','Total remaining debt'), fmtRp(h.keseluruhan), true)+
-      (Math.abs(h.keseluruhan-h.catatan)>1000?'<div style="font-size:12px;color:var(--kuning-tx);background:var(--kuning-bg);border-radius:10px;padding:8px 10px;margin-top:8px;line-height:1.5">'+
-        LA('Di catatan hutangmu tertulis ','Your debt records show ')+fmtRp(h.catatan)+LA(' (selisih ',' (difference ')+fmtRp(Math.abs(h.keseluruhan-h.catatan))+LA('). Mungkin ada e-billing yang belum diimpor atau pembayaran yang belum tercatat.','). An e-billing may not be imported yet, or a payment may be missing.')+'</div>':'');
-    /* 3) perjalanan hutang e-billing terakhir */
-    var aw=num(r.hutangAwal);
-    if(aw!==null){
-      j+='<details id="kkJTPerjalanan" style="margin-top:10px"><summary style="font-size:13px;cursor:pointer;color:var(--biru)">'+LA('Perjalanan hutang e-billing ','Debt roll-forward, statement ')+tglPendek(h.D)+'</summary>'+
-        baris(LA('Hutang awal','Opening debt'), fmtRp(aw))+
-        baris('\u2212 '+LA('Bayar tagihan jatuh tempo','Paid the due bill'), fmtRp(num(r.bayarJT)||0))+
-        ((num(r.bayarLain)||0)>0.5?baris('\u2212 '+LA('Bayar tambahan','Extra payments'), fmtRp(num(r.bayarLain))):'')+
-        ((num(r.kreditLain)||0)>0.5?baris('\u2212 '+LA('Kredit atau pengembalian lain','Other credits'), fmtRp(num(r.kreditLain))):'')+
-        baris('+ '+LA('Hutang baru','New debt'), fmtRp(num(r.hutangBaru)||0))+
-        baris('= '+LA('Hutang akhir','Closing debt'), fmtRp(num(r.hutangAkhir)||0), true)+'</details>';
-    }
-    j+='<div style="font-size:11px;color:var(--tx3);line-height:1.5;margin-top:10px">'+
-      LA('Hutang jatuh tempo = Total Tagihan e-billing (sudah dikurangi pembayaran). Angka diambil dari e-billing yang diimpor lewat bot Telegram. Di bawah ini adalah rincian pengeluaran per siklus (berdasarkan tanggal transaksi), bukan angka tagihan bank.',
-         'Due debt = the statement\u2019s Total Balance (already net of payments). Figures come from the e-billing imported through the Telegram bot. Below is the per-cycle spending breakdown (by transaction date), not the bank\u2019s bill.')+'</div></div>';
-    return j;
+  function gelap(){ return document.documentElement.getAttribute('data-theme')==='dark'; }
+
+  /* ---------- 1) kartu carousel beranda ---------- */
+  function slideHTML(a, p){
+    var badgeLewat=p.overdue?('<span style="margin-left:8px;font-size:10px;font-weight:700;background:#FCEBEB;color:#A32D2D;padding:2px 7px;border-radius:20px;vertical-align:middle">'+LA('lewat jatuh tempo','overdue')+'</span>'):'';
+    return '<div class="saldo" onclick="bukaAkun(\''+a.id+'\')" style="cursor:pointer">'+
+      '<div class="lbl">'+akunIconHTML(a,15)+' '+esc(a.nama)+badgeLewat+'</div>'+
+      '<div class="amt" style="margin-bottom:2px">'+fmtRp(p.total)+'</div>'+
+      '<div class="mini" style="margin-bottom:12px">'+LA('sisa hutang keseluruhan','total remaining debt')+'</div>'+
+      '<div class="row"><div><div class="mini">'+LA('Jatuh tempo','Due')+'</div><div class="val">'+fmtRp(p.jt)+'</div></div>'+
+      '<div><div class="mini">'+LA('Berjalan','Current')+'</div><div class="val">'+fmtRp(p.berjalan)+'</div></div></div>'+
+      '<div style="border-top:1px solid rgba(255,255,255,.22);margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">'+
+        '<span class="mini">'+LA('Jatuh tempo berikutnya','Next due date')+'</span>'+
+        '<span class="val" style="font-size:14px">'+(p.berikut?esc(tglLabel(p.berikut)):LA('atur siklus','set cycle'))+'</span></div>'+
+      (p.stale?'<div class="mini" style="margin-top:8px">'+LA('E-billing terbaru belum diimpor','Latest e-billing not imported')+'</div>':'')+
+      '</div>';
   }
 
-  /* ---------- pasang ke layar kartu ---------- */
+  /* ---------- 2) kartu hijau di detail akun ---------- */
+  function detailHTML(p){
+    var gar='border-top:1px solid rgba(255,255,255,.28);margin-top:12px;padding-top:10px;';
+    return '<div id="kkJTDetail">'+
+      '<div style="display:flex;gap:16px;margin-top:14px"><div style="flex:1"><div style="font-size:11px;opacity:.85">'+LA('Jatuh tempo','Due')+'</div><div style="font-size:14px;font-weight:600;margin-top:2px">'+fmtRp(p.jt)+'</div></div>'+
+      '<div style="flex:1"><div style="font-size:11px;opacity:.85">'+LA('Berjalan','Current')+'</div><div style="font-size:14px;font-weight:600;margin-top:2px">'+fmtRp(p.berjalan)+'</div></div></div>'+
+      '<div style="'+gar+'display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;opacity:.85">'+LA('Jatuh tempo berikutnya','Next due date')+'</span>'+
+      '<span style="font-size:14px;font-weight:600">'+(p.berikut?esc(tglLabel(p.berikut)):LA('atur siklus','set cycle'))+'</span></div>'+
+      (p.stale?'<div style="font-size:11px;opacity:.85;margin-top:8px">'+LA('E-billing terbaru belum diimpor','Latest e-billing not imported')+'</div>':'')+'</div>';
+  }
+
+  /* ---------- 3) panel per siklus di layar tagihan ---------- */
+  function kotakJT(judul, subjudul, jtLabel, jtNilai, jtInfo, status, ksLabel, ksNilai){
+    var w={ lunas:['var(--hijau-bg)','var(--hijau-tx)'], telat:['var(--merah-bg)','var(--merah-tx)'], sebagian:['var(--kuning-bg)','var(--kuning-tx)'], belum:[(gelap()?'#1B2A3A':'#E6F1FB'),'var(--tx)'] }[status];
+    return '<div class="sec-head" style="padding:0 0 8px"><div class="t">'+judul+'</div><div style="font-size:11px;color:var(--tx3)">'+subjudul+'</div></div>'+
+      '<div style="border-radius:14px;padding:14px;background:'+w[0]+';color:'+w[1]+'">'+
+        '<div style="font-size:12px;opacity:.75">1) '+jtLabel+'</div>'+
+        '<div class="kkJTNilai" style="font-size:26px;font-weight:700;margin-top:6px;letter-spacing:-.3px">'+jtNilai+'</div>'+
+        '<div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">'+badge(status)+'<span style="font-size:12px;opacity:.85">'+jtInfo+'</span></div></div>'+
+      '<div style="border-radius:14px;padding:14px;margin-top:12px;background:'+(gelap()?'#1B2A3A':'#F1EFE8')+';color:var(--tx)">'+
+        '<div style="font-size:12px;opacity:.75">2) '+ksLabel+'</div>'+
+        '<div class="kkKSNilai" style="font-size:26px;font-weight:700;margin-top:6px;letter-spacing:-.3px">'+ksNilai+'</div></div>';
+  }
+  function perjalanan(r){
+    var aw=num(r.hutangAwal); if(aw===null) return '';
+    return '<details class="kkJTPerjalanan" style="margin-top:10px"><summary style="font-size:13px;cursor:pointer;color:var(--biru)">'+LA('Perjalanan hutang e-billing ','Debt roll-forward, statement ')+tglPendek(r.tglCetak)+'</summary>'+
+      baris(LA('Hutang awal','Opening debt'), fmtRp(aw))+
+      baris('\u2212 '+LA('Bayar tagihan jatuh tempo','Paid the due bill'), fmtRp(num(r.bayarJT)||0))+
+      ((num(r.bayarLain)||0)>0.5?baris('\u2212 '+LA('Bayar tambahan','Extra payments'), fmtRp(num(r.bayarLain))):'')+
+      ((num(r.kreditLain)||0)>0.5?baris('\u2212 '+LA('Kredit atau pengembalian lain','Other credits'), fmtRp(num(r.kreditLain))):'')+
+      baris('+ '+LA('Hutang baru','New debt'), fmtRp(num(r.hutangBaru)||0))+
+      baris('= '+LA('Hutang akhir','Closing debt'), fmtRp(num(r.hutangAkhir)||0), true)+'</details>';
+  }
+  var CATATAN=function(){ return '<div style="font-size:11px;color:var(--tx3);line-height:1.5;margin-top:10px">'+
+    LA('Hutang jatuh tempo = Total Tagihan e-billing (sudah dikurangi pembayaran). Angka diambil dari e-billing yang diimpor lewat bot Telegram. Di bawah ini adalah rincian pengeluaran siklus ini (berdasarkan tanggal transaksi), bukan angka tagihan bank.',
+       'Due debt = the statement\u2019s Total Balance (already net of payments). Figures come from the e-billing imported through the Telegram bot. Below is this cycle\u2019s spending breakdown (by transaction date), not the bank\u2019s bill.')+'</div>'; };
+  function bungkus(isi){ return '<div id="kkJTSiklus" class="panel" style="margin-bottom:14px">'+isi+'</div>'; }
+  function pesan(teks){ return bungkus('<div style="font-size:12px;color:var(--tx3);line-height:1.5">'+teks+'</div>'); }
+
+  function cariBarisSiklus(a, sk){
+    var rows=barisKartu(a), best=-1, bd=99;
+    rows.forEach(function(r,i){ var d=Math.abs(selisihHari(String(r.tglCetak), sk.end)); if(d<=3 && d<bd){ bd=d; best=i; } });
+    return best<0?null:{ row:rows[best], idx:best, rows:rows };
+  }
+
+  function panelSiklus(a, sk){
+    var rows=barisKartu(a), hari=todayISO();
+    if(!rows.length){
+      return pesan(LA('Hutang jatuh tempo menurut bank belum tersedia. Impor e-billing lewat bot Telegram (/kredit), lalu buka layar ini lagi.','The bank\u2019s due amount is not available yet. Import the e-billing through the Telegram bot (/kredit), then reopen this screen.')+
+        (cache.galat==='belumdikenal'?'<br>'+LA('Server belum mengenali perintah tagihan. Buka Apps Script lalu Deploy > Manage deployments > New version.','The server does not recognize the bill command yet. Open Apps Script, then Deploy > Manage deployments > New version.'):''));
+    }
+    var f=cariBarisSiklus(a, sk), live=posisi(a);
+    if(f){
+      var r=f.row, T=num(r.total)||0, C=num(r.sisaCicilan), E=num(r.hutangAkhir); if(E===null) E=T+(C||0);
+      var J=r.jatuhTempo?String(r.jatuhTempo):'', M=num(r.minimum), latest=(f.idx===0);
+      var status, info, dibayarTxt='';
+      if(latest){
+        status=live.status;
+        info=LA('Tagihan e-billing ','Statement ')+fmtRp(T)+(M!==null?(' \u00b7 '+LA('minimum ','minimum ')+fmtRp(M)):'');
+        dibayarTxt=baris(LA('Dibayar sejak e-billing','Paid since the statement'), fmtRp(live.P))+
+          (live.sisaJT>0.5?baris(LA('Sisa hutang jatuh tempo','Due debt remaining'), fmtRp(live.sisaJT), true):'')+
+          (M!==null && live.sisaJT>0.5 ? baris(LA('Pembayaran minimum','Minimum payment'), live.kurangMin>0.5?(LA('kurang ','short by ')+fmtRp(live.kurangMin)):LA('sudah terpenuhi','met')) : '');
+      } else {
+        var nxt=f.rows[f.idx-1], paid=num(nxt.bayarJT)||0, sisa=Math.max(0,T-paid);
+        status=sisa<=0.5?'lunas':'telat';
+        info=LA('Tagihan e-billing ','Statement ')+fmtRp(T)+(M!==null?(' \u00b7 '+LA('minimum ','minimum ')+fmtRp(M)):'');
+        dibayarTxt=baris(LA('Dibayar untuk tagihan ini','Paid toward this bill'), fmtRp(paid))+(sisa>0.5?baris(LA('Belum terbayar saat e-billing berikutnya','Unpaid at the next statement'), fmtRp(sisa), true):'');
+      }
+      var h=kotakJT(LA('Hutang kartu menurut bank','Card debt per the bank'), 'e-billing '+tglLabel(r.tglCetak),
+                    LA('Hutang jatuh tempo','Due debt')+(J?(' \u00b7 '+tglLabel(J)):''), fmtRp(T), info, status,
+                    LA('Sisa hutang keseluruhan (saat e-billing)','Total remaining debt (at the statement)'), fmtRp(E))+
+        dibayarTxt+
+        baris(LA('Hutang jatuh tempo (bagian 1)','Due debt (part 1)'), fmtRp(T))+
+        baris('+ '+LA('Cicilan yang belum ditagih','Installments not yet billed')+' <span style="font-size:11px;color:var(--tx3)">('+LA('per ','as of ')+tglPendek(r.tglCetak)+')</span>', C===null?LA('tidak terbaca','n/a'):fmtRp(C))+
+        baris('= '+LA('Total sisa hutang keseluruhan','Total remaining debt'), fmtRp(E), true)+
+        perjalanan(r);
+      if(latest && Math.abs(live.total-E)>1000){
+        h+='<div style="font-size:12px;color:var(--tx2);background:var(--page);border-radius:10px;padding:8px 10px;margin-top:8px;line-height:1.5">'+
+          LA('Posisi saat ini: ','Position now: ')+'<b>'+fmtRp(live.total)+'</b> ('+LA('jatuh tempo ','due ')+fmtRp(live.jt)+' + '+LA('berjalan ','current ')+fmtRp(live.berjalan)+')</div>';
+      }
+      if(latest && Math.abs(live.total-live.bank)>1000){
+        h+='<div style="font-size:12px;color:var(--kuning-tx);background:var(--kuning-bg);border-radius:10px;padding:8px 10px;margin-top:8px;line-height:1.5">'+
+          LA('Di catatan hutangmu tertulis ','Your debt records show ')+fmtRp(live.total)+LA(' (selisih ',' (difference ')+fmtRp(Math.abs(live.total-live.bank))+LA('). Mungkin ada e-billing yang belum diimpor atau pembayaran yang belum tercatat.','). An e-billing may not be imported yet, or a payment may be missing.')+'</div>';
+      }
+      return bungkus(h+CATATAN());
+    }
+    /* siklus berjalan: e-billing-nya belum terbit, tampilkan posisi saat ini */
+    if(sk.start<=hari && hari<=sk.end && live){
+      var j2=kotakJT(LA('Posisi hutang kartu saat ini','Card debt right now'), LA('e-billing ','e-billing ')+tglPendek(sk.end)+LA(' belum terbit',' not issued yet'),
+                     LA('Hutang jatuh tempo','Due debt')+(live.berikut?(' \u00b7 '+tglLabel(live.berikut)):''), fmtRp(live.jt),
+                     LA('Tagihan e-billing ','Statement ')+tglPendek(live.D)+' '+fmtRp(live.T)+(live.M!==null?(' \u00b7 '+LA('minimum ','minimum ')+fmtRp(live.M)):''), live.status,
+                     LA('Sisa hutang keseluruhan','Total remaining debt'), fmtRp(live.total))+
+        baris(LA('Dibayar sejak e-billing','Paid since the statement'), fmtRp(live.P))+
+        baris(LA('Hutang jatuh tempo (bagian 1)','Due debt (part 1)'), fmtRp(live.jt))+
+        baris('+ '+LA('Hutang lain yang berjalan','Other debt in progress'), fmtRp(live.berjalan), true)+
+        baris('<span style="font-size:11px;color:var(--tx3)">\u2022 '+LA('cicilan belum ditagih','installments not yet billed')+'</span>', live.C===null?LA('tidak terbaca','n/a'):fmtRp(live.C))+
+        baris('<span style="font-size:11px;color:var(--tx3)">\u2022 '+LA('belanja dan biaya baru sejak e-billing','new spending and fees since the statement')+'</span>', fmtRp(live.N))+
+        (live.lebih>0.5?baris('<span style="font-size:11px;color:var(--tx3)">\u2022 '+LA('kelebihan bayar','overpayment')+'</span>', '\u2212'+fmtRp(live.lebih)):'')+
+        baris('= '+LA('Total sisa hutang keseluruhan','Total remaining debt'), fmtRp(live.total), true);
+      return bungkus(j2+CATATAN());
+    }
+    if(sk.start>hari) return '';                                                    /* siklus yang belum dimulai: tidak ada angka bank */
+    return pesan(LA('E-billing siklus ini belum diimpor lewat bot Telegram (/kredit), jadi posisi hutang menurut bank belum tersedia.','This cycle\u2019s e-billing has not been imported through the Telegram bot (/kredit), so the bank\u2019s position is not available.'));
+  }
+
+  /* ---------- pasang ---------- */
+  if(typeof window.akunSlideHTML==='function'){
+    var _slide=window.akunSlideHTML;
+    window.akunSlideHTML=function(a){
+      try{
+        if(a && a.jenis==='kartu'){ bacaCache(); var p=posisi(a); tarik(false); if(p) return slideHTML(a,p); }
+      }catch(e){}
+      return _slide.apply(this, arguments);
+    };
+  }
+  if(typeof window.renderAkunDetail==='function'){
+    var _detail=window.renderAkunDetail;
+    window.renderAkunDetail=function(){
+      _detail.apply(this, arguments);
+      try{
+        var a=cariAkun(window.akunDetail); if(!a || a.jenis!=='kartu') return;
+        var wadah=S(); if(!wadah) return; bacaCache();
+        var ud=wadah.querySelector('.udetail'); if(!ud || wadah.querySelector('#kkJTDetail')) { tarik(false); return; }
+        var p=posisi(a); if(p) ud.insertAdjacentHTML('beforeend', detailHTML(p));
+        tarik(false);
+      }catch(e){}
+    };
+  }
   if(typeof window.renderKartuTagihan==='function'){
     var _rkt2=window.renderKartuTagihan;
     window.renderKartuTagihan=function(){
@@ -11277,16 +11400,18 @@ window.jsonp=function(params){
       try{
         if(typeof view!=='undefined' && view!=='kartuTagihan') return;
         var a=cariAkun(window.kkCard); if(!a || a.jenis!=='kartu') return;
-        var wadah=S(); if(!wadah) return;
-        bacaCache();
-        var set=wadah.querySelector('.set'); if(!set || wadah.querySelector('#kkJTBox')) { tarik(false); return; }
-        set.insertAdjacentHTML('afterbegin', boxHTML(a));
+        var wadah=S(); if(!wadah) return; bacaCache();
+        var set=wadah.querySelector('.set'); if(!set || !punyaSiklus(a)) return;
+        if(!wadah.querySelector('#kkJTSiklus')){
+          var sk=siklusDariRef(a, window.kkRef||refBerjalan(a)), h=panelSiklus(a, sk), nav=set.firstElementChild;
+          if(h && nav) nav.insertAdjacentHTML('afterend', h);
+        }
         tarik(false);
       }catch(e){}
     };
   }
-  window.kkTagihanMuat=function(){ return tarik(true); };      /* tarik paksa (mis. setelah impor baru) */
-  window.__kkJT={ hitung:hitung, boxHTML:boxHTML, cache:cache, tarik:tarik };
+  window.kkTagihanMuat=function(){ return tarik(true); };
+  window.__kkJT={ posisi:posisi, panelSiklus:panelSiklus, slideHTML:slideHTML, detailHTML:detailHTML, jatuhTempoBerikut:jatuhTempoBerikut, cache:cache, tarik:tarik };
 })();
 
 </script>
